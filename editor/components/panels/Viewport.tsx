@@ -7,6 +7,7 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
+import { ViewCube } from './ViewCube';
 
 export interface ViewportProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
@@ -289,42 +290,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         />
       </div>
 
-      {/* Camera preset buttons */}
-      <div style={{
-        position: 'absolute',
-        top: '8px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 5,
-        display: 'flex',
-        gap: '2px',
-        background: 'rgba(13,17,23,0.7)',
-        borderRadius: '4px',
-        padding: '2px',
-      }}>
-        {(['top', 'front', 'right'] as const).map((dir) => (
-          <button
-            key={dir}
-            onClick={() => setCameraView(dir)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: '10px',
-              padding: '2px 6px',
-              borderRadius: '2px',
-              textTransform: 'uppercase',
-              fontFamily: 'var(--font-mono)',
-              fontWeight: 600,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-          >
-            {dir}
-          </button>
-        ))}
-      </div>
+      {/* ViewCube — interactive 3D orientation cube */}
+      <ViewCube />
 
       {/* Canvas */}
       <canvas
@@ -357,38 +324,6 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         <span>{state.drawCalls} draw calls</span>
         <span>{state.triangles.toLocaleString()} tris</span>
         <span>{state.entityCount} entities</span>
-      </div>
-
-      {/* Gizmo Axis Overlay */}
-      <div style={{
-        position: 'absolute',
-        top: '12px',
-        right: '12px',
-        display: 'flex',
-        gap: '6px',
-        fontFamily: 'var(--font-mono)',
-        fontSize: '11px',
-        fontWeight: 700,
-        pointerEvents: 'none',
-      }}>
-        <span style={{
-          padding: '2px 6px',
-          borderRadius: '3px',
-          background: 'rgba(248, 81, 73, 0.2)',
-          color: 'var(--axis-x)',
-        }}>X</span>
-        <span style={{
-          padding: '2px 6px',
-          borderRadius: '3px',
-          background: 'rgba(63, 185, 80, 0.2)',
-          color: 'var(--axis-y)',
-        }}>Y</span>
-        <span style={{
-          padding: '2px 6px',
-          borderRadius: '3px',
-          background: 'rgba(88, 166, 255, 0.2)',
-          color: 'var(--axis-z)',
-        }}>Z</span>
       </div>
 
       {/* Drag Delta Overlay */}

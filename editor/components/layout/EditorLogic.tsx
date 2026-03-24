@@ -38,6 +38,24 @@ export const KeyboardHandler: React.FC = () => {
             const redone = undoManager.redo();
             if (redone) log(`Redo: ${redone.label}`, 'info');
             return;
+          case 'KeyC':
+            e.preventDefault();
+            if (state.selectedEntity !== null) {
+              dispatch({ type: 'SET_CLIPBOARD', entity: state.selectedEntity });
+              log(`Copied: ${engine?.engine.ecs.getEntityName(state.selectedEntity) ?? state.selectedEntity}`, 'info');
+            }
+            return;
+          case 'KeyV':
+            e.preventDefault();
+            if (engine && state.clipboard !== null) {
+              const clone = engine.scene.cloneEntity(state.clipboard);
+              if (clone !== null) {
+                log(`Pasted: ${engine.engine.ecs.getEntityName(clone)}`, 'info');
+                dispatch({ type: 'SELECT_ENTITY', entity: clone });
+                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+              }
+            }
+            return;
           case 'KeyD':
             e.preventDefault();
             if (engine && state.selectedEntity !== null) {
@@ -45,6 +63,7 @@ export const KeyboardHandler: React.FC = () => {
               if (clone !== null) {
                 log(`Duplicated: ${engine.engine.ecs.getEntityName(clone)}`, 'info');
                 dispatch({ type: 'SELECT_ENTITY', entity: clone });
+                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
               }
             }
             return;
@@ -92,7 +111,7 @@ export const KeyboardHandler: React.FC = () => {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [engine, state.selectedEntity, dispatch, log]);
+  }, [engine, state.selectedEntity, state.clipboard, dispatch, log]);
 
   return null;
 };

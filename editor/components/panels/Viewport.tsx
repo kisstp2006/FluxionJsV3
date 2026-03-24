@@ -138,14 +138,25 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   useEffect(() => {
     if (!engine) return;
     if (state.selectedEntity !== null) {
-      const obj = engine.renderer.getObject(state.selectedEntity);
-      if (obj) {
-        engine.gizmoService.attach(obj);
-        engine.selectionOutline.setFromObject(obj);
-        engine.selectionOutline.visible = true;
-      } else {
-        engine.gizmoService.detach();
-        engine.selectionOutline.visible = false;
+      const tryAttach = () => {
+        const obj = engine.renderer.getObject(state.selectedEntity!);
+        if (obj) {
+          engine.gizmoService.attach(obj);
+          engine.selectionOutline.setFromObject(obj);
+          engine.selectionOutline.visible = true;
+          return true;
+        }
+        return false;
+      };
+      if (!tryAttach()) {
+        // Object not yet registered (e.g. freshly duplicated entity) — retry after next ECS update
+        const rafId = requestAnimationFrame(() => {
+          if (!tryAttach()) {
+            engine.gizmoService.detach();
+            engine.selectionOutline.visible = false;
+          }
+        });
+        return () => cancelAnimationFrame(rafId);
       }
     } else {
       engine.gizmoService.detach();

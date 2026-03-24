@@ -9,6 +9,7 @@ import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { TGALoader } from 'three/examples/jsm/loaders/TGALoader.js';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshLoadResult } from './FluxMeshData';
 
@@ -38,6 +39,7 @@ export class AssetManager {
   private cache: Map<string, AssetEntry> = new Map();
   private loading: Map<string, Promise<any>> = new Map();
   private textureLoader = new THREE.TextureLoader();
+  private tgaLoader = new TGALoader();
   private gltfLoader: GLTFLoader;
   private fbxLoader = new FBXLoader();
   private objLoader = new OBJLoader();
@@ -74,7 +76,10 @@ export class AssetManager {
     if (this.loading.has(path)) return this.loading.get(path)!;
 
     const promise = new Promise<THREE.Texture>((resolve, reject) => {
-      this.textureLoader.load(
+      // Use TGALoader for .tga files, standard TextureLoader for everything else
+      const isTga = path.toLowerCase().replace(/\?.*$/, '').endsWith('.tga');
+      const loader = isTga ? this.tgaLoader : this.textureLoader;
+      loader.load(
         path,
         (texture) => {
           if (options) {

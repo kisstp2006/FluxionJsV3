@@ -97,6 +97,7 @@ export class FluxionRenderer {
     });
 
     // Register ECS systems
+    engine.ecs.addSystem(new TransformNodeSystem(this));
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
     engine.ecs.addSystem(new CameraSystem(this));
@@ -125,6 +126,12 @@ export class FluxionRenderer {
   }
 
   addObject(entity: EntityId, obj: THREE.Object3D): void {
+    // Idempotent: remove previous object if one already exists for this entity
+    const prev = this.entityToObject.get(entity);
+    if (prev) {
+      this.scene.remove(prev);
+      this.objectToEntity.delete(prev);
+    }
     this.scene.add(obj);
     this.entityToObject.set(entity, obj);
     this.objectToEntity.set(obj, entity);
@@ -165,6 +172,35 @@ export class FluxionRenderer {
 }
 
 // ── ECS Systems for Rendering ──
+
+class TransformNodeSystem implements System {
+  readonly name = 'TransformNode';
+  readonly requiredComponents = ['Transform'];
+  priority = -200; // Run before everything else
+  enabled = true;
+  private tracked: Set<EntityId> = new Set();
+
+  constructor(private renderer: FluxionRenderer) {}
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    // Ensure every Transform entity has a scene node
+    for (const entity of entities) {
+      if (!this.renderer.getObject(entity)) {
+        const node = new THREE.Object3D();
+        this.renderer.addObject(entity, node);
+        this.tracked.add(entity);
+      }
+    }
+
+    // Cleanup removed entities
+    for (const entity of this.tracked) {
+      if (!entities.has(entity)) {
+        this.renderer.removeObject(entity);
+        this.tracked.delete(entity);
+      }
+    }
+  }
+}
 
 class TransformSyncSystem implements System {
   readonly name = 'TransformSync';

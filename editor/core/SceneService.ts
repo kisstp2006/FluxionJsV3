@@ -1,11 +1,12 @@
 // ============================================================
-// FluxionJS V2 — Scene Service
-// Scene load/save operations — extracted from EditorLayout.tsx
+// FluxionJS V3 — Scene Service
+// Scene load/save operations — uses IFileSystem abstraction
 // ============================================================
 
 import { EngineSubsystems, LogFn } from './EditorEngine';
 import { serializeScene } from '../../src/project/SceneSerializer';
 import { projectManager } from '../../src/project/ProjectManager';
+import { getFileSystem } from '../../src/filesystem';
 
 /** Load a scene file into the engine subsystems. */
 export async function loadProjectScene(
@@ -14,10 +15,9 @@ export async function loadProjectScene(
   log: LogFn,
 ): Promise<void> {
   const { deserializeScene } = await import('../../src/project/SceneSerializer');
-  const api = window.fluxionAPI;
-  if (!api) throw new Error('fluxionAPI not available');
+  const fs = getFileSystem();
 
-  const content = await api.readFile(scenePath);
+  const content = await fs.readFile(scenePath);
   const data = JSON.parse(content);
   deserializeScene(subsystems.engine, data, subsystems.scene);
   subsystems.scene.name = data.name || 'Untitled';
@@ -52,8 +52,7 @@ export async function saveScene(
     subsystems.editorCamera,
     subsystems.orbitControls.target,
   );
-  const api = window.fluxionAPI;
-  if (!api) throw new Error('fluxionAPI not available');
-  await api.writeFile(resolvedPath, JSON.stringify(data, null, 2));
+  const fs = getFileSystem();
+  await fs.writeFile(resolvedPath, JSON.stringify(data, null, 2));
   log(`Scene saved: ${scenePath}`, 'system');
 }

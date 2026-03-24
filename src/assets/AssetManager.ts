@@ -1,13 +1,15 @@
 // ============================================================
-// FluxionJS V2 — Asset Manager
-// LumixEngine-inspired asset pipeline with caching & loading
+// FluxionJS V3 — Asset Manager
+// LumixEngine-inspired asset pipeline with caching & loading.
+// Now uses AssetTypeRegistry for type resolution.
 // ============================================================
 
 import * as THREE from 'three';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { AssetTypeRegistry } from './AssetTypeRegistry';
 
-export type AssetType = 'texture' | 'model' | 'audio' | 'json' | 'shader';
+export type AssetType = 'texture' | 'model' | 'audio' | 'json' | 'shader' | string;
 
 interface AssetEntry {
   type: AssetType;
@@ -170,26 +172,45 @@ export class AssetManager {
     const results = new Map<string, any>();
 
     const promises = assets.map(async (asset) => {
-      let data: any;
-      switch (asset.type) {
-        case 'texture':
-          data = await this.loadTexture(asset.path);
-          break;
-        case 'model':
-          data = await this.loadModel(asset.path);
-          break;
-        case 'audio':
-          data = await this.loadAudio(asset.path);
-          break;
-        case 'json':
-          data = await this.loadJSON(asset.path);
-          break;
-      }
+      const data = await this.loadAsset(asset.path, asset.type);
       results.set(asset.path, data);
     });
 
     await Promise.all(promises);
     return results;
+  }
+
+  // ── Generic registry-aware loader ──
+
+  /**
+   * Load an asset by path. Resolves the type from the registry
+   * when `typeHint` is not provided.
+   */
+  async loadAsset(path: string, typeHint?: string): Promise<any> {
+    const cached = this.getFromCache(path);
+    if (cached) return cached;
+
+    // Resolve type from registry if no hint
+    const resolvedType = typeHint ?? AssetTypeRegistry.resolveFile(path)?.type ?? 'unknown';
+
+    // Check if the registry definition has a custom loader
+    const typeDef = AssetTypeRegistry.getByType(resolvedType);
+    if (typeDef?.loader) {
+      const { getFileSystem } = await import('../filesystem');
+      const fs = getFileSystem();
+      const data = await typeDef.loader(fs, path);
+      this.addToCache(path, resolvedType, data, 0);
+      return data;
+    }
+
+    // Fall back to built-in loaders
+    switch (resolvedType) {
+      case 'texture': return this.loadTexture(path);
+      case 'model': return this.loadModel(path);
+      case 'audio': return this.loadAudio(path);
+      case 'json': return this.loadJSON(path);
+      default: return null;
+    }
   }
 
   // ── Cache management ──

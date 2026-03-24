@@ -1,5 +1,5 @@
 // ============================================================
-// FluxionJS V2 — Editor Engine (Pure logic, no React)
+// FluxionJS V3 — Editor Engine (Pure logic, no React)
 // Engine subsystem initialization — extracted from EngineContext.tsx
 // ============================================================
 
@@ -16,6 +16,9 @@ import { InputManager } from '../../src/input/InputManager';
 import { AudioSystem } from '../../src/audio/AudioSystem';
 import { Scene } from '../../src/scene/Scene';
 import { AssetManager } from '../../src/assets/AssetManager';
+import { ElectronFileSystem, setGlobalFileSystem } from '../../src/filesystem';
+import { registerDefaultSettings } from './DefaultSettings';
+import { SettingsService } from './SettingsService';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -39,7 +42,14 @@ export async function initEditorEngine(
   canvas: HTMLCanvasElement,
   log: LogFn,
 ): Promise<EngineSubsystems> {
-  log('FluxionJS V2 Engine initializing...', 'system');
+  log('FluxionJS V3 Engine initializing...', 'system');
+
+  // Register all default settings (must happen before loading)
+  registerDefaultSettings();
+
+  // Initialize the global FileSystem singleton
+  const electronFs = new ElectronFileSystem();
+  setGlobalFileSystem(electronFs);
 
   const container = canvas.parentElement!;
   const rect = container.getBoundingClientRect();
@@ -114,7 +124,7 @@ export async function initEditorEngine(
   // Start engine
   await engine.start();
 
-  log('FluxionJS V2 Editor ready!', 'system');
+  log('FluxionJS V3 Editor ready!', 'system');
   log(`Renderer: WebGL2 | Shadows: PCFSoft | HDR: HalfFloat`, 'info');
   log(`Physics: Rapier3D (WASM) | ECS: Active`, 'info');
 

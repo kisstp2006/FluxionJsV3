@@ -42,3 +42,24 @@ export { AudioSystem } from './audio/AudioSystem';
 
 // Assets
 export { AssetManager, AssetType, LoadProgress } from './assets/AssetManager';
+export { AssetTypeRegistry, AssetTypeDefinition } from './assets/AssetTypeRegistry';
+export { AssetImporter, assetImporter, ImportRequest, ImportResult, ImportProgress, ImportOptions } from './assets/AssetImporter';
+export { AssetMeta, readAssetMeta, writeAssetMeta, metaPathFor } from './assets/AssetMeta';
+
+// Filesystem
+export {
+  type IFileSystem,
+  type FileInfo,
+  type DirEntry,
+  type FileWatchEvent,
+  type FileDialogFilter,
+  normalizePath,
+  pathJoin,
+  pathDirname,
+  pathBasename,
+  pathExtension,
+  isInsidePath,
+  ElectronFileSystem,
+  setGlobalFileSystem,
+  getFileSystem,
+} from './filesystem';

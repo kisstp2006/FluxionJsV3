@@ -12,18 +12,21 @@ import { HierarchyPanel } from '../panels/HierarchyPanel';
 import { InspectorPanel } from '../panels/InspectorPanel';
 import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
+import { SettingsPanel } from '../panels/SettingsPanel';
 import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene } from '../../core/SceneService';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { serializeScene } from '../../../src/project/SceneSerializer';
+import { SettingsService } from '../../core/SettingsService';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
   const { state, dispatch, log } = useEditor();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasReady, setCanvasReady] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
   const engineRef = useRef<EngineSubsystems | null>(null);
 
   const handleLog = useCallback((text: string, type: 'info' | 'warn' | 'error' | 'system') => {
@@ -88,6 +91,9 @@ export const EditorLayout: React.FC = () => {
 
     dispatch({ type: 'LOAD_PROJECT', path: projectPath, name: config.name });
 
+    // Initialize settings persistence for this project
+    await SettingsService.init(projectPath);
+
     // Load default scene once engine is ready
     const eng = engineRef.current;
     if (eng && config.defaultScene) {
@@ -124,6 +130,7 @@ export const EditorLayout: React.FC = () => {
     if (eng) {
       eng.scene.clear();
     }
+    SettingsService.dispose();
     projectManager.closeProject();
     dispatch({ type: 'CLOSE_PROJECT' });
     log('Project closed', 'system');
@@ -214,6 +221,7 @@ export const EditorLayout: React.FC = () => {
           onCloseProject={handleCloseProject}
           onNewScene={handleNewScene}
           onOpenScene={handleOpenScene}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         {/* Toolbar */}
@@ -298,6 +306,9 @@ export const EditorLayout: React.FC = () => {
       <SimulationSync />
       <GridSync />
       <GizmoSync />
+
+      {/* Settings Modal */}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
     </EngineProvider>
   );
 };

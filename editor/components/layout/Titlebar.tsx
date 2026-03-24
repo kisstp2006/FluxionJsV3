@@ -35,7 +35,8 @@ export const Titlebar: React.FC<{
   onCloseProject?: () => void;
   onNewScene?: () => void;
   onOpenScene?: () => void;
-}> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene }) => {
+  onOpenSettings?: () => void;
+}> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings }) => {
   const { state, dispatch, log } = useEditor();
   const engine = useEngine();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
@@ -83,6 +84,8 @@ export const Titlebar: React.FC<{
   const viewMenuItems = [
     { label: 'Toggle Grid', icon: '⊞', onClick: () => log('Grid toggled', 'info') },
     { label: 'Toggle Wireframe', icon: '🔲', onClick: () => log('Wireframe toggled', 'info') },
+    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+    { label: 'Settings', icon: '⚙', onClick: () => onOpenSettings?.() },
     { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
     { label: 'Reset Layout', icon: '↻', onClick: () => log('Layout reset', 'info') },
   ];

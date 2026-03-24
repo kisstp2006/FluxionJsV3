@@ -1,28 +1,27 @@
 // ============================================================
-// FluxionJS V2 — Inspector Panel (Thin Shell)
-// Composes per-component inspectors
+// FluxionJS V3 — Inspector Panel (Registry-Driven)
+// Uses ComponentRegistry for auto-inspection. Custom inspectors
+// override only for complex cases (Transform, MeshRenderer).
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
 import {
   PanelHeader, Section, PropertyRow,
-  TextInput, Button, Icons, ContextMenu,
+  TextInput, ContextMenu,
 } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { EntityId } from '../../../src/core/ECS';
-import {
-  CameraComponent,
-  LightComponent,
-  RigidbodyComponent,
-  ColliderComponent,
-  ParticleEmitterComponent,
-} from '../../../src/core/Components';
+import { ComponentRegistry } from '../../../src/core/ComponentRegistry';
 import { TransformInspector } from './inspector/TransformInspector';
 import { MeshRendererInspector } from './inspector/MeshRendererInspector';
-import { CameraInspector } from './inspector/CameraInspector';
-import { LightInspector } from './inspector/LightInspector';
-import { RigidbodyInspector, ColliderInspector } from './inspector/PhysicsInspector';
-import { ParticleInspector } from './inspector/ParticleInspector';
+import { AutoInspector } from './inspector/AutoInspector';
+
+// Component types that have hand-written inspectors (complex UI needs).
+// Everything else is auto-generated from ComponentRegistry metadata.
+const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: () => void }>> = {
+  Transform: ({ entity }) => <TransformInspector entity={entity} />,
+  MeshRenderer: MeshRendererInspector,
+};
 
 // ── Add Component Menu ──
 const AddComponentMenu: React.FC<{ entity: EntityId }> = ({ entity }) => {
@@ -34,13 +33,8 @@ const AddComponentMenu: React.FC<{ entity: EntityId }> = ({ entity }) => {
   if (!engine) return null;
 
   const existing = engine.engine.ecs.getAllComponents(entity).map((c) => c.type);
-  const components = [
-    { type: 'Camera', create: () => new CameraComponent() },
-    { type: 'Light', create: () => new LightComponent() },
-    { type: 'Rigidbody', create: () => new RigidbodyComponent() },
-    { type: 'Collider', create: () => new ColliderComponent() },
-    { type: 'ParticleEmitter', create: () => new ParticleEmitterComponent() },
-  ].filter((c) => !existing.includes(c.type));
+  const components = ComponentRegistry.getAddable()
+    .filter((def) => !existing.includes(def.type));
 
   return (
     <>
@@ -70,12 +64,15 @@ const AddComponentMenu: React.FC<{ entity: EntityId }> = ({ entity }) => {
         <ContextMenu
           position={menuPos}
           onClose={() => setShowMenu(false)}
-          items={components.map((comp) => ({
-            label: comp.type,
+          items={components.map((def) => ({
+            label: def.displayName || def.type,
             onClick: () => {
-              engine.engine.ecs.addComponent(entity, comp.create());
-              log(`Added ${comp.type} component`, 'info');
-              dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+              const comp = ComponentRegistry.create(def.type);
+              if (comp) {
+                engine.engine.ecs.addComponent(entity, comp);
+                log(`Added ${def.displayName || def.type} component`, 'info');
+                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+              }
             },
           }))}
         />
@@ -148,14 +145,17 @@ export const InspectorPanel: React.FC = () => {
           </PropertyRow>
         </Section>
 
-        {/* Component inspectors — auto-render based on entity components */}
-        <TransformInspector entity={entity} />
-        <MeshRendererInspector entity={entity} onRemoved={refreshInspector} />
-        <CameraInspector entity={entity} onRemoved={refreshInspector} />
-        <LightInspector entity={entity} onRemoved={refreshInspector} />
-        <RigidbodyInspector entity={entity} onRemoved={refreshInspector} />
-        <ColliderInspector entity={entity} onRemoved={refreshInspector} />
-        <ParticleInspector entity={entity} onRemoved={refreshInspector} />
+        {/* Component inspectors — registry-driven with custom overrides */}
+        {engine.engine.ecs.getAllComponents(entity).map((comp) => {
+          const Custom = customInspectors[comp.type];
+          if (Custom) {
+            return <Custom key={comp.type} entity={entity} onRemoved={refreshInspector} />;
+          }
+          if (ComponentRegistry.has(comp.type)) {
+            return <AutoInspector key={comp.type} entity={entity} componentType={comp.type} onRemoved={refreshInspector} />;
+          }
+          return null;
+        })}
 
         {/* Add Component */}
         <div style={{ padding: '4px 12px' }}>

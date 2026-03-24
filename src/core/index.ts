@@ -3,6 +3,12 @@ export { ECSManager, EntityId, Component, System } from './ECS';
 export { EventSystem, EngineEvents } from './EventSystem';
 export { Time } from './Time';
 export {
+  ComponentRegistry,
+  ComponentDefinition,
+  PropertyDescriptor,
+  PropertyType,
+} from './ComponentRegistry';
+export {
   TransformComponent,
   MeshRendererComponent,
   CameraComponent,

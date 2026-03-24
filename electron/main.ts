@@ -5,6 +5,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -152,4 +153,98 @@ ipcMain.handle('fs:listDir', async (_, dirPath: string) => {
     isDirectory: d.isDirectory(),
     path: path.join(dirPath, d.name),
   }));
+});
+
+// ── Binary I/O (Base64) ──
+
+ipcMain.handle('fs:readBinary', async (_, filePath: string) => {
+  const buf = fs.readFileSync(filePath);
+  return buf.toString('base64');
+});
+
+ipcMain.handle('fs:writeBinary', async (_, filePath: string, base64: string) => {
+  const buf = Buffer.from(base64, 'base64');
+  fs.writeFileSync(filePath, buf);
+  return true;
+});
+
+// ── Stat ──
+
+ipcMain.handle('fs:stat', async (_, targetPath: string) => {
+  const stat = fs.statSync(targetPath);
+  return {
+    size: stat.size,
+    isDirectory: stat.isDirectory(),
+    modifiedAt: stat.mtimeMs,
+  };
+});
+
+// ── Rename / Copy ──
+
+ipcMain.handle('fs:rename', async (_, oldPath: string, newPath: string) => {
+  fs.renameSync(oldPath, newPath);
+  return true;
+});
+
+ipcMain.handle('fs:copy', async (_, srcPath: string, destPath: string) => {
+  const stat = fs.statSync(srcPath);
+  if (stat.isDirectory()) {
+    fs.cpSync(srcPath, destPath, { recursive: true });
+  } else {
+    fs.copyFileSync(srcPath, destPath);
+  }
+  return true;
+});
+
+// ── File Hashing (SHA-256) ──
+
+ipcMain.handle('fs:hashFile', async (_, filePath: string) => {
+  return new Promise<string>((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk: Buffer) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+});
+
+// ── Multi-file Open Dialog ──
+
+ipcMain.handle('dialog:openFiles', async (_, filters) => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile', 'multiSelections'],
+    filters: filters ?? [
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled) return null;
+  return result.filePaths;
+});
+
+// ── File Watching ──
+
+const activeWatchers = new Map<string, fs.FSWatcher>();
+let watchIdCounter = 0;
+
+ipcMain.handle('fs:watch', async (_, watchPath: string) => {
+  const id = `watch_${++watchIdCounter}`;
+  const watcher = fs.watch(watchPath, { recursive: true }, (eventType, filename) => {
+    if (!filename || !mainWindow) return;
+    const fullPath = path.join(watchPath, filename);
+    const type = eventType === 'rename'
+      ? (fs.existsSync(fullPath) ? 'create' : 'delete')
+      : 'change';
+    mainWindow.webContents.send('fs:watch-event', { type, path: fullPath });
+  });
+  activeWatchers.set(id, watcher);
+  return id;
+});
+
+ipcMain.handle('fs:unwatch', async (_, watchId: string) => {
+  const watcher = activeWatchers.get(watchId);
+  if (watcher) {
+    watcher.close();
+    activeWatchers.delete(watchId);
+  }
+  return true;
 });

@@ -1,26 +1,20 @@
 // ============================================================
-// FluxionJS V2 — Project Manager
-// Nuake-style project create/open/save with disk persistence
+// FluxionJS V3 — Project Manager
+// Nuake-style project create/open/save with disk persistence.
+// Uses IFileSystem abstraction instead of direct fluxionAPI calls.
 // ============================================================
+
+import {
+  type IFileSystem,
+  getFileSystem,
+  pathJoin,
+  pathDirname,
+  pathBasename,
+} from '../filesystem';
 
 declare global {
   interface Window {
-    fluxionAPI?: {
-      openFileDialog: (filters?: any) => Promise<string | null>;
-      saveFileDialog: (filters?: any) => Promise<string | null>;
-      openDirDialog: () => Promise<string | null>;
-      readFile: (path: string) => Promise<string>;
-      writeFile: (path: string, data: string) => Promise<boolean>;
-      listDir: (path: string) => Promise<any[]>;
-      readDir: (path: string) => Promise<{ name: string; isDirectory: boolean; path: string }[]>;
-      mkdir: (path: string) => Promise<boolean>;
-      exists: (path: string) => Promise<boolean>;
-      deleteFile: (path: string) => Promise<boolean>;
-      getAppDataPath: () => Promise<string>;
-      minimize: () => void;
-      maximize: () => void;
-      close: () => void;
-    };
+    fluxionAPI?: Record<string, any>;
   }
 }
 
@@ -85,27 +79,6 @@ function defaultProjectConfig(name: string): ProjectConfig {
   };
 }
 
-// ── Path utilities ──
-
-function pathJoin(...parts: string[]): string {
-  return parts.join('/').replace(/\\/g, '/').replace(/\/+/g, '/');
-}
-
-function pathDirname(p: string): string {
-  const normalized = p.replace(/\\/g, '/');
-  const idx = normalized.lastIndexOf('/');
-  return idx >= 0 ? normalized.substring(0, idx) : '.';
-}
-
-function pathBasename(p: string, ext?: string): string {
-  const normalized = p.replace(/\\/g, '/');
-  let base = normalized.substring(normalized.lastIndexOf('/') + 1);
-  if (ext && base.endsWith(ext)) {
-    base = base.substring(0, base.length - ext.length);
-  }
-  return base;
-}
-
 // ── Project Manager ──
 
 export class ProjectManager {
@@ -124,27 +97,26 @@ export class ProjectManager {
 
   /** Create a new project in the given directory */
   async createProject(name: string, directory: string): Promise<ProjectConfig> {
-    const api = window.fluxionAPI;
-    if (!api) throw new Error('fluxionAPI not available');
+    const fs = getFileSystem();
 
     const projectDir = pathJoin(directory, name);
     const projectFile = pathJoin(projectDir, `${name}.fluxproj`);
 
     // Create directory structure
-    await api.mkdir(projectDir);
-    await api.mkdir(pathJoin(projectDir, 'Scenes'));
-    await api.mkdir(pathJoin(projectDir, 'Assets'));
-    await api.mkdir(pathJoin(projectDir, 'Assets/Models'));
-    await api.mkdir(pathJoin(projectDir, 'Assets/Textures'));
-    await api.mkdir(pathJoin(projectDir, 'Assets/Materials'));
-    await api.mkdir(pathJoin(projectDir, 'Assets/Audio'));
-    await api.mkdir(pathJoin(projectDir, 'Assets/Scripts'));
-    await api.mkdir(pathJoin(projectDir, 'Prefabs'));
-    await api.mkdir(pathJoin(projectDir, '.fluxion'));
+    await fs.mkdir(projectDir);
+    await fs.mkdir(pathJoin(projectDir, 'Scenes'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets/Models'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets/Textures'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets/Materials'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets/Audio'));
+    await fs.mkdir(pathJoin(projectDir, 'Assets/Scripts'));
+    await fs.mkdir(pathJoin(projectDir, 'Prefabs'));
+    await fs.mkdir(pathJoin(projectDir, '.fluxion'));
 
     // Create project config
     const config = defaultProjectConfig(name);
-    await api.writeFile(projectFile, JSON.stringify(config, null, 2));
+    await fs.writeFile(projectFile, JSON.stringify(config, null, 2));
 
     // Create default scene file
     const defaultScene = {
@@ -209,11 +181,11 @@ export class ProjectManager {
       ],
     };
     const scenePath = pathJoin(projectDir, 'Scenes', 'Main.fluxscene');
-    await api.writeFile(scenePath, JSON.stringify(defaultScene, null, 2));
+    await fs.writeFile(scenePath, JSON.stringify(defaultScene, null, 2));
 
     // Create .fluxion/editor.json
     const editorConfig = { windowState: {}, recentScenes: ['Scenes/Main.fluxscene'] };
-    await api.writeFile(pathJoin(projectDir, '.fluxion', 'editor.json'), JSON.stringify(editorConfig, null, 2));
+    await fs.writeFile(pathJoin(projectDir, '.fluxion', 'editor.json'), JSON.stringify(editorConfig, null, 2));
 
     // Set current project
     this._config = config;
@@ -229,10 +201,9 @@ export class ProjectManager {
 
   /** Open an existing project from a .fluxproj file */
   async openProject(projectFilePath: string): Promise<ProjectConfig> {
-    const api = window.fluxionAPI;
-    if (!api) throw new Error('fluxionAPI not available');
+    const fs = getFileSystem();
 
-    const content = await api.readFile(projectFilePath);
+    const content = await fs.readFile(projectFilePath);
     const config = JSON.parse(content) as ProjectConfig;
 
     this._config = config;
@@ -248,10 +219,9 @@ export class ProjectManager {
   /** Save the current project config */
   async saveProject(): Promise<void> {
     if (!this._config || !this._projectFilePath) return;
-    const api = window.fluxionAPI;
-    if (!api) return;
+    const fs = getFileSystem();
 
-    await api.writeFile(this._projectFilePath, JSON.stringify(this._config, null, 2));
+    await fs.writeFile(this._projectFilePath, JSON.stringify(this._config, null, 2));
     this._isDirty = false;
   }
 
@@ -283,23 +253,21 @@ export class ProjectManager {
   // ── Recent Projects ──
 
   private async getRecentFilePath(): Promise<string> {
-    const api = window.fluxionAPI!;
-    const appData = await api.getAppDataPath();
+    const fs = getFileSystem();
+    const appData = await fs.getAppDataPath();
     const dir = pathJoin(appData, 'FluxionJS');
-    const exists = await api.exists(dir);
-    if (!exists) await api.mkdir(dir);
+    const exists = await fs.exists(dir);
+    if (!exists) await fs.mkdir(dir);
     return pathJoin(dir, 'recent-projects.json');
   }
 
   async getRecentProjects(): Promise<RecentProject[]> {
-    const api = window.fluxionAPI;
-    if (!api) return [];
-
     try {
+      const fs = getFileSystem();
       const filePath = await this.getRecentFilePath();
-      const exists = await api.exists(filePath);
+      const exists = await fs.exists(filePath);
       if (!exists) return [];
-      const content = await api.readFile(filePath);
+      const content = await fs.readFile(filePath);
       const data = JSON.parse(content);
       return data.recentProjects || [];
     } catch {
@@ -308,9 +276,7 @@ export class ProjectManager {
   }
 
   async addToRecent(name: string, path: string): Promise<void> {
-    const api = window.fluxionAPI;
-    if (!api) return;
-
+    const fs = getFileSystem();
     const recents = await this.getRecentProjects();
     const filtered = recents.filter(r => r.path !== path);
     filtered.unshift({ name, path, lastOpened: new Date().toISOString() });
@@ -318,17 +284,15 @@ export class ProjectManager {
     const trimmed = filtered.slice(0, 10);
 
     const filePath = await this.getRecentFilePath();
-    await api.writeFile(filePath, JSON.stringify({ recentProjects: trimmed }, null, 2));
+    await fs.writeFile(filePath, JSON.stringify({ recentProjects: trimmed }, null, 2));
   }
 
   async removeFromRecent(path: string): Promise<void> {
-    const api = window.fluxionAPI;
-    if (!api) return;
-
+    const fs = getFileSystem();
     const recents = await this.getRecentProjects();
     const filtered = recents.filter(r => r.path !== path);
     const filePath = await this.getRecentFilePath();
-    await api.writeFile(filePath, JSON.stringify({ recentProjects: filtered }, null, 2));
+    await fs.writeFile(filePath, JSON.stringify({ recentProjects: filtered }, null, 2));
   }
 }
 

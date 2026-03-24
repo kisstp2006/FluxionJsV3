@@ -1,12 +1,17 @@
 // ============================================================
-// FluxionJS V2 — Asset Browser Panel Component
-// Folder tree + grid view — reads real project directories
+// FluxionJS V3 — Asset Browser Panel Component
+// Folder tree + grid view — registry-driven file types & icons.
+// Supports asset import (dialog + drag-and-drop) with .fluxmeta.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icons, ContextMenu } from '../../ui';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager } from '../../../src/project/ProjectManager';
+import { getFileSystem } from '../../../src/filesystem';
+import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
+import { assetImporter } from '../../../src/assets/AssetImporter';
+import { readAssetMeta } from '../../../src/assets/AssetMeta';
 
 interface DirEntry {
   name: string;
@@ -15,28 +20,15 @@ interface DirEntry {
 }
 
 function getFileType(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  const map: Record<string, string> = {
-    png: 'texture', jpg: 'texture', jpeg: 'texture', webp: 'texture', bmp: 'texture',
-    glb: 'model', gltf: 'model', fbx: 'model', obj: 'model',
-    fluxscene: 'scene', scene: 'scene',
-    ogg: 'audio', mp3: 'audio', wav: 'audio',
-    ts: 'script', js: 'script',
-    mat: 'material',
-  };
-  return map[ext] || 'unknown';
+  const def = AssetTypeRegistry.resolveFile(name);
+  return def?.type ?? 'unknown';
 }
 
-const typeIcons: Record<string, string> = {
-  texture: '🖼',
-  model: '📐',
-  material: Icons.material,
-  audio: Icons.audio,
-  script: Icons.script,
-  scene: Icons.scene,
-  unknown: '📄',
-  folder: Icons.folder,
-};
+function getTypeIcon(type: string): string {
+  if (type === 'folder') return Icons.folder;
+  const def = AssetTypeRegistry.getByType(type);
+  return def?.icon ?? '📄';
+}
 
 // ── Folder Tree Item ──
 const FolderTreeItem: React.FC<{
@@ -53,9 +45,8 @@ const FolderTreeItem: React.FC<{
   const load = useCallback(async () => {
     if (loaded) return;
     try {
-      const api = window.fluxionAPI;
-      if (!api) return;
-      const entries = await api.readDir(fullPath);
+      const fs = getFileSystem();
+      const entries = await fs.readDir(fullPath);
       setChildren(entries.filter(e => e.isDirectory));
       setLoaded(true);
     } catch {}
@@ -122,6 +113,9 @@ export const AssetBrowserPanel: React.FC<{
   const [refreshKey, setRefreshKey] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ label: string; defaultValue: string; onSubmit: (value: string) => void } | null>(null);
+  const [importProgress, setImportProgress] = useState<{ percent: number; file: string } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
 
@@ -133,12 +127,13 @@ export const AssetBrowserPanel: React.FC<{
   }, [state.projectLoaded]);
 
   // Load directory contents when selected folder changes or refresh
+  // Hide .fluxmeta sidecar files from the grid
   useEffect(() => {
     if (!selectedFolder) return;
-    const api = window.fluxionAPI;
-    if (!api) return;
-
-    api.readDir(selectedFolder).then(setEntries).catch(() => setEntries([]));
+    const fs = getFileSystem();
+    fs.readDir(selectedFolder).then((all) => {
+      setEntries(all.filter(e => !e.name.endsWith('.fluxmeta')));
+    }).catch(() => setEntries([]));
   }, [selectedFolder, refreshKey]);
 
   const handleDoubleClick = (entry: DirEntry) => {
@@ -161,14 +156,14 @@ export const AssetBrowserPanel: React.FC<{
       label: 'Scene name',
       defaultValue: 'NewScene',
       onSubmit: async (name) => {
-        const api = window.fluxionAPI;
-        if (!api || !selectedFolder || !name.trim()) return;
-        const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-        const filePath = `${selectedFolder}${selectedFolder.endsWith('\\') || selectedFolder.endsWith('/') ? '' : '\\'}${safeName}.fluxscene`;
-        const emptyScene = JSON.stringify({ entities: [], editorCamera: null }, null, 2);
+        if (!selectedFolder || !name.trim()) return;
         try {
-          await api.writeFile(filePath, emptyScene);
-          log(`Created scene: ${safeName}.fluxscene`, 'system');
+          const sceneDef = AssetTypeRegistry.getByType('scene');
+          if (sceneDef?.createDefault) {
+            const fs = getFileSystem();
+            await sceneDef.createDefault(fs, selectedFolder, name.trim());
+            log(`Created scene: ${name.trim()}.fluxscene`, 'system');
+          }
           refresh();
         } catch (err: any) {
           log(`Failed to create scene: ${err.message}`, 'error');
@@ -182,12 +177,12 @@ export const AssetBrowserPanel: React.FC<{
       label: 'Folder name',
       defaultValue: 'NewFolder',
       onSubmit: async (name) => {
-        const api = window.fluxionAPI;
-        if (!api || !selectedFolder || !name.trim()) return;
+        if (!selectedFolder || !name.trim()) return;
         const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-        const folderPath = `${selectedFolder}${selectedFolder.endsWith('\\') || selectedFolder.endsWith('/') ? '' : '\\'}${safeName}`;
+        const folderPath = `${selectedFolder}/${safeName}`;
         try {
-          await api.mkdir(folderPath);
+          const fs = getFileSystem();
+          await fs.mkdir(folderPath);
           log(`Created folder: ${safeName}`, 'system');
           refresh();
         } catch (err: any) {
@@ -195,6 +190,87 @@ export const AssetBrowserPanel: React.FC<{
         }
       },
     });
+  };
+
+  // ── Import via dialog ──
+  const handleImport = async () => {
+    if (!selectedFolder) return;
+    try {
+      const results = await assetImporter.importWithDialog(selectedFolder, {
+        conflictStrategy: 'rename',
+        onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
+      });
+      setImportProgress(null);
+
+      const ok = results.filter(r => r.success).length;
+      const fail = results.filter(r => !r.success).length;
+      if (ok > 0) log(`Imported ${ok} asset(s)${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+      if (fail > 0) {
+        for (const r of results.filter(r => !r.success)) {
+          log(`Import failed: ${r.error}`, 'error');
+        }
+      }
+      refresh();
+    } catch (err: any) {
+      setImportProgress(null);
+      log(`Import error: ${err.message}`, 'error');
+    }
+  };
+
+  // ── Drag-and-drop import ──
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (!selectedFolder || !e.dataTransfer.files.length) return;
+
+    // Collect file paths from the Electron drag event
+    const paths: string[] = [];
+    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+      const file = e.dataTransfer.files[i];
+      if ((file as any).path) {
+        paths.push((file as any).path);
+      }
+    }
+    if (paths.length === 0) return;
+
+    try {
+      const requests = paths.map(p => ({ sourcePath: p, targetDir: selectedFolder }));
+      const results = await assetImporter.importFiles(requests, {
+        conflictStrategy: 'rename',
+        onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
+      });
+      setImportProgress(null);
+
+      const ok = results.filter(r => r.success).length;
+      const fail = results.filter(r => !r.success).length;
+      if (ok > 0) log(`Imported ${ok} asset(s) via drag-and-drop${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+      if (fail > 0) {
+        for (const r of results.filter(r => !r.success)) {
+          log(`Import failed: ${r.error}`, 'error');
+        }
+      }
+      refresh();
+    } catch (err: any) {
+      setImportProgress(null);
+      log(`Drop import error: ${err.message}`, 'error');
+    }
   };
 
   if (!state.projectLoaded) {
@@ -206,7 +282,7 @@ export const AssetBrowserPanel: React.FC<{
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
       {/* Folder Tree */}
       <div style={{
         width: '180px',
@@ -227,7 +303,11 @@ export const AssetBrowserPanel: React.FC<{
 
       {/* Asset Grid */}
       <div
+        ref={gridRef}
         onContextMenu={handleContextMenu}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
         flex: 1,
         display: 'grid',
@@ -236,6 +316,9 @@ export const AssetBrowserPanel: React.FC<{
         padding: '8px',
         overflowY: 'auto',
         alignContent: 'start',
+        position: 'relative',
+        border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
+        transition: 'border 150ms ease',
       }}>
         {entries.map((entry) => {
           const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
@@ -256,7 +339,7 @@ export const AssetBrowserPanel: React.FC<{
               onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
-              <span style={{ fontSize: '28px' }}>{typeIcons[fileType] || '📄'}</span>
+              <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
               <span style={{
                 fontSize: '10px',
                 color: 'var(--text-secondary)',
@@ -276,9 +359,29 @@ export const AssetBrowserPanel: React.FC<{
           position={ctxMenu}
           onClose={() => setCtxMenu(null)}
           items={[
-            { label: '📄 New Scene', onClick: createNewScene },
+            ...AssetTypeRegistry.getCreatable().map((def) => ({
+              label: `${def.icon} New ${def.displayName}`,
+              onClick: () => {
+                setInputDialog({
+                  label: `${def.displayName} name`,
+                  defaultValue: `New${def.displayName}`,
+                  onSubmit: async (name) => {
+                    if (!selectedFolder || !name.trim() || !def.createDefault) return;
+                    try {
+                      const fs = getFileSystem();
+                      await def.createDefault(fs, selectedFolder, name.trim());
+                      log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
+                      refresh();
+                    } catch (err: any) {
+                      log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
+                    }
+                  },
+                });
+              },
+            })),
             { label: '📁 New Folder', onClick: createNewFolder },
-            { label: '🔄 Refresh', onClick: refresh },
+            { label: '� Import Assets...', onClick: handleImport },
+            { label: '�🔄 Refresh', onClick: refresh },
           ]}
         />
       )}
@@ -350,6 +453,54 @@ export const AssetBrowserPanel: React.FC<{
                 >Create</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Drop overlay */}
+      {isDragOver && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(88,166,255,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          zIndex: 5,
+        }}>
+          <span style={{ color: 'var(--accent)', fontSize: '13px', fontWeight: 600 }}>
+            Drop files to import
+          </span>
+        </div>
+      )}
+
+      {/* Import progress bar */}
+      {importProgress && (
+        <div style={{
+          position: 'absolute',
+          left: 0, right: 0, bottom: 0,
+          background: 'var(--bg-panel)',
+          borderTop: '1px solid var(--border)',
+          padding: '6px 10px',
+          zIndex: 10,
+        }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+            Importing {importProgress.file}... {importProgress.percent}%
+          </div>
+          <div style={{
+            height: '3px',
+            background: 'var(--bg-hover)',
+            borderRadius: '2px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${importProgress.percent}%`,
+              background: 'var(--accent)',
+              borderRadius: '2px',
+              transition: 'width 150ms ease',
+            }} />
           </div>
         </div>
       )}

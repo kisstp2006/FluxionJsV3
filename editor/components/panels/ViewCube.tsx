@@ -6,15 +6,16 @@
 // click-to-snap to preset views with smooth animation.
 // ============================================================
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { useEngine } from '../../core/EditorContext';
+import { SettingsRegistry } from '../../core/SettingsRegistry';
 
 // ── Constants ──
 
-const CUBE_SIZE = 120;
-const CAMERA_DISTANCE = 3.2;
-const ANIM_DURATION = 400; // ms
+const CUBE_SIZE_DEFAULT = 120;
+const CAMERA_DISTANCE = 3.8;
+const ANIM_DURATION_DEFAULT = 400; // ms
 const EDGE_THICKNESS = 0.08;
 const CORNER_SIZE = 0.22;
 
@@ -25,7 +26,8 @@ const AXIS_Z = 0x58a6ff;
 
 const FACE_COLOR_DEFAULT = 0x1c2333;
 const FACE_COLOR_HOVER = 0x253249;
-const FACE_BORDER_COLOR = 0x30363d;
+const EDGE_COLOR_DEFAULT = 0x4a5568;
+const EDGE_COLOR_HOVER = 0x6b7fa0;
 const LABEL_COLOR = '#e6edf3';
 
 // ── Face / Edge / Corner definitions ──
@@ -156,7 +158,7 @@ function buildCubeMesh(): {
   const edgeGeoH = new THREE.BoxGeometry(1 - CORNER_SIZE * 2, EDGE_THICKNESS, EDGE_THICKNESS);
   const edgeGeoV = new THREE.BoxGeometry(EDGE_THICKNESS, 1 - CORNER_SIZE * 2, EDGE_THICKNESS);
   const edgeGeoD = new THREE.BoxGeometry(EDGE_THICKNESS, EDGE_THICKNESS, 1 - CORNER_SIZE * 2);
-  const edgeMat = new THREE.MeshBasicMaterial({ color: FACE_COLOR_DEFAULT });
+  const edgeMat = new THREE.MeshBasicMaterial({ color: EDGE_COLOR_DEFAULT });
 
   const edgeDefs: Array<{ name: string; geo: THREE.BoxGeometry; pos: THREE.Vector3 }> = [
     // Top 4
@@ -187,7 +189,7 @@ function buildCubeMesh(): {
 
   // ── Corners (8 small cubes) ──
   const cornerGeo = new THREE.BoxGeometry(CORNER_SIZE, CORNER_SIZE, CORNER_SIZE);
-  const cornerMat = new THREE.MeshBasicMaterial({ color: FACE_COLOR_DEFAULT });
+  const cornerMat = new THREE.MeshBasicMaterial({ color: EDGE_COLOR_DEFAULT });
 
   const cornerPositions = [
     [1, 1, 1], [1, 1, -1], [-1, 1, 1], [-1, 1, -1],
@@ -244,6 +246,23 @@ function easeOutCubic(t: number): number {
 export const ViewCube: React.FC = () => {
   const engine = useEngine();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // ── Settings-driven state ──
+  const [visible, setVisible] = useState(() => SettingsRegistry.get<boolean>('editor.viewcube.visible'));
+  const [cubeSize, setCubeSize] = useState(() => SettingsRegistry.get<number>('editor.viewcube.size'));
+  const [opacity, setOpacity] = useState(() => SettingsRegistry.get<number>('editor.viewcube.opacity'));
+  const animDurationRef = useRef(SettingsRegistry.get<number>('editor.viewcube.animationSpeed'));
+
+  useEffect(() => {
+    return SettingsRegistry.on(({ key, value }) => {
+      switch (key) {
+        case 'editor.viewcube.visible': setVisible(value as boolean); break;
+        case 'editor.viewcube.size': setCubeSize(value as number); break;
+        case 'editor.viewcube.opacity': setOpacity(value as number); break;
+        case 'editor.viewcube.animationSpeed': animDurationRef.current = value as number; break;
+      }
+    });
+  }, []);
   const stateRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -263,12 +282,13 @@ export const ViewCube: React.FC = () => {
     animToPos: THREE.Vector3;
     animToUp: THREE.Vector3;
     disposed: boolean;
+    animDuration: number;
   } | null>(null);
 
   // Initialize the mini renderer
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !engine) return;
+    if (!canvas || !engine || !visible) return;
 
     const renderer = new THREE.WebGLRenderer({
       canvas,
@@ -276,13 +296,13 @@ export const ViewCube: React.FC = () => {
       antialias: true,
       powerPreference: 'low-power',
     });
-    renderer.setSize(CUBE_SIZE, CUBE_SIZE);
+    renderer.setSize(cubeSize, cubeSize);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
     camera.position.set(0, 0, CAMERA_DISTANCE);
     camera.lookAt(0, 0, 0);
 
@@ -314,6 +334,7 @@ export const ViewCube: React.FC = () => {
       animToPos: new THREE.Vector3(),
       animToUp: new THREE.Vector3(),
       disposed: false,
+      animDuration: animDurationRef.current,
     };
     stateRef.current = state;
 
@@ -326,7 +347,7 @@ export const ViewCube: React.FC = () => {
 
       if (state.animating) {
         const elapsed = performance.now() - state.animStart;
-        const t = Math.min(elapsed / ANIM_DURATION, 1);
+        const t = Math.min(elapsed / state.animDuration, 1);
         const ease = easeOutCubic(t);
 
         // Interpolate camera position on a sphere
@@ -423,7 +444,7 @@ export const ViewCube: React.FC = () => {
           mat.map = createFaceTexture(face.label, false);
           mat.needsUpdate = true;
         } else {
-          (st.hoveredMesh.material as THREE.MeshBasicMaterial).color.setHex(FACE_COLOR_DEFAULT);
+          (st.hoveredMesh.material as THREE.MeshBasicMaterial).color.setHex(EDGE_COLOR_DEFAULT);
         }
       }
 
@@ -437,7 +458,7 @@ export const ViewCube: React.FC = () => {
           mat.map = createFaceTexture(face.label, true);
           mat.needsUpdate = true;
         } else {
-          (newHovered.material as THREE.MeshBasicMaterial).color.setHex(FACE_COLOR_HOVER);
+          (newHovered.material as THREE.MeshBasicMaterial).color.setHex(EDGE_COLOR_HOVER);
         }
       }
 
@@ -457,7 +478,7 @@ export const ViewCube: React.FC = () => {
       mat.map = createFaceTexture(face.label, false);
       mat.needsUpdate = true;
     } else {
-      (st.hoveredMesh.material as THREE.MeshBasicMaterial).color.setHex(FACE_COLOR_DEFAULT);
+      (st.hoveredMesh.material as THREE.MeshBasicMaterial).color.setHex(EDGE_COLOR_DEFAULT);
     }
     st.hoveredMesh = null;
   }, []);
@@ -517,11 +538,19 @@ export const ViewCube: React.FC = () => {
     e.stopPropagation();
   }, [engine]);
 
+  // Keep animDuration in sync
+  useEffect(() => {
+    const st = stateRef.current;
+    if (st) st.animDuration = animDurationRef.current;
+  });
+
+  if (!visible) return null;
+
   return (
     <canvas
       ref={canvasRef}
-      width={CUBE_SIZE}
-      height={CUBE_SIZE}
+      width={cubeSize}
+      height={cubeSize}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -529,12 +558,13 @@ export const ViewCube: React.FC = () => {
         position: 'absolute',
         top: '8px',
         right: '8px',
-        width: `${CUBE_SIZE}px`,
-        height: `${CUBE_SIZE}px`,
+        width: `${cubeSize}px`,
+        height: `${cubeSize}px`,
         zIndex: 6,
         cursor: 'pointer',
         borderRadius: '6px',
         pointerEvents: 'auto',
+        opacity,
       }}
     />
   );

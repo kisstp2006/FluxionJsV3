@@ -12,6 +12,7 @@ import { Icons } from '../ui/Icons';
 SettingsRegistry.registerCategory('Editor', { label: 'Editor', icon: Icons.settings, order: 20 });
 SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: Icons.eye, order: 21 });
 SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: Icons.move, order: 22 });
+SettingsRegistry.registerCategory('Editor/ViewCube', { label: 'ViewCube', icon: Icons.cube, order: 23 });
 SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 
 // ── Editor Settings ──
@@ -178,6 +179,56 @@ const editorSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── ViewCube Settings ──
+
+const viewCubeSettings: SettingDescriptor[] = [
+  {
+    key: 'editor.viewcube.visible',
+    label: 'Show ViewCube',
+    description: 'Display the 3D orientation cube in the viewport.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Editor/ViewCube',
+    order: 1,
+  },
+  {
+    key: 'editor.viewcube.size',
+    label: 'Size',
+    description: 'ViewCube canvas size in pixels.',
+    type: 'slider',
+    defaultValue: 120,
+    category: 'Editor/ViewCube',
+    order: 2,
+    min: 80,
+    max: 200,
+    step: 10,
+  },
+  {
+    key: 'editor.viewcube.opacity',
+    label: 'Opacity',
+    description: 'Opacity of the ViewCube when not hovered.',
+    type: 'slider',
+    defaultValue: 1,
+    category: 'Editor/ViewCube',
+    order: 3,
+    min: 0.3,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: 'editor.viewcube.animationSpeed',
+    label: 'Animation Speed',
+    description: 'Duration of the camera snap animation in milliseconds.',
+    type: 'number',
+    defaultValue: 400,
+    category: 'Editor/ViewCube',
+    order: 4,
+    min: 100,
+    max: 1500,
+    step: 50,
+  },
+];
+
 // ── Audio Settings ──
 
 const audioSettings: SettingDescriptor[] = [
@@ -208,5 +259,6 @@ const audioSettings: SettingDescriptor[] = [
 
 export function registerDefaultSettings(): void {
   SettingsRegistry.registerMany(editorSettings);
+  SettingsRegistry.registerMany(viewCubeSettings);
   SettingsRegistry.registerMany(audioSettings);
 }

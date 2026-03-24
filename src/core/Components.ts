@@ -59,6 +59,8 @@ export class MeshRendererComponent implements Component {
   modelPath?: string;
   /** Project-relative path to a .fluxmat material asset. When set, material is loaded from the asset pipeline. */
   materialPath?: string;
+  /** Per-slot material overrides for .fluxmesh models. Sparse — only non-default entries. */
+  materialSlots?: Array<{ slotIndex: number; materialPath: string }>;
 }
 
 // ── Camera ──

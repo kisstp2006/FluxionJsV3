@@ -10,6 +10,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
+import type { FluxMeshData, FluxMeshLoadResult } from './FluxMeshData';
 
 /** Unified model result — all formats return { scene: THREE.Group } */
 export interface ModelResult {
@@ -218,6 +219,54 @@ export class AssetManager {
     return promise;
   }
 
+  // ── Flux Mesh Loading (.fluxmesh) ──
+
+  async loadFluxMesh(path: string): Promise<FluxMeshLoadResult> {
+    const cached = this.getFromCache<FluxMeshLoadResult>(path);
+    if (cached) return cached;
+
+    if (this.loading.has(path)) return this.loading.get(path)!;
+
+    const promise = (async (): Promise<FluxMeshLoadResult> => {
+      // Load the .fluxmesh JSON via the registry loader
+      const { getFileSystem } = await import('../filesystem');
+      const fs = getFileSystem();
+      const typeDef = AssetTypeRegistry.getByType('mesh');
+      let data: FluxMeshData;
+      if (typeDef?.loader) {
+        data = await typeDef.loader(fs, path) as FluxMeshData;
+      } else {
+        const text = await fs.readFile(path);
+        data = JSON.parse(text) as FluxMeshData;
+      }
+
+      // Resolve sourceModel path relative to the .fluxmesh location
+      const dir = path.substring(0, path.lastIndexOf('/'));
+      const modelPath = `${dir}/${data.sourceModel}`;
+      const modelUrl = modelPath.startsWith('file://') ? modelPath : `file:///${modelPath.replace(/\\/g, '/')}`;
+
+      // Load the actual 3D model
+      const modelResult = await this.loadModel(modelUrl);
+      const scene = modelResult.scene.clone();
+
+      // Resolve defaultMaterial paths relative to .fluxmesh directory
+      const resolvedSlots = data.materialSlots.map(s => ({
+        ...s,
+        defaultMaterial: s.defaultMaterial && !/^[A-Z]:/i.test(s.defaultMaterial) && !s.defaultMaterial.startsWith('/')
+          ? `${dir}/${s.defaultMaterial}`
+          : s.defaultMaterial,
+      }));
+
+      const result: FluxMeshLoadResult = { scene, slots: resolvedSlots, data };
+      this.addToCache(path, 'mesh', result, 0);
+      this.loading.delete(path);
+      return result;
+    })();
+
+    this.loading.set(path, promise);
+    return promise;
+  }
+
   // ── Audio Loading ──
 
   async loadAudio(path: string): Promise<AudioBuffer> {
@@ -289,6 +338,7 @@ export class AssetManager {
     switch (resolvedType) {
       case 'texture': return this.loadTexture(path);
       case 'model': return this.loadModel(path);
+      case 'mesh': return this.loadFluxMesh(path);
       case 'audio': return this.loadAudio(path);
       case 'json': return this.loadJSON(path);
       default: return null;

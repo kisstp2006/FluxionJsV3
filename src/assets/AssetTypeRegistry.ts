@@ -6,6 +6,7 @@
 
 import type { IFileSystem } from '../filesystem/FileSystem';
 import type { AssetMeta } from './AssetMeta';
+import type { FluxMeshData, FluxMeshMaterialSlot } from './FluxMeshData';
 
 // ── Types ──
 
@@ -128,16 +129,115 @@ AssetTypeRegistry.register({
   importFilters: [{ name: '3D Models', extensions: ['glb', 'gltf', 'fbx', 'obj'] }],
   defaultImportSettings: { scale: 1, generateCollider: false },
   importProcessor: async (_fs, importedPath, meta) => {
-    // Enrich metadata with model-specific info
     const ext = importedPath.substring(importedPath.lastIndexOf('.')).toLowerCase();
-    meta.importSettings = {
-      ...meta.importSettings,
-      format: ext === '.glb' ? 'glb' : ext === '.gltf' ? 'gltf' : ext === '.fbx' ? 'fbx' : 'obj',
-    };
+    const format = ext === '.glb' ? 'glb' : ext === '.gltf' ? 'gltf' : ext === '.fbx' ? 'fbx' : 'obj';
+    meta.importSettings = { ...meta.importSettings, format };
+
+    // --- Generate .fluxmesh + default .fluxmat files ---
+    try {
+      const THREEModule = await import('three');
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
+      const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
+      const { extractFluxMatFromMaterial } = await import('./FluxMeshData');
+      const { createAssetMeta, writeAssetMeta } = await import('./AssetMeta');
+
+      // Load the model to inspect sub-meshes
+      const fileUrl = `file:///${importedPath.replace(/\\/g, '/')}`;
+      let root: InstanceType<typeof THREEModule.Object3D>;
+      if (format === 'fbx') {
+        root = await new Promise<InstanceType<typeof THREEModule.Group>>((res, rej) => new FBXLoader().load(fileUrl, res, undefined, rej));
+      } else if (format === 'obj') {
+        root = await new Promise<InstanceType<typeof THREEModule.Group>>((res, rej) => new OBJLoader().load(fileUrl, res, undefined, rej));
+      } else {
+        const gltf = await new Promise<any>((res, rej) => new GLTFLoader().load(fileUrl, res, undefined, rej));
+        root = gltf.scene;
+      }
+
+      // Collect child meshes in depth-first order
+      const meshes: InstanceType<typeof THREEModule.Mesh>[] = [];
+      root.traverse((child: any) => {
+        if (child.isMesh) meshes.push(child);
+      });
+
+      // Group by unique material reference
+      const matToIndices = new Map<any, number[]>();
+      for (let i = 0; i < meshes.length; i++) {
+        const rawMat = meshes[i].material;
+        const m = Array.isArray(rawMat) ? rawMat[0] as any : rawMat;
+        if (!matToIndices.has(m)) matToIndices.set(m, []);
+        matToIndices.get(m)!.push(i);
+      }
+
+      // Derive paths
+      const dir = importedPath.substring(0, importedPath.lastIndexOf('/'));
+      const baseName = importedPath.substring(importedPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
+
+      const slots: FluxMeshMaterialSlot[] = [];
+      let slotIdx = 0;
+      for (const [mat, indices] of matToIndices) {
+        const slotName = mat.name || `Material_${slotIdx}`;
+        const safeName = slotName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const fluxmatPath = `${dir}/${baseName}_${safeName}.fluxmat`;
+
+        // Write default .fluxmat
+        const matJson = extractFluxMatFromMaterial(mat);
+        await _fs.writeFile(fluxmatPath, JSON.stringify(matJson, null, 2));
+
+        // Write .fluxmeta for the .fluxmat
+        const matMeta = createAssetMeta('material', fluxmatPath, '', '', 0);
+        await writeAssetMeta(_fs, fluxmatPath, matMeta);
+
+        // Store just the filename (resolved relative to .fluxmesh dir when loading)
+        const fluxmatFileName = `${baseName}_${safeName}.fluxmat`;
+        slots.push({ name: slotName, subMeshIndices: indices, defaultMaterial: fluxmatFileName });
+        slotIdx++;
+      }
+
+      // If model had no meshes, create a single default slot
+      if (slots.length === 0) {
+        const fluxmatPath = `${dir}/${baseName}_Default.fluxmat`;
+        await _fs.writeFile(fluxmatPath, JSON.stringify({ type: 'standard', color: [0.8, 0.8, 0.8], roughness: 0.5, metalness: 0.0 }, null, 2));
+        const matMeta = createAssetMeta('material', fluxmatPath, '', '', 0);
+        await writeAssetMeta(_fs, fluxmatPath, matMeta);
+        slots.push({ name: 'Default', subMeshIndices: [], defaultMaterial: `${baseName}_Default.fluxmat` });
+      }
+
+      // Write .fluxmesh
+      const fluxmeshPath = `${dir}/${baseName}.fluxmesh`;
+      // sourceModel = filename of the imported model (relative to the same dir)
+      const modelFileName = importedPath.substring(importedPath.lastIndexOf('/') + 1);
+      const fluxmeshData: FluxMeshData = { version: 1, sourceModel: modelFileName, materialSlots: slots };
+      await _fs.writeFile(fluxmeshPath, JSON.stringify(fluxmeshData, null, 2));
+
+      // Write .fluxmeta for the .fluxmesh
+      const meshMeta = createAssetMeta('mesh', fluxmeshPath, '', '', 0);
+      await writeAssetMeta(_fs, fluxmeshPath, meshMeta);
+
+      // Store .fluxmesh path in the model's meta
+      meta.importSettings.fluxmeshPath = fluxmeshPath;
+    } catch (err) {
+      console.warn('[AssetTypeRegistry] .fluxmesh generation failed, model imported without mesh data:', err);
+    }
+
     // Write updated meta back
     const metaPath = importedPath + '.fluxmeta';
     await _fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
   },
+});
+
+AssetTypeRegistry.register({
+  type: 'mesh',
+  displayName: 'Flux Mesh',
+  icon: 'model',
+  extensions: ['.fluxmesh'],
+  category: 'Models',
+  color: '#66bb6a',
+  loader: async (fs, path) => {
+    const text = await fs.readFile(path);
+    return JSON.parse(text) as FluxMeshData;
+  },
+  serializable: false,
 });
 
 AssetTypeRegistry.register({

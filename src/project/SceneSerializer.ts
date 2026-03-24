@@ -22,6 +22,8 @@ import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent 
 import { AssetManager } from '../assets/AssetManager';
 import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
 import { projectManager } from './ProjectManager';
+import { applyMaterialsToModel } from '../assets/FluxMeshData';
+import type { FluxMeshLoadResult } from '../assets/FluxMeshData';
 
 // ── Material serialization data ──
 
@@ -125,6 +127,14 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
       // Store materialPath if the entity references a .fluxmat asset
       if (meshComp.materialPath) {
         data.materialPath = meshComp.materialPath;
+      }
+
+      // Store per-slot material overrides for .fluxmesh models
+      if (meshComp.materialSlots && meshComp.materialSlots.length > 0) {
+        data.materialSlots = meshComp.materialSlots.map(s => ({
+          slotIndex: s.slotIndex,
+          materialPath: s.materialPath,
+        }));
       }
 
       // Serialize material (both primitives and models can have overridden materials)
@@ -361,6 +371,14 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
             m.materialPath = d.materialPath;
           }
 
+          // Restore per-slot material overrides
+          if (d.materialSlots && Array.isArray(d.materialSlots)) {
+            m.materialSlots = d.materialSlots.map((s: any) => ({
+              slotIndex: s.slotIndex,
+              materialPath: s.materialPath,
+            }));
+          }
+
           if (d.modelPath) {
             // 3D model asset — load async, mesh appears when ready
             m.modelPath = d.modelPath;
@@ -539,12 +557,87 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
 
   // Load deferred 3D model assets (fire-and-forget, non-blocking)
   for (const deferred of deferredModelLoads) {
-    loadDeferredModel(engine, deferred.meshComp, deferred.modelPath);
+    // Use .fluxmesh loader if the path points to a .fluxmesh file
+    if (deferred.modelPath.endsWith('.fluxmesh')) {
+      loadDeferredFluxMesh(engine, deferred.meshComp, deferred.modelPath);
+    } else {
+      loadDeferredModel(engine, deferred.meshComp, deferred.modelPath);
+    }
   }
 
   // Load deferred .fluxmat material assets (fire-and-forget, non-blocking)
   for (const deferred of deferredMaterialLoads) {
     loadDeferredMaterial(engine, deferred.meshComp, deferred.materialPath);
+  }
+}
+
+/** Resolve path and load a .fluxmesh asset with per-slot materials onto a MeshRendererComponent */
+async function loadDeferredFluxMesh(
+  engine: Engine,
+  meshComp: MeshRendererComponent,
+  fluxmeshPath: string,
+): Promise<void> {
+  try {
+    let loadPath: string;
+    try {
+      loadPath = projectManager.resolvePath(fluxmeshPath);
+    } catch {
+      loadPath = fluxmeshPath;
+    }
+
+    const assets = engine.getSubsystem('assets') as AssetManager;
+    const result: FluxMeshLoadResult = await assets.loadFluxMesh(loadPath);
+    const scene = result.scene.clone();
+    scene.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = meshComp.castShadow;
+        child.receiveShadow = meshComp.receiveShadow;
+      }
+    });
+
+    // Build overrides map from component's materialSlots
+    const overrides = new Map<number, string>();
+    if (meshComp.materialSlots) {
+      for (const ov of meshComp.materialSlots) {
+        overrides.set(ov.slotIndex, ov.materialPath);
+      }
+    }
+
+    // Load materials per slot
+    const materials = engine.getSubsystem('materials') as MaterialSystem;
+    const matPromises = result.slots.map(async (slot, idx) => {
+      const override = overrides.get(idx);
+      try {
+        let absMatPath: string;
+        if (override) {
+          // Override paths are project-relative, need resolvePath
+          try { absMatPath = projectManager.resolvePath(override); } catch { absMatPath = override; }
+        } else {
+          // Default material paths are already absolute from loadFluxMesh
+          absMatPath = slot.defaultMaterial;
+        }
+        const matData = await assets.loadAsset(absMatPath, 'material') as FluxMatData | null;
+        if (!matData || !materials) return null;
+
+        const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+          let texAbsPath: string;
+          try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
+          const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+          return assets.loadTexture(texUrl);
+        };
+
+        return materials.createFromFluxMat(matData, loadTexture, absMatPath);
+      } catch (err) {
+        console.warn(`[SceneSerializer] Failed to load material for slot "${slot.name}":`, err);
+        return null;
+      }
+    });
+
+    const loadedMaterials = await Promise.all(matPromises);
+    applyMaterialsToModel(scene, result.slots, loadedMaterials);
+    meshComp.mesh = scene;
+  } catch (err) {
+    console.error(`[SceneSerializer] Failed to load .fluxmesh "${fluxmeshPath}":`, err);
   }
 }
 

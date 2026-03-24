@@ -128,6 +128,8 @@ export class Scene {
     if (mesh && mesh.mesh) {
       const meshComp = new MeshRendererComponent();
       meshComp.modelPath = mesh.modelPath;
+      meshComp.materialPath = mesh.materialPath;
+      meshComp.materialSlots = mesh.materialSlots ? mesh.materialSlots.map(s => ({ ...s })) : undefined;
       meshComp.castShadow = mesh.castShadow;
       meshComp.receiveShadow = mesh.receiveShadow;
       const srcMesh = mesh.mesh;
@@ -239,17 +241,54 @@ export class Scene {
     // Load model via AssetManager
     try {
       const assets = this.engine.getSubsystem('assets') as AssetManager;
-      // Convert to file:// URL for THREE.js loaders in Electron
-      const fileUrl = loadPath!.startsWith('file://') ? loadPath! : `file:///${loadPath!.replace(/\\/g, '/')}`;
-      const gltf = await assets.loadModel(fileUrl);
-      const scene = gltf.scene.clone();
-      scene.traverse((child: THREE.Object3D) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = meshComp.castShadow;
-          child.receiveShadow = meshComp.receiveShadow;
+
+      if (modelPath.endsWith('.fluxmesh')) {
+        // .fluxmesh — load with multi-material support
+        const result = await assets.loadFluxMesh(loadPath!);
+        const scene = result.scene.clone();
+        scene.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = meshComp.castShadow;
+            child.receiveShadow = meshComp.receiveShadow;
+          }
+        });
+
+        // Load and apply default materials
+        const materials = this.engine.getSubsystem('materials') as any;
+        if (materials) {
+          const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+            const { projectManager: pm } = await import('../project/ProjectManager');
+            let texAbsPath: string;
+            try { texAbsPath = pm.resolvePath(relPath); } catch { texAbsPath = relPath; }
+            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+            return assets.loadTexture(texUrl);
+          };
+          const matPromises = result.slots.map(async (slot) => {
+            try {
+              const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
+              if (!matData) return null;
+              return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
+            } catch { return null; }
+          });
+          const loadedMats = await Promise.all(matPromises);
+          const { applyMaterialsToModel } = await import('../assets/FluxMeshData');
+          applyMaterialsToModel(scene, result.slots, loadedMats);
         }
-      });
-      meshComp.mesh = scene;
+
+        meshComp.mesh = scene;
+      } else {
+        // Raw model — legacy flow
+        const fileUrl = loadPath!.startsWith('file://') ? loadPath! : `file:///${loadPath!.replace(/\\/g, '/')}`;
+        const gltf = await assets.loadModel(fileUrl);
+        const scene = gltf.scene.clone();
+        scene.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = meshComp.castShadow;
+            child.receiveShadow = meshComp.receiveShadow;
+          }
+        });
+        meshComp.mesh = scene;
+      }
     } catch (err) {
       console.error(`[Scene] Failed to load model "${modelPath}":`, err);
     }

@@ -102,8 +102,8 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new CameraSystem(this));
     engine.ecs.addSystem(new LightSystem(this));
 
-    // Debug drawing overlay (ezEngine pattern)
-    DebugDraw.init(this.gizmoScene);
+    // Debug drawing: overlay (gizmoScene) + world (main scene for depth test)
+    DebugDraw.init(this.gizmoScene, this.scene);
 
     // Register as subsystem
     engine.registerSubsystem('renderer', this);

@@ -27,20 +27,32 @@ const INITIAL_CAPACITY = 1024; // max lines before realloc
  */
 export class DebugDraw {
   private static scene: THREE.Scene | null = null;
+  private static sceneW: THREE.Scene | null = null;
+
+  // Overlay layer (depthTest: false) — gizmos, always on top
   private static mesh: THREE.LineSegments | null = null;
   private static geometry: THREE.BufferGeometry | null = null;
   private static material: THREE.LineBasicMaterial | null = null;
-
-  // Flat buffers: 6 floats per line (2 vertices × 3 components)
   private static positions: Float32Array = new Float32Array(INITIAL_CAPACITY * 6);
   private static colors: Float32Array = new Float32Array(INITIAL_CAPACITY * 6);
   private static lineCount = 0;
   private static capacity = INITIAL_CAPACITY;
 
-  /** Initialize with the overlay scene (called once by FluxionRenderer). */
-  static init(gizmoScene: THREE.Scene): void {
-    this.scene = gizmoScene;
+  // World layer (depthTest: true) — grid, scene-space helpers
+  private static meshW: THREE.LineSegments | null = null;
+  private static geometryW: THREE.BufferGeometry | null = null;
+  private static materialW: THREE.LineBasicMaterial | null = null;
+  private static positionsW: Float32Array = new Float32Array(INITIAL_CAPACITY * 6);
+  private static colorsW: Float32Array = new Float32Array(INITIAL_CAPACITY * 6);
+  private static lineCountW = 0;
+  private static capacityW = INITIAL_CAPACITY;
 
+  /** Initialize with both scenes (called once by FluxionRenderer). */
+  static init(overlayScene: THREE.Scene, mainScene: THREE.Scene): void {
+    this.scene = overlayScene;
+    this.sceneW = mainScene;
+
+    // Overlay (no depth test)
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
@@ -55,7 +67,24 @@ export class DebugDraw {
     this.mesh = new THREE.LineSegments(this.geometry, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 999;
-    gizmoScene.add(this.mesh);
+    overlayScene.add(this.mesh);
+
+    // World (depth tested — lives in main scene for correct depth)
+    this.geometryW = new THREE.BufferGeometry();
+    this.geometryW.setAttribute('position', new THREE.BufferAttribute(this.positionsW, 3));
+    this.geometryW.setAttribute('color', new THREE.BufferAttribute(this.colorsW, 3));
+
+    this.materialW = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      depthTest: true,
+      depthWrite: false,
+      transparent: true,
+    });
+
+    this.meshW = new THREE.LineSegments(this.geometryW, this.materialW);
+    this.meshW.frustumCulled = false;
+    this.meshW.renderOrder = 0;
+    mainScene.add(this.meshW);
   }
 
   // ── Core API (ezEngine ezDebugRenderer pattern) ──
@@ -104,6 +133,45 @@ export class DebugDraw {
       const ec = line.endColor ?? line.color ?? _white;
       this.drawLineColored(line.start, line.end, sc, ec);
     }
+  }
+
+  // ── World-layer API (depth tested) ──
+
+  /** Draw a depth-tested line (occluded by scene geometry). */
+  static drawLineWorld(
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    color: THREE.Color = _white,
+  ): void {
+    this.drawLineColoredWorld(start, end, color, color);
+  }
+
+  /** Draw a depth-tested line with per-vertex colors. */
+  static drawLineColoredWorld(
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    startColor: THREE.Color,
+    endColor: THREE.Color,
+  ): void {
+    if (this.lineCountW >= this.capacityW) {
+      this.growW();
+    }
+    const i = this.lineCountW * 6;
+    this.positionsW[i]     = start.x;
+    this.positionsW[i + 1] = start.y;
+    this.positionsW[i + 2] = start.z;
+    this.positionsW[i + 3] = end.x;
+    this.positionsW[i + 4] = end.y;
+    this.positionsW[i + 5] = end.z;
+
+    this.colorsW[i]     = startColor.r;
+    this.colorsW[i + 1] = startColor.g;
+    this.colorsW[i + 2] = startColor.b;
+    this.colorsW[i + 3] = endColor.r;
+    this.colorsW[i + 4] = endColor.g;
+    this.colorsW[i + 5] = endColor.b;
+
+    this.lineCountW++;
   }
 
   /** Draw a cross (3 short axis-aligned lines) at a position. */
@@ -162,7 +230,7 @@ export class DebugDraw {
 
   // ── Grid (replaces THREE.GridHelper) ──
 
-  /** Draw an XZ grid centered at origin with axis-colored center lines. */
+  /** Draw an XZ grid centered at origin with axis-colored center lines (depth tested). */
   static drawGrid(
     size = 100,
     divisions = 100,
@@ -178,73 +246,90 @@ export class DebugDraw {
 
       if (isCenter) {
         // Center X axis line (red on positive side, darker on negative)
-        this.drawLineColored(
+        this.drawLineColoredWorld(
           _v0.set(-half, 0, 0), _v1.set(0, 0, 0),
           centerColor, centerColor,
         );
-        this.drawLineColored(
+        this.drawLineColoredWorld(
           _v0.set(0, 0, 0), _v1.set(half, 0, 0),
           _axisRed, _axisRed,
         );
         // Center Z axis line (blue on positive side, darker on negative)
-        this.drawLineColored(
+        this.drawLineColoredWorld(
           _v0.set(0, 0, -half), _v1.set(0, 0, 0),
           centerColor, centerColor,
         );
-        this.drawLineColored(
+        this.drawLineColoredWorld(
           _v0.set(0, 0, 0), _v1.set(0, 0, half),
           _axisBlue, _axisBlue,
         );
       } else {
         // Regular grid lines along X (varying Z)
-        this.drawLine(_v0.set(-half, 0, pos), _v1.set(half, 0, pos), lineColor);
+        this.drawLineWorld(_v0.set(-half, 0, pos), _v1.set(half, 0, pos), lineColor);
         // Regular grid lines along Z (varying X)
-        this.drawLine(_v0.set(pos, 0, -half), _v1.set(pos, 0, half), lineColor);
+        this.drawLineWorld(_v0.set(pos, 0, -half), _v1.set(pos, 0, half), lineColor);
       }
     }
 
     // Y axis stub (green, short upward line from origin)
-    this.drawLine(_v0.set(0, 0, 0), _v1.set(0, 3, 0), _axisGreen);
+    this.drawLineWorld(_v0.set(0, 0, 0), _v1.set(0, 3, 0), _axisGreen);
   }
 
   // ── Lifecycle ──
 
   /** Commit accumulated lines to the GPU and clear the buffer. Called by renderer each frame. */
   static flush(): void {
-    if (!this.geometry || !this.mesh) return;
+    // Overlay layer
+    this.flushLayer(this.geometry, this.mesh, this.positions, this.colors, this.lineCount);
+    this.lineCount = 0;
 
-    const posAttr = this.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const colAttr = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    // World layer
+    this.flushLayer(this.geometryW, this.meshW, this.positionsW, this.colorsW, this.lineCountW);
+    this.lineCountW = 0;
+  }
 
-    // Update buffer data (may need to resize the attribute)
-    if (posAttr.array.length < this.lineCount * 6) {
-      this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-      this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+  private static flushLayer(
+    geom: THREE.BufferGeometry | null,
+    mesh: THREE.LineSegments | null,
+    positions: Float32Array,
+    colors: Float32Array,
+    count: number,
+  ): void {
+    if (!geom || !mesh) return;
+
+    const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
+    const colAttr = geom.getAttribute('color') as THREE.BufferAttribute;
+
+    if (posAttr.array.length < count * 6) {
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     } else {
-      (posAttr.array as Float32Array).set(this.positions.subarray(0, this.lineCount * 6));
+      (posAttr.array as Float32Array).set(positions.subarray(0, count * 6));
       posAttr.needsUpdate = true;
-      (colAttr.array as Float32Array).set(this.colors.subarray(0, this.lineCount * 6));
+      (colAttr.array as Float32Array).set(colors.subarray(0, count * 6));
       colAttr.needsUpdate = true;
     }
 
-    this.geometry.setDrawRange(0, this.lineCount * 2);
-    this.mesh.visible = this.lineCount > 0;
-
-    // Reset for next frame
-    this.lineCount = 0;
+    geom.setDrawRange(0, count * 2);
+    mesh.visible = count > 0;
   }
 
   /** Dispose all GPU resources. */
   static dispose(): void {
-    if (this.mesh && this.scene) {
-      this.scene.remove(this.mesh);
-    }
+    if (this.mesh && this.scene) this.scene.remove(this.mesh);
+    if (this.meshW && this.sceneW) this.sceneW.remove(this.meshW);
     this.geometry?.dispose();
     this.material?.dispose();
+    this.geometryW?.dispose();
+    this.materialW?.dispose();
     this.mesh = null;
     this.geometry = null;
     this.material = null;
+    this.meshW = null;
+    this.geometryW = null;
+    this.materialW = null;
     this.scene = null;
+    this.sceneW = null;
   }
 
   // ── Internal ──
@@ -257,6 +342,16 @@ export class DebugDraw {
     newCol.set(this.colors);
     this.positions = newPos;
     this.colors = newCol;
+  }
+
+  private static growW(): void {
+    this.capacityW *= 2;
+    const newPos = new Float32Array(this.capacityW * 6);
+    const newCol = new Float32Array(this.capacityW * 6);
+    newPos.set(this.positionsW);
+    newCol.set(this.colorsW);
+    this.positionsW = newPos;
+    this.colorsW = newCol;
   }
 }
 

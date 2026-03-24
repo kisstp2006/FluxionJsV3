@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Vector3Input } from '../../../ui';
+import { Section, PropertyRow, Vector3Input, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { TransformComponent } from '../../../../src/core/Components';
@@ -17,7 +17,7 @@ export const TransformInspector: React.FC<{ entity: EntityId }> = ({ entity }) =
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Transform" icon="✥">
+    <Section title="Transform" icon={Icons.move}>
       <PropertyRow label="Position">
         <Vector3Input
           value={t.position}

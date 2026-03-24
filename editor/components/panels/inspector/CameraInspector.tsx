@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, NumberInput } from '../../../ui';
+import { Section, PropertyRow, NumberInput, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { CameraComponent } from '../../../../src/core/Components';
@@ -18,7 +18,7 @@ export const CameraInspector: React.FC<{ entity: EntityId; onRemoved: () => void
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Camera" icon="📷" actions={<RemoveComponentButton entity={entity} componentType="Camera" onRemoved={onRemoved} />}>
+    <Section title="Camera" icon={Icons.camera} actions={<RemoveComponentButton entity={entity} componentType="Camera" onRemoved={onRemoved} />}>
       <PropertyRow label="FOV">
         <NumberInput value={cam.fov} step={1} onChange={(v) => { setProperty(undoManager, cam, 'fov', v); update(); }} />
       </PropertyRow>

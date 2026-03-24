@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, NumberInput, Slider } from '../../../ui';
+import { Section, PropertyRow, NumberInput, Slider, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { ParticleEmitterComponent } from '../../../../src/core/Components';
@@ -18,7 +18,7 @@ export const ParticleInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Particle Emitter" icon="✦" actions={<RemoveComponentButton entity={entity} componentType="ParticleEmitter" onRemoved={onRemoved} />}>
+    <Section title="Particle Emitter" icon={Icons.particle} actions={<RemoveComponentButton entity={entity} componentType="ParticleEmitter" onRemoved={onRemoved} />}>
       <PropertyRow label="Max">
         <NumberInput value={p.maxParticles} step={100} onChange={(v) => { setProperty(undoManager, p, 'maxParticles', v); update(); }} />
       </PropertyRow>

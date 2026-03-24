@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, Select, NumberInput, Slider, Checkbox } from '../../../ui';
+import { Section, PropertyRow, Select, NumberInput, Slider, Checkbox, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { RigidbodyComponent, ColliderComponent } from '../../../../src/core/Components';
@@ -18,7 +18,7 @@ export const RigidbodyInspector: React.FC<{ entity: EntityId; onRemoved: () => v
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Rigidbody" icon="⊛" actions={<RemoveComponentButton entity={entity} componentType="Rigidbody" onRemoved={onRemoved} />}>
+    <Section title="Rigidbody" icon={Icons.physics} actions={<RemoveComponentButton entity={entity} componentType="Rigidbody" onRemoved={onRemoved} />}>
       <PropertyRow label="Type">
         <Select
           value={rb.bodyType}
@@ -54,7 +54,7 @@ export const ColliderInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Collider" icon="🔲" actions={<RemoveComponentButton entity={entity} componentType="Collider" onRemoved={onRemoved} />}>
+    <Section title="Collider" icon={Icons.cube} actions={<RemoveComponentButton entity={entity} componentType="Collider" onRemoved={onRemoved} />}>
       <PropertyRow label="Shape">
         <Select
           value={collider.shape}

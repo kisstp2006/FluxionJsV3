@@ -10,7 +10,7 @@ import { useEditor, EditorTool, ViewportShadingMode } from '../../core/EditorCon
 export const Toolbar: React.FC = () => {
   const { state, dispatch } = useEditor();
 
-  const tools: Array<{ tool: EditorTool; icon: string; label: string; shortcut: string }> = [
+  const tools: Array<{ tool: EditorTool; icon: React.ReactNode; label: string; shortcut: string }> = [
     { tool: 'select', icon: Icons.select, label: 'Select', shortcut: 'Q' },
     { tool: 'move', icon: Icons.move, label: 'Move', shortcut: 'W' },
     { tool: 'rotate', icon: Icons.rotate, label: 'Rotate', shortcut: 'E' },

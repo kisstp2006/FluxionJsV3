@@ -4,7 +4,7 @@ import { Icons } from '../Icons';
 interface SectionProps {
   title: string;
   defaultOpen?: boolean;
-  icon?: string;
+  icon?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -38,7 +38,7 @@ export const Section: React.FC<SectionProps> = ({
         }}
       >
         <span>
-          {open ? Icons.chevronDown : Icons.chevronRight} {icon && `${icon} `}{title}
+          {open ? Icons.chevronDown : Icons.chevronRight} {icon && <span style={{ marginRight: '4px', display: 'inline-flex', verticalAlign: 'middle' }}>{icon}</span>}{title}
         </span>
         {actions && <div onClick={(e) => e.stopPropagation()}>{actions}</div>}
       </div>

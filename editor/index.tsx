@@ -9,12 +9,14 @@ import { EditorProvider } from './core/EditorContext';
 import { EditorLayout } from './components/layout/EditorLayout';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { registerDefaultSettings } from './core/DefaultSettings';
+import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.
 const electronFs = new ElectronFileSystem();
 setGlobalFileSystem(electronFs);
 registerDefaultSettings();
+registerDefaultProjectSettings();
 
 const App: React.FC = () => (
   <EditorProvider>

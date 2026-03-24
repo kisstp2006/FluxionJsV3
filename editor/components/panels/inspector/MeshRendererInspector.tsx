@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider } from '../../../ui';
+import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
@@ -39,7 +39,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
   const material = getMaterial();
 
   return (
-    <Section title="Mesh Renderer" icon="▣" actions={<RemoveComponentButton entity={entity} componentType="MeshRenderer" onRemoved={onRemoved} />}>
+    <Section title="Mesh Renderer" icon={Icons.cube} actions={<RemoveComponentButton entity={entity} componentType="MeshRenderer" onRemoved={onRemoved} />}>
       {mr.primitiveType && (
         <PropertyRow label="Primitive">
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: '11px' }}>

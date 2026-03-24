@@ -5,17 +5,18 @@
 // ============================================================
 
 import { SettingsRegistry, SettingDescriptor } from './SettingsRegistry';
+import { Icons } from '../ui/Icons';
 
 // ── Category Registration ──
 
-SettingsRegistry.registerCategory('Renderer', { label: 'Renderer', icon: '🖥', order: 10 });
-SettingsRegistry.registerCategory('Renderer/Shadows', { label: 'Shadows', icon: '🌑', order: 11 });
-SettingsRegistry.registerCategory('Renderer/Post Processing', { label: 'Post Processing', icon: '✨', order: 12 });
-SettingsRegistry.registerCategory('Editor', { label: 'Editor', icon: '⚙', order: 20 });
-SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: '🔲', order: 21 });
-SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: '✥', order: 22 });
-SettingsRegistry.registerCategory('Physics', { label: 'Physics', icon: '⊛', order: 30 });
-SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: '🔊', order: 40 });
+SettingsRegistry.registerCategory('Renderer', { label: 'Renderer', icon: Icons.monitor, order: 10 });
+SettingsRegistry.registerCategory('Renderer/Shadows', { label: 'Shadows', icon: Icons.moon, order: 11 });
+SettingsRegistry.registerCategory('Renderer/Post Processing', { label: 'Post Processing', icon: Icons.particle, order: 12 });
+SettingsRegistry.registerCategory('Editor', { label: 'Editor', icon: Icons.settings, order: 20 });
+SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: Icons.eye, order: 21 });
+SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: Icons.move, order: 22 });
+SettingsRegistry.registerCategory('Physics', { label: 'Physics', icon: Icons.physics, order: 30 });
+SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 
 // ── Renderer Settings ──
 

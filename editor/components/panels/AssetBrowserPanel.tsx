@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icons, ContextMenu } from '../../ui';
+import { resolveIcon } from '../../ui/Icons';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
@@ -24,10 +25,11 @@ function getFileType(name: string): string {
   return def?.type ?? 'unknown';
 }
 
-function getTypeIcon(type: string): string {
+function getTypeIcon(type: string): React.ReactNode {
   if (type === 'folder') return Icons.folder;
   const def = AssetTypeRegistry.getByType(type);
-  return def?.icon ?? '📄';
+  if (def?.icon) return resolveIcon(def.icon);
+  return Icons.file;
 }
 
 // ── Folder Tree Item ──
@@ -360,7 +362,8 @@ export const AssetBrowserPanel: React.FC<{
           onClose={() => setCtxMenu(null)}
           items={[
             ...AssetTypeRegistry.getCreatable().map((def) => ({
-              label: `${def.icon} New ${def.displayName}`,
+              label: `New ${def.displayName}`,
+              icon: resolveIcon(def.icon),
               onClick: () => {
                 setInputDialog({
                   label: `${def.displayName} name`,
@@ -379,9 +382,9 @@ export const AssetBrowserPanel: React.FC<{
                 });
               },
             })),
-            { label: '📁 New Folder', onClick: createNewFolder },
-            { label: '� Import Assets...', onClick: handleImport },
-            { label: '�🔄 Refresh', onClick: refresh },
+            { label: 'New Folder', icon: Icons.folder, onClick: createNewFolder },
+            { label: 'Import Assets...', icon: Icons.download, onClick: handleImport },
+            { label: 'Refresh', icon: Icons.refresh, onClick: refresh },
           ]}
         />
       )}

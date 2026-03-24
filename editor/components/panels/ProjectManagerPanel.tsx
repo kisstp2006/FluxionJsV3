@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
+import { Icons } from '../../ui/Icons';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager, RecentProject } from '../../../src/project/ProjectManager';
 
@@ -124,7 +125,7 @@ export const ProjectManagerPanel: React.FC<{
               disabled={loading}
               style={actionBtnStyle}
             >
-              📄 New Project
+              {Icons.file} New Project
             </button>
           ) : (
             <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
@@ -148,7 +149,7 @@ export const ProjectManagerPanel: React.FC<{
 
           {!creating && (
             <button onClick={handleOpenProject} disabled={loading} style={actionBtnStyle}>
-              📂 Open Project
+              {Icons.folderOpen} Open Project
             </button>
           )}
         </div>
@@ -221,7 +222,7 @@ export const ProjectManagerPanel: React.FC<{
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
                     title="Remove from recent"
                   >
-                    ✕
+                    {Icons.close}
                   </button>
                 </div>
               </div>

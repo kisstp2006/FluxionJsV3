@@ -109,7 +109,7 @@ export const AssetTypeRegistry = new AssetTypeRegistryImpl();
 AssetTypeRegistry.register({
   type: 'texture',
   displayName: 'Texture',
-  icon: '🖼',
+  icon: 'image',
   extensions: ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif'],
   category: 'Textures',
   color: '#4fc3f7',
@@ -120,7 +120,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'model',
   displayName: '3D Model',
-  icon: '📐',
+  icon: 'model',
   extensions: ['.glb', '.gltf', '.fbx', '.obj'],
   category: 'Models',
   color: '#81c784',
@@ -131,7 +131,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'audio',
   displayName: 'Audio',
-  icon: '🔊',
+  icon: 'audio',
   extensions: ['.ogg', '.mp3', '.wav', '.flac'],
   category: 'Audio',
   color: '#ffb74d',
@@ -142,7 +142,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'scene',
   displayName: 'Scene',
-  icon: '🎬',
+  icon: 'scene',
   extensions: ['.fluxscene'],
   category: 'Scenes',
   color: '#ba68c8',
@@ -163,7 +163,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'script',
   displayName: 'Script',
-  icon: '📝',
+  icon: 'script',
   extensions: ['.ts', '.js'],
   category: 'Scripts',
   color: '#7986cb',
@@ -172,7 +172,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'material',
   displayName: 'Material',
-  icon: '🎨',
+  icon: 'material',
   extensions: ['.mat', '.fluxmat'],
   category: 'Materials',
   color: '#f06292',
@@ -193,7 +193,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'prefab',
   displayName: 'Prefab',
-  icon: '📦',
+  icon: 'prefab',
   extensions: ['.fluxprefab'],
   category: 'Prefabs',
   color: '#4db6ac',
@@ -203,7 +203,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'shader',
   displayName: 'Shader',
-  icon: '✨',
+  icon: 'shader',
   extensions: ['.glsl', '.vert', '.frag', '.wgsl'],
   category: 'Shaders',
   color: '#aed581',
@@ -212,7 +212,7 @@ AssetTypeRegistry.register({
 AssetTypeRegistry.register({
   type: 'json',
   displayName: 'JSON Data',
-  icon: '📋',
+  icon: 'json',
   extensions: ['.json'],
   category: 'Data',
 });

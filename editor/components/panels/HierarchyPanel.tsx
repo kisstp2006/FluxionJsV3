@@ -52,7 +52,7 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   const isEditing = editingEntity === entity;
 
   // Determine icon from components
-  let icon: string = Icons.entity;
+  let icon: React.ReactNode = Icons.entity;
   let iconColor = 'var(--text-muted)';
   if (ecs.hasComponent(entity, 'MeshRenderer')) { icon = Icons.cube; iconColor = 'var(--accent-purple)'; }
   if (ecs.hasComponent(entity, 'Light')) { icon = Icons.light; iconColor = 'var(--accent-yellow)'; }
@@ -189,21 +189,21 @@ const AddEntityMenu: React.FC<AddEntityMenuProps> = ({ position, onClose, onAdd 
       items: [
         { type: 'empty', label: 'Empty', icon: Icons.entity },
         { type: 'cube', label: 'Cube', icon: Icons.cube },
-        { type: 'sphere', label: 'Sphere', icon: '●' },
-        { type: 'cylinder', label: 'Cylinder', icon: '⬭' },
-        { type: 'cone', label: 'Cone', icon: '▲' },
-        { type: 'plane', label: 'Plane', icon: '▬' },
-        { type: 'capsule', label: 'Capsule', icon: '⬬' },
-        { type: 'torus', label: 'Torus', icon: '◎' },
+        { type: 'sphere', label: 'Sphere', icon: Icons.sphere },
+        { type: 'cylinder', label: 'Cylinder', icon: Icons.cube },
+        { type: 'cone', label: 'Cone', icon: Icons.cone },
+        { type: 'plane', label: 'Plane', icon: Icons.plane },
+        { type: 'capsule', label: 'Capsule', icon: Icons.capsule },
+        { type: 'torus', label: 'Torus', icon: Icons.torus },
       ],
     },
     {
       label: 'Lights',
       items: [
         { type: 'directional', label: 'Directional Light', icon: Icons.light },
-        { type: 'point', label: 'Point Light', icon: '💡' },
-        { type: 'spot', label: 'Spot Light', icon: '🔦' },
-        { type: 'ambient', label: 'Ambient Light', icon: '🌤' },
+        { type: 'point', label: 'Point Light', icon: Icons.pointLight },
+        { type: 'spot', label: 'Spot Light', icon: Icons.light },
+        { type: 'ambient', label: 'Ambient Light', icon: Icons.light },
       ],
     },
     {
@@ -494,26 +494,26 @@ export const HierarchyPanel: React.FC = () => {
           items={[
             {
               label: 'Rename',
-              icon: '✏',
+              icon: Icons.pencil,
               shortcut: 'F2',
               onClick: () => setEditingEntity(contextMenu.entity),
             },
             {
               label: 'Duplicate',
-              icon: '📋',
+              icon: Icons.copy,
               shortcut: 'Ctrl+D',
               onClick: () => handleDuplicate(contextMenu.entity),
             },
             {
               label: 'Focus',
-              icon: '🎯',
+              icon: Icons.target,
               shortcut: 'F',
               onClick: () => {
                 const t = engine.engine.ecs.getComponent<any>(contextMenu.entity, 'Transform');
                 if (t) engine.orbitControls.target.copy(t.position);
               },
             },
-            { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+            { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
             {
               label: 'Add Child',
               icon: Icons.plus,
@@ -525,16 +525,16 @@ export const HierarchyPanel: React.FC = () => {
             },
             {
               label: 'Unparent',
-              icon: '↗',
+              icon: Icons.externalLink,
               onClick: () => {
                 engine.engine.ecs.setParent(contextMenu.entity, undefined as any);
                 log('Unparented entity', 'info');
               },
             },
-            { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+            { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
             {
               label: 'Delete',
-              icon: '🗑',
+              icon: Icons.trash,
               shortcut: 'Del',
               onClick: () => {
                 const name = engine.engine.ecs.getEntityName(contextMenu.entity);

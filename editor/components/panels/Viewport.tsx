@@ -5,7 +5,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import * as THREE from 'three';
-import { TabBar, ContextMenu } from '../../ui';
+import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 
 export interface ViewportProps {
@@ -421,7 +421,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           items={[
             {
               label: 'Add Empty at Position',
-              icon: '◆',
+              icon: Icons.entity,
               onClick: () => {
                 const e = engine.scene.createEmpty('Empty Entity');
                 if (vpContextMenu.worldPos) {
@@ -434,7 +434,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
             },
             {
               label: 'Add Cube at Position',
-              icon: '▣',
+              icon: Icons.cube,
               onClick: () => {
                 const e = engine.scene.createPrimitive('Cube', 'cube');
                 if (vpContextMenu.worldPos) {
@@ -447,7 +447,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
             },
             {
               label: 'Add Point Light at Position',
-              icon: '💡',
+              icon: Icons.pointLight,
               onClick: () => {
                 const e = engine.scene.createLight('Point Light', 'point', 0xffffff, 1);
                 if (vpContextMenu.worldPos) {
@@ -458,10 +458,10 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
                 log('Created point light at click position', 'info');
               },
             },
-            { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+            { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
             {
               label: 'Focus Selected',
-              icon: '🎯',
+              icon: Icons.target,
               shortcut: 'F',
               disabled: state.selectedEntity === null,
               onClick: () => {
@@ -474,20 +474,20 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
                 }
               },
             },
-            { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+            { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
             {
               label: 'View: Top',
-              icon: '⬆',
+              icon: Icons.chevronDown,
               onClick: () => setCameraView('top'),
             },
             {
               label: 'View: Front',
-              icon: '⬅',
+              icon: Icons.chevronRight,
               onClick: () => setCameraView('front'),
             },
             {
               label: 'View: Right',
-              icon: '➡',
+              icon: Icons.chevronRight,
               onClick: () => setCameraView('right'),
             },
           ]}

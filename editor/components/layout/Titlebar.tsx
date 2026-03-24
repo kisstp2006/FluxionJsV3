@@ -15,7 +15,8 @@ export const Titlebar: React.FC<{
   onNewScene?: () => void;
   onOpenScene?: () => void;
   onOpenSettings?: () => void;
-}> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings }) => {
+  onOpenProjectSettings?: () => void;
+}> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings, onOpenProjectSettings }) => {
   const { state, dispatch, log } = useEditor();
   const engine = useEngine();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
@@ -29,44 +30,45 @@ export const Titlebar: React.FC<{
 
   const fileMenuItems = [
     {
-      label: 'New Scene', icon: '📄', shortcut: 'Ctrl+N',
+      label: 'New Scene', icon: Icons.file, shortcut: 'Ctrl+N',
       onClick: () => onNewScene?.(),
     },
     {
-      label: 'Open Scene...', icon: '📂', shortcut: 'Ctrl+O',
+      label: 'Open Scene...', icon: Icons.folderOpen, shortcut: 'Ctrl+O',
       onClick: () => onOpenScene?.(),
     },
     {
-      label: 'Save Scene', icon: '💾', shortcut: 'Ctrl+S',
+      label: 'Save Scene', icon: Icons.save, shortcut: 'Ctrl+S',
       onClick: () => onSaveScene?.(),
     },
-    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
     {
-      label: 'Close Project', icon: '📁', shortcut: '',
+      label: 'Close Project', icon: Icons.folder, shortcut: '',
       onClick: () => onCloseProject?.(),
     },
-    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
+    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
     {
-      label: 'Exit', icon: '❌', shortcut: 'Alt+F4',
+      label: 'Exit', icon: Icons.close, shortcut: 'Alt+F4',
       onClick: () => window.fluxionAPI?.close(),
     },
   ];
 
   const editMenuItems = [
-    { label: 'Undo', icon: '↩', shortcut: 'Ctrl+Z', onClick: () => log('Undo', 'info') },
-    { label: 'Redo', icon: '↪', shortcut: 'Ctrl+Y', onClick: () => log('Redo', 'info') },
-    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Duplicate', icon: '📋', shortcut: 'Ctrl+D', onClick: () => log('Duplicated', 'info') },
-    { label: 'Delete', icon: '🗑', shortcut: 'Del', onClick: () => log('Deleted', 'info') },
+    { label: 'Undo', icon: Icons.undo, shortcut: 'Ctrl+Z', onClick: () => log('Undo', 'info') },
+    { label: 'Redo', icon: Icons.redo, shortcut: 'Ctrl+Y', onClick: () => log('Redo', 'info') },
+    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
+    { label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D', onClick: () => log('Duplicated', 'info') },
+    { label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => log('Deleted', 'info') },
   ];
 
   const viewMenuItems = [
-    { label: 'Toggle Grid', icon: '⊞', onClick: () => log('Grid toggled', 'info') },
-    { label: 'Toggle Wireframe', icon: '🔲', onClick: () => log('Wireframe toggled', 'info') },
-    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Settings', icon: '⚙', onClick: () => onOpenSettings?.() },
-    { label: '', icon: '', shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Reset Layout', icon: '↻', onClick: () => log('Layout reset', 'info') },
+    { label: 'Toggle Grid', icon: Icons.grid, onClick: () => log('Grid toggled', 'info') },
+    { label: 'Toggle Wireframe', icon: Icons.eye, onClick: () => log('Wireframe toggled', 'info') },
+    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
+    { label: 'Settings', icon: Icons.settings, onClick: () => onOpenSettings?.() },
+    { label: 'Project Settings', icon: Icons.clipboard, onClick: () => onOpenProjectSettings?.() },
+    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
+    { label: 'Reset Layout', icon: Icons.refresh, onClick: () => log('Layout reset', 'info') },
   ];
 
   return (
@@ -147,7 +149,7 @@ export const Titlebar: React.FC<{
               transition: 'all 150ms ease',
             }}
           >
-            {state.isPlaying ? '⏸ Pause' : '▶ Play'}
+            {state.isPlaying ? <>{Icons.pause} Pause</> : <>{Icons.play} Play</>}
           </button>
         </div>
       </div>

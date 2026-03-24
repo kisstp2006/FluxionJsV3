@@ -13,6 +13,7 @@ import { InspectorPanel } from '../panels/InspectorPanel';
 import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
+import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
 import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
@@ -20,6 +21,8 @@ import { loadProjectScene } from '../../core/SceneService';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { serializeScene } from '../../../src/project/SceneSerializer';
 import { SettingsService } from '../../core/SettingsService';
+import { ProjectSettingsService } from '../../core/ProjectSettingsService';
+import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
@@ -27,6 +30,7 @@ export const EditorLayout: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasReady, setCanvasReady] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
+  const [showProjectSettings, setShowProjectSettings] = React.useState(false);
   const engineRef = useRef<EngineSubsystems | null>(null);
 
   const handleLog = useCallback((text: string, type: 'info' | 'warn' | 'error' | 'system') => {
@@ -93,6 +97,7 @@ export const EditorLayout: React.FC = () => {
 
     // Initialize settings persistence for this project
     await SettingsService.init(projectManager.projectDir!);
+    await ProjectSettingsService.init();
 
     // Load default scene once engine is ready
     const eng = engineRef.current;
@@ -113,6 +118,10 @@ export const EditorLayout: React.FC = () => {
   // Handle engine ready — if project already loaded, load scene
   const handleEngineReady = useCallback(async (sys: EngineSubsystems) => {
     engineRef.current = sys;
+
+    // Bind all editor settings to engine subsystems (live)
+    bindSettings(sys);
+
     if (state.projectLoaded && projectManager.config?.defaultScene) {
       try {
         const scenePath = projectManager.resolvePath(projectManager.config.defaultScene);
@@ -130,6 +139,8 @@ export const EditorLayout: React.FC = () => {
     if (eng) {
       eng.scene.clear();
     }
+    disposeSettingsBindings();
+    ProjectSettingsService.dispose();
     SettingsService.dispose();
     projectManager.closeProject();
     dispatch({ type: 'CLOSE_PROJECT' });
@@ -222,6 +233,7 @@ export const EditorLayout: React.FC = () => {
           onNewScene={handleNewScene}
           onOpenScene={handleOpenScene}
           onOpenSettings={() => setShowSettings(true)}
+          onOpenProjectSettings={() => setShowProjectSettings(true)}
         />
 
         {/* Toolbar */}
@@ -309,6 +321,9 @@ export const EditorLayout: React.FC = () => {
 
       {/* Settings Modal */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      {/* Project Settings Modal */}
+      {showProjectSettings && <ProjectSettingsPanel onClose={() => setShowProjectSettings(false)} />}
     </EngineProvider>
   );
 };

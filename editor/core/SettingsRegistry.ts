@@ -5,6 +5,8 @@
 // and auto-persistence via SettingsService.
 // ============================================================
 
+import React from 'react';
+
 // ── Setting Types ──
 
 export type SettingType = 'boolean' | 'number' | 'string' | 'select' | 'slider' | 'color';
@@ -41,8 +43,8 @@ export interface SettingDescriptor<T = unknown> {
 export interface CategoryInfo {
   /** Display name */
   label: string;
-  /** Optional icon (emoji/text) */
-  icon?: string;
+  /** Optional icon (React element or text) */
+  icon?: React.ReactNode;
   /** Display order (lower = first) */
   order?: number;
 }

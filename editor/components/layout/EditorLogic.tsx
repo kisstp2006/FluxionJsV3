@@ -10,6 +10,7 @@ import { useEditor, useEngine, EditorTool } from '../../core/EditorContext';
 import { TransformComponent } from '../../../src/core/Components';
 import { undoManager, TransformCommand } from '../../core/UndoService';
 import { DebugDraw } from '../../../src/renderer/DebugDraw';
+import { SettingsRegistry } from '../../core/SettingsRegistry';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -227,7 +228,8 @@ export const GridSync: React.FC = () => {
     if (!engine) return;
     const handler = () => {
       if (state.showGrid) {
-        DebugDraw.drawGrid(100, 100);
+        const gridSize = SettingsRegistry.get<number>('editor.viewport.gridSize');
+        DebugDraw.drawGrid(gridSize, gridSize);
       }
     };
     engine.engine.events.on('engine:update', handler);

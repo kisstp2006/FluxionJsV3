@@ -13,7 +13,7 @@ export interface EditorCommand {
 export class UndoManager {
   private undoStack: EditorCommand[] = [];
   private redoStack: EditorCommand[] = [];
-  private maxHistory = 100;
+  maxHistory = 100;
 
   execute(command: EditorCommand): void {
     command.execute();

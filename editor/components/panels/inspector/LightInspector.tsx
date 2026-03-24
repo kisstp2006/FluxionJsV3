@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox } from '../../../ui';
+import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { LightComponent } from '../../../../src/core/Components';
@@ -18,7 +18,7 @@ export const LightInspector: React.FC<{ entity: EntityId; onRemoved: () => void 
   const update = () => forceUpdate((n) => n + 1);
 
   return (
-    <Section title="Light" icon="☀" actions={<RemoveComponentButton entity={entity} componentType="Light" onRemoved={onRemoved} />}>
+    <Section title="Light" icon={Icons.light} actions={<RemoveComponentButton entity={entity} componentType="Light" onRemoved={onRemoved} />}>
       <PropertyRow label="Type">
         <Select
           value={light.lightType}

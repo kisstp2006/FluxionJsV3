@@ -2,6 +2,8 @@ import React from 'react';
 import { EntityId } from '../../../../src/core/ECS';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 
+import { Icons } from '../../../ui/Icons';
+
 export const RemoveComponentButton: React.FC<{ entity: EntityId; componentType: string; onRemoved: () => void }> = ({ entity, componentType, onRemoved }) => {
   const engine = useEngine();
   const { log, dispatch } = useEditor();
@@ -26,7 +28,7 @@ export const RemoveComponentButton: React.FC<{ entity: EntityId; componentType: 
         lineHeight: 1,
       }}
     >
-      ✕
+      {Icons.close}
     </button>
   );
 };

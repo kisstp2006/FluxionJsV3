@@ -92,7 +92,7 @@ export const EditorLayout: React.FC = () => {
     dispatch({ type: 'LOAD_PROJECT', path: projectPath, name: config.name });
 
     // Initialize settings persistence for this project
-    await SettingsService.init(projectPath);
+    await SettingsService.init(projectManager.projectDir!);
 
     // Load default scene once engine is ready
     const eng = engineRef.current;

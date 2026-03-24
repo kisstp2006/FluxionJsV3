@@ -19,6 +19,10 @@ interface FluxMatData {
   opacity?: number;
   doubleSided?: boolean;
   wireframe?: boolean;
+  alphaTest?: number;
+  envMapIntensity?: number;
+  normalScale?: number;
+  aoIntensity?: number;
   albedoMap?: string;
   normalMap?: string;
   roughnessMap?: string;
@@ -201,6 +205,34 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
           <Checkbox
             checked={data.wireframe ?? false}
             onChange={(v) => update({ wireframe: v })}
+          />
+        </PropertyRow>
+        <PropertyRow label="Alpha Test">
+          <Slider
+            value={data.alphaTest ?? 0}
+            onChange={(v) => update({ alphaTest: v })}
+            min={0} max={1} step={0.01}
+          />
+        </PropertyRow>
+        <PropertyRow label="Env Map Int.">
+          <Slider
+            value={data.envMapIntensity ?? 1}
+            onChange={(v) => update({ envMapIntensity: v })}
+            min={0} max={5} step={0.1}
+          />
+        </PropertyRow>
+        <PropertyRow label="Normal Scale">
+          <Slider
+            value={data.normalScale ?? 1}
+            onChange={(v) => update({ normalScale: v })}
+            min={0} max={2} step={0.01}
+          />
+        </PropertyRow>
+        <PropertyRow label="AO Intensity">
+          <Slider
+            value={data.aoIntensity ?? 1}
+            onChange={(v) => update({ aoIntensity: v })}
+            min={0} max={5} step={0.1}
           />
         </PropertyRow>
       </Section>

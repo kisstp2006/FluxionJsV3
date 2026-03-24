@@ -64,6 +64,7 @@ export async function initEditorEngine(
   });
 
   const materials = new MaterialSystem();
+  engine.registerSubsystem('materials', materials);
   const assets = new AssetManager();
   engine.registerSubsystem('assets', assets);
   const input = new InputManager(engine);

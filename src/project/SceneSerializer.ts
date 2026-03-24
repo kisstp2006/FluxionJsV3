@@ -20,6 +20,7 @@ import {
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
+import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
 import { projectManager } from './ProjectManager';
 
 // ── Material serialization data ──
@@ -33,6 +34,17 @@ export interface SerializedMaterial {
   transparent?: boolean;
   opacity?: number;
   wireframe?: boolean;
+  doubleSided?: boolean;
+  alphaTest?: number;
+  normalScale?: number;
+  aoIntensity?: number;
+  envMapIntensity?: number;
+  albedoMap?: string;
+  normalMap?: string;
+  roughnessMap?: string;
+  metalnessMap?: string;
+  aoMap?: string;
+  emissiveMap?: string;
 }
 
 export interface SerializedGeometry {
@@ -110,6 +122,11 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
         }
       }
 
+      // Store materialPath if the entity references a .fluxmat asset
+      if (meshComp.materialPath) {
+        data.materialPath = meshComp.materialPath;
+      }
+
       // Serialize material (both primitives and models can have overridden materials)
       if (meshComp.mesh instanceof THREE.Mesh) {
         const mat = meshComp.mesh.material;
@@ -126,6 +143,30 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           if (mat.transparent) {
             data.material.transparent = true;
             data.material.opacity = mat.opacity;
+          }
+          if (mat.side === THREE.DoubleSide) {
+            data.material.doubleSided = true;
+          }
+          if (mat.wireframe) {
+            data.material.wireframe = true;
+          }
+          if (mat.alphaTest > 0) {
+            data.material.alphaTest = mat.alphaTest;
+          }
+          // Serialize texture map paths (stored on userData by the loader)
+          const mapKeys = ['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+          for (const key of mapKeys) {
+            const texPath = (mat.userData as any)?.[key];
+            if (texPath) data.material[key] = texPath;
+          }
+          if (mat.normalScale && (mat.normalScale.x !== 1 || mat.normalScale.y !== 1)) {
+            data.material.normalScale = mat.normalScale.x;
+          }
+          if (mat.aoMapIntensity !== undefined && mat.aoMapIntensity !== 1) {
+            data.material.aoIntensity = mat.aoMapIntensity;
+          }
+          if (mat.envMapIntensity !== undefined && mat.envMapIntensity !== 1) {
+            data.material.envMapIntensity = mat.envMapIntensity;
           }
         }
       }
@@ -287,6 +328,9 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
   // Deferred model loads — collected here, awaited after entity creation
   const deferredModelLoads: Array<{ meshComp: MeshRendererComponent; modelPath: string }> = [];
 
+  // Deferred material (fluxmat) loads
+  const deferredMaterialLoads: Array<{ meshComp: MeshRendererComponent; materialPath: string }> = [];
+
   // Build entity ID mapping (old ID → new ID)
   const idMap = new Map<number, EntityId>();
 
@@ -313,6 +357,10 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           m.castShadow = d.castShadow ?? true;
           m.receiveShadow = d.receiveShadow ?? true;
 
+          if (d.materialPath) {
+            m.materialPath = d.materialPath;
+          }
+
           if (d.modelPath) {
             // 3D model asset — load async, mesh appears when ready
             m.modelPath = d.modelPath;
@@ -337,10 +385,41 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
               material.transparent = true;
               material.opacity = matData.opacity ?? 1;
             }
+            if (matData.doubleSided) {
+              material.side = THREE.DoubleSide;
+            }
+            if (matData.wireframe) {
+              material.wireframe = true;
+            }
+            if (matData.alphaTest) {
+              material.alphaTest = matData.alphaTest;
+            }
+            if (matData.normalScale !== undefined) {
+              material.normalScale = new THREE.Vector2(matData.normalScale, matData.normalScale);
+            }
+            if (matData.aoIntensity !== undefined) {
+              material.aoMapIntensity = matData.aoIntensity;
+            }
+            if (matData.envMapIntensity !== undefined) {
+              material.envMapIntensity = matData.envMapIntensity;
+            }
+            // Store texture map paths on userData for round-trip serialization
+            const mapKeys = ['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+            for (const key of mapKeys) {
+              if (matData[key]) {
+                if (!material.userData) material.userData = {};
+                material.userData[key] = matData[key];
+              }
+            }
 
             m.mesh = new THREE.Mesh(geometry, material);
             m.mesh.castShadow = m.castShadow;
             m.mesh.receiveShadow = m.receiveShadow;
+          }
+
+          // If a .fluxmat path is set, schedule deferred material load (overrides inline material)
+          if (m.materialPath) {
+            deferredMaterialLoads.push({ meshComp: m, materialPath: m.materialPath });
           }
 
           engine.ecs.addComponent(entityId, m);
@@ -462,6 +541,11 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
   for (const deferred of deferredModelLoads) {
     loadDeferredModel(engine, deferred.meshComp, deferred.modelPath);
   }
+
+  // Load deferred .fluxmat material assets (fire-and-forget, non-blocking)
+  for (const deferred of deferredMaterialLoads) {
+    loadDeferredMaterial(engine, deferred.meshComp, deferred.materialPath);
+  }
 }
 
 /** Resolve path and load a 3D model asset onto a MeshRendererComponent */
@@ -491,6 +575,64 @@ async function loadDeferredModel(
     meshComp.mesh = scene;
   } catch (err) {
     console.error(`[SceneSerializer] Failed to load model "${modelPath}":`, err);
+  }
+}
+
+/** Resolve a .fluxmat path and apply the material to a MeshRendererComponent */
+async function loadDeferredMaterial(
+  engine: Engine,
+  meshComp: MeshRendererComponent,
+  materialPath: string,
+): Promise<void> {
+  try {
+    let absPath: string;
+    try {
+      absPath = projectManager.resolvePath(materialPath);
+    } catch {
+      absPath = materialPath;
+    }
+
+    const assets = engine.getSubsystem('assets') as AssetManager;
+    const matData = await assets.loadAsset(absPath, 'material') as FluxMatData | null;
+    if (!matData) return;
+
+    const materials = engine.getSubsystem('materials') as MaterialSystem;
+    if (!materials) return;
+
+    // Texture loader: resolve relative paths to file:// URLs
+    const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+      let texAbsPath: string;
+      try {
+        texAbsPath = projectManager.resolvePath(relPath);
+      } catch {
+        texAbsPath = relPath;
+      }
+      const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+      return assets.loadTexture(texUrl);
+    };
+
+    const mat = await materials.createFromFluxMat(matData, loadTexture, materialPath);
+
+    // Store texture map paths in userData for round-trip serialization
+    const mapKeys = ['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+    for (const key of mapKeys) {
+      if (matData[key]) {
+        mat.userData[key] = matData[key];
+      }
+    }
+
+    // Apply to mesh
+    if (meshComp.mesh instanceof THREE.Mesh) {
+      meshComp.mesh.material = mat;
+    } else if (meshComp.mesh instanceof THREE.Group) {
+      meshComp.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.material = mat;
+        }
+      });
+    }
+  } catch (err) {
+    console.error(`[SceneSerializer] Failed to load material "${materialPath}":`, err);
   }
 }
 

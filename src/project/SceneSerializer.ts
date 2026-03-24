@@ -1,0 +1,493 @@
+// ============================================================
+// FluxionJS V2 — Scene Serializer
+// Full round-trip: ECS ↔ JSON ↔ Disk
+// Nuake-style entity serialization with geometry/material reconstruction
+// ============================================================
+
+import * as THREE from 'three';
+import { Engine } from '../core/Engine';
+import { ECSManager, EntityId } from '../core/ECS';
+import {
+  TransformComponent,
+  MeshRendererComponent,
+  CameraComponent,
+  LightComponent,
+  RigidbodyComponent,
+  ColliderComponent,
+  ScriptComponent,
+  ParticleEmitterComponent,
+  AudioSourceComponent,
+} from '../core/Components';
+import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
+
+// ── Material serialization data ──
+
+export interface SerializedMaterial {
+  color: [number, number, number];
+  roughness: number;
+  metalness: number;
+  emissive?: [number, number, number];
+  emissiveIntensity?: number;
+  transparent?: boolean;
+  opacity?: number;
+  wireframe?: boolean;
+}
+
+export interface SerializedGeometry {
+  // Box
+  width?: number;
+  height?: number;
+  depth?: number;
+  // Sphere
+  radius?: number;
+  // Cylinder / Cone / Capsule
+  radiusTop?: number;
+  radiusBottom?: number;
+  // Torus
+  tube?: number;
+}
+
+export interface SceneFileData {
+  name: string;
+  version: number;
+  settings: SceneSettings & { backgroundColor?: [number, number, number] };
+  editorCamera?: {
+    position: [number, number, number];
+    target: [number, number, number];
+    fov: number;
+  };
+  entities: SerializedEntity[];
+}
+
+// ── Serialize from ECS to JSON ──
+
+export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THREE.PerspectiveCamera, orbitTarget?: THREE.Vector3): SceneFileData {
+  const entities: SerializedEntity[] = [];
+
+  for (const entityId of engine.ecs.getAllEntities()) {
+    const components: SerializedComponent[] = [];
+
+    const transform = engine.ecs.getComponent<TransformComponent>(entityId, 'Transform');
+    if (transform) {
+      components.push({
+        type: 'Transform',
+        data: {
+          position: [transform.position.x, transform.position.y, transform.position.z],
+          rotation: [transform.rotation.x, transform.rotation.y, transform.rotation.z],
+          scale: [transform.scale.x, transform.scale.y, transform.scale.z],
+        },
+      });
+    }
+
+    const meshComp = engine.ecs.getComponent<MeshRendererComponent>(entityId, 'MeshRenderer');
+    if (meshComp) {
+      const data: Record<string, any> = {
+        primitiveType: meshComp.primitiveType || 'cube',
+        castShadow: meshComp.castShadow,
+        receiveShadow: meshComp.receiveShadow,
+      };
+
+      // Serialize geometry dimensions
+      if (meshComp.mesh instanceof THREE.Mesh) {
+        const geom = meshComp.mesh.geometry;
+        const params = (geom as any).parameters || {};
+        data.geometry = {};
+        if (params.width !== undefined) data.geometry.width = params.width;
+        if (params.height !== undefined) data.geometry.height = params.height;
+        if (params.depth !== undefined) data.geometry.depth = params.depth;
+        if (params.radius !== undefined) data.geometry.radius = params.radius;
+        if (params.radiusTop !== undefined) data.geometry.radiusTop = params.radiusTop;
+        if (params.radiusBottom !== undefined) data.geometry.radiusBottom = params.radiusBottom;
+        if (params.tube !== undefined) data.geometry.tube = params.tube;
+
+        // Serialize material
+        const mat = meshComp.mesh.material;
+        if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+          data.material = {
+            color: [mat.color.r, mat.color.g, mat.color.b],
+            roughness: mat.roughness,
+            metalness: mat.metalness,
+          };
+          if (mat.emissive && (mat.emissive.r > 0 || mat.emissive.g > 0 || mat.emissive.b > 0)) {
+            data.material.emissive = [mat.emissive.r, mat.emissive.g, mat.emissive.b];
+            data.material.emissiveIntensity = mat.emissiveIntensity;
+          }
+          if (mat.transparent) {
+            data.material.transparent = true;
+            data.material.opacity = mat.opacity;
+          }
+        }
+      }
+
+      components.push({ type: 'MeshRenderer', data });
+    }
+
+    const cam = engine.ecs.getComponent<CameraComponent>(entityId, 'Camera');
+    if (cam) {
+      components.push({
+        type: 'Camera',
+        data: {
+          fov: cam.fov, near: cam.near, far: cam.far,
+          isOrthographic: cam.isOrthographic, orthoSize: cam.orthoSize, priority: cam.priority,
+        },
+      });
+    }
+
+    const light = engine.ecs.getComponent<LightComponent>(entityId, 'Light');
+    if (light) {
+      components.push({
+        type: 'Light',
+        data: {
+          lightType: light.lightType,
+          color: [light.color.r, light.color.g, light.color.b],
+          intensity: light.intensity,
+          range: light.range,
+          castShadow: light.castShadow,
+          shadowMapSize: light.shadowMapSize,
+          spotAngle: light.spotAngle,
+          spotPenumbra: light.spotPenumbra,
+        },
+      });
+    }
+
+    const rb = engine.ecs.getComponent<RigidbodyComponent>(entityId, 'Rigidbody');
+    if (rb) {
+      components.push({
+        type: 'Rigidbody',
+        data: {
+          bodyType: rb.bodyType, mass: rb.mass, friction: rb.friction,
+          restitution: rb.restitution, gravityScale: rb.gravityScale,
+          linearDamping: rb.linearDamping, angularDamping: rb.angularDamping,
+        },
+      });
+    }
+
+    const col = engine.ecs.getComponent<ColliderComponent>(entityId, 'Collider');
+    if (col) {
+      components.push({
+        type: 'Collider',
+        data: {
+          shape: col.shape,
+          size: [col.size.x, col.size.y, col.size.z],
+          radius: col.radius, height: col.height, isTrigger: col.isTrigger,
+          offset: [col.offset.x, col.offset.y, col.offset.z],
+        },
+      });
+    }
+
+    const script = engine.ecs.getComponent<ScriptComponent>(entityId, 'Script');
+    if (script) {
+      components.push({
+        type: 'Script',
+        data: { scriptName: script.scriptName, properties: script.properties },
+      });
+    }
+
+    const particle = engine.ecs.getComponent<ParticleEmitterComponent>(entityId, 'ParticleEmitter');
+    if (particle) {
+      components.push({
+        type: 'ParticleEmitter',
+        data: {
+          maxParticles: particle.maxParticles, emissionRate: particle.emissionRate,
+          lifetime: [particle.lifetime.x, particle.lifetime.y],
+          speed: [particle.speed.x, particle.speed.y],
+          size: [particle.size.x, particle.size.y],
+          startColor: [particle.startColor.r, particle.startColor.g, particle.startColor.b],
+          endColor: [particle.endColor.r, particle.endColor.g, particle.endColor.b],
+          gravity: particle.gravity, spread: particle.spread,
+          worldSpace: particle.worldSpace, texture: particle.texture,
+        },
+      });
+    }
+
+    const audio = engine.ecs.getComponent<AudioSourceComponent>(entityId, 'AudioSource');
+    if (audio) {
+      components.push({
+        type: 'AudioSource',
+        data: {
+          clip: audio.clip, volume: audio.volume, pitch: audio.pitch,
+          loop: audio.loop, playOnStart: audio.playOnStart, spatial: audio.spatial,
+          minDistance: audio.minDistance, maxDistance: audio.maxDistance,
+        },
+      });
+    }
+
+    entities.push({
+      id: entityId,
+      name: engine.ecs.getEntityName(entityId),
+      parent: engine.ecs.getParent(entityId) ?? null,
+      tags: [],
+      components,
+    });
+  }
+
+  const result: SceneFileData = {
+    name: scene.name,
+    version: 1,
+    settings: { ...scene.settings },
+    entities,
+  };
+
+  if (editorCamera) {
+    result.editorCamera = {
+      position: [editorCamera.position.x, editorCamera.position.y, editorCamera.position.z],
+      target: orbitTarget ? [orbitTarget.x, orbitTarget.y, orbitTarget.z] : [0, 0, 0],
+      fov: editorCamera.fov,
+    };
+  }
+
+  return result;
+}
+
+// ── Deserialize JSON to ECS ──
+
+export function deserializeScene(engine: Engine, data: SceneFileData, scene: Scene): void {
+  // Clear existing entities
+  scene.clear();
+
+  // Apply scene settings
+  scene.name = data.name;
+  if (data.settings) {
+    scene.settings = {
+      ambientColor: data.settings.ambientColor || [0.2, 0.2, 0.3],
+      ambientIntensity: data.settings.ambientIntensity ?? 0.5,
+      fogEnabled: data.settings.fogEnabled ?? true,
+      fogColor: data.settings.fogColor || [0.1, 0.1, 0.15],
+      fogDensity: data.settings.fogDensity ?? 0.005,
+      skybox: data.settings.skybox || null,
+      physicsGravity: data.settings.physicsGravity || [0, -9.81, 0],
+    };
+  }
+
+  // Apply scene environment
+  const bgColor = data.settings?.backgroundColor || data.settings?.fogColor || [0.04, 0.055, 0.09];
+  const renderer = engine.getSubsystem<any>('renderer');
+  if (renderer) {
+    renderer.scene.background = new THREE.Color(bgColor[0], bgColor[1], bgColor[2]);
+    if (data.settings?.fogEnabled) {
+      renderer.scene.fog = new THREE.FogExp2(
+        new THREE.Color(data.settings.fogColor[0], data.settings.fogColor[1], data.settings.fogColor[2]).getHex(),
+        data.settings.fogDensity
+      );
+    }
+  }
+
+  // Build entity ID mapping (old ID → new ID)
+  const idMap = new Map<number, EntityId>();
+
+  for (const entityData of data.entities) {
+    const entityId = engine.ecs.createEntity(entityData.name);
+    idMap.set(entityData.id, entityId);
+
+    for (const comp of entityData.components) {
+      switch (comp.type) {
+        case 'Transform': {
+          const t = new TransformComponent();
+          const d = comp.data;
+          if (d.position) t.position.set(d.position[0], d.position[1], d.position[2]);
+          if (d.rotation) t.rotation.set(d.rotation[0], d.rotation[1], d.rotation[2]);
+          if (d.scale) t.scale.set(d.scale[0], d.scale[1], d.scale[2]);
+          t.quaternion.setFromEuler(t.rotation);
+          engine.ecs.addComponent(entityId, t);
+          break;
+        }
+
+        case 'MeshRenderer': {
+          const m = new MeshRendererComponent();
+          const d = comp.data;
+          m.primitiveType = d.primitiveType || 'cube';
+          m.castShadow = d.castShadow ?? true;
+          m.receiveShadow = d.receiveShadow ?? true;
+
+          // Reconstruct geometry
+          const geom = d.geometry || {};
+          const geometry = buildGeometry(m.primitiveType || 'cube', geom);
+
+          // Reconstruct material
+          const matData = d.material || {};
+          const material = new THREE.MeshStandardMaterial({
+            color: matData.color ? new THREE.Color(matData.color[0], matData.color[1], matData.color[2]) : 0x888888,
+            roughness: matData.roughness ?? 0.6,
+            metalness: matData.metalness ?? 0.1,
+          });
+          if (matData.emissive) {
+            material.emissive = new THREE.Color(matData.emissive[0], matData.emissive[1], matData.emissive[2]);
+            material.emissiveIntensity = matData.emissiveIntensity ?? 1;
+          }
+          if (matData.transparent) {
+            material.transparent = true;
+            material.opacity = matData.opacity ?? 1;
+          }
+
+          m.mesh = new THREE.Mesh(geometry, material);
+          m.mesh.castShadow = m.castShadow;
+          m.mesh.receiveShadow = m.receiveShadow;
+          engine.ecs.addComponent(entityId, m);
+          break;
+        }
+
+        case 'Camera': {
+          const c = new CameraComponent();
+          const d = comp.data;
+          c.fov = d.fov ?? 60;
+          c.near = d.near ?? 0.1;
+          c.far = d.far ?? 1000;
+          c.isOrthographic = d.isOrthographic ?? false;
+          c.orthoSize = d.orthoSize ?? 10;
+          c.priority = d.priority ?? 0;
+          engine.ecs.addComponent(entityId, c);
+          break;
+        }
+
+        case 'Light': {
+          const l = new LightComponent();
+          const d = comp.data;
+          l.lightType = d.lightType || 'point';
+          if (d.color) l.color = new THREE.Color(d.color[0], d.color[1], d.color[2]);
+          l.intensity = d.intensity ?? 1;
+          l.range = d.range ?? 10;
+          l.castShadow = d.castShadow ?? true;
+          l.shadowMapSize = d.shadowMapSize ?? 2048;
+          l.spotAngle = d.spotAngle ?? 45;
+          l.spotPenumbra = d.spotPenumbra ?? 0.1;
+          engine.ecs.addComponent(entityId, l);
+          break;
+        }
+
+        case 'Rigidbody': {
+          const r = new RigidbodyComponent();
+          const d = comp.data;
+          r.bodyType = d.bodyType || 'dynamic';
+          r.mass = d.mass ?? 1;
+          r.friction = d.friction ?? 0.5;
+          r.restitution = d.restitution ?? 0.3;
+          r.gravityScale = d.gravityScale ?? 1;
+          r.linearDamping = d.linearDamping ?? 0;
+          r.angularDamping = d.angularDamping ?? 0.05;
+          engine.ecs.addComponent(entityId, r);
+          break;
+        }
+
+        case 'Collider': {
+          const c = new ColliderComponent();
+          const d = comp.data;
+          c.shape = d.shape || 'box';
+          if (d.size) c.size.set(d.size[0], d.size[1], d.size[2]);
+          c.radius = d.radius ?? 0.5;
+          c.height = d.height ?? 2;
+          c.isTrigger = d.isTrigger ?? false;
+          if (d.offset) c.offset.set(d.offset[0], d.offset[1], d.offset[2]);
+          engine.ecs.addComponent(entityId, c);
+          break;
+        }
+
+        case 'Script': {
+          const s = new ScriptComponent();
+          s.scriptName = comp.data.scriptName || '';
+          s.properties = comp.data.properties || {};
+          engine.ecs.addComponent(entityId, s);
+          break;
+        }
+
+        case 'ParticleEmitter': {
+          const p = new ParticleEmitterComponent();
+          const d = comp.data;
+          p.maxParticles = d.maxParticles ?? 1000;
+          p.emissionRate = d.emissionRate ?? 100;
+          if (d.lifetime) p.lifetime.set(d.lifetime[0], d.lifetime[1]);
+          if (d.speed) p.speed.set(d.speed[0], d.speed[1]);
+          if (d.size) p.size.set(d.size[0], d.size[1]);
+          if (d.startColor) p.startColor = new THREE.Color(d.startColor[0], d.startColor[1], d.startColor[2]);
+          if (d.endColor) p.endColor = new THREE.Color(d.endColor[0], d.endColor[1], d.endColor[2]);
+          p.gravity = d.gravity ?? -9.81;
+          p.spread = d.spread ?? 0.5;
+          p.worldSpace = d.worldSpace ?? true;
+          p.texture = d.texture ?? null;
+          engine.ecs.addComponent(entityId, p);
+          break;
+        }
+
+        case 'AudioSource': {
+          const a = new AudioSourceComponent();
+          const d = comp.data;
+          a.clip = d.clip || '';
+          a.volume = d.volume ?? 1;
+          a.pitch = d.pitch ?? 1;
+          a.loop = d.loop ?? false;
+          a.playOnStart = d.playOnStart ?? false;
+          a.spatial = d.spatial ?? true;
+          a.minDistance = d.minDistance ?? 1;
+          a.maxDistance = d.maxDistance ?? 50;
+          engine.ecs.addComponent(entityId, a);
+          break;
+        }
+      }
+    }
+  }
+
+  // Restore parent-child relationships
+  for (const entityData of data.entities) {
+    if (entityData.parent !== null && entityData.parent !== undefined) {
+      const childId = idMap.get(entityData.id);
+      const parentId = idMap.get(entityData.parent);
+      if (childId !== undefined && parentId !== undefined) {
+        engine.ecs.setParent(childId, parentId);
+      }
+    }
+  }
+}
+
+// ── Geometry reconstruction ──
+
+function buildGeometry(primitiveType: string, params: any): THREE.BufferGeometry {
+  switch (primitiveType) {
+    case 'cube':
+      return new THREE.BoxGeometry(params.width ?? 1, params.height ?? 1, params.depth ?? 1);
+    case 'sphere':
+      return new THREE.SphereGeometry(params.radius ?? 0.5, 32, 32);
+    case 'cylinder':
+      return new THREE.CylinderGeometry(
+        params.radiusTop ?? 0.5, params.radiusBottom ?? 0.5, params.height ?? 1, 32
+      );
+    case 'cone':
+      return new THREE.ConeGeometry(params.radius ?? 0.5, params.height ?? 1, 32);
+    case 'plane':
+      return new THREE.PlaneGeometry(params.width ?? 1, params.height ?? 1).rotateX(-Math.PI / 2);
+    case 'capsule':
+      return new THREE.CapsuleGeometry(params.radius ?? 0.3, params.height ?? 0.6, 8, 16);
+    case 'torus':
+      return new THREE.TorusGeometry(params.radius ?? 0.5, params.tube ?? 0.15, 16, 48);
+    default:
+      return new THREE.BoxGeometry(1, 1, 1);
+  }
+}
+
+// ── File I/O helpers ──
+
+export async function saveSceneToFile(
+  scene: Scene,
+  engine: Engine,
+  filePath: string,
+  editorCamera?: THREE.PerspectiveCamera,
+  orbitTarget?: THREE.Vector3
+): Promise<void> {
+  const api = window.fluxionAPI;
+  if (!api) throw new Error('fluxionAPI not available');
+
+  const data = serializeScene(scene, engine, editorCamera, orbitTarget);
+  await api.writeFile(filePath, JSON.stringify(data, null, 2));
+}
+
+export async function loadSceneFromFile(
+  engine: Engine,
+  scene: Scene,
+  filePath: string
+): Promise<SceneFileData> {
+  const api = window.fluxionAPI;
+  if (!api) throw new Error('fluxionAPI not available');
+
+  const content = await api.readFile(filePath);
+  const data = JSON.parse(content) as SceneFileData;
+  deserializeScene(engine, data, scene);
+  return data;
+}

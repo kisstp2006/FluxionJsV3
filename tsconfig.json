@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@core/*": ["src/core/*"],
+      "@renderer/*": ["src/renderer/*"],
+      "@physics/*": ["src/physics/*"],
+      "@scene/*": ["src/scene/*"],
+      "@input/*": ["src/input/*"],
+      "@audio/*": ["src/audio/*"],
+      "@assets/*": ["src/assets/*"],
+      "@editor/*": ["editor/*"]
+    }
+  },
+  "include": ["src/**/*", "editor/**/*", "electron/**/*", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,106 @@
+/* ============================================================
+   FluxionJS V2 — Editor Global Styles
+   Dark professional UI — s&box + LumixEngine + Nuake inspired
+   ============================================================ */
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2333;
+  --bg-panel: #13171f;
+  --bg-hover: #1f2937;
+  --bg-active: #253249;
+  --bg-input: #0d1117;
+  --border: #30363d;
+  --border-focus: #58a6ff;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-yellow: #d29922;
+  --accent-purple: #bc8cff;
+  --axis-x: #f85149;
+  --axis-y: #3fb950;
+  --axis-z: #58a6ff;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --panel-radius: 6px;
+  --transition: 150ms ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #editor-root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Utility classes ── */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-1 { flex: 1; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 2px; }
+.gap-4 { gap: 4px; }
+.gap-8 { gap: 8px; }
+.overflow-auto { overflow: auto; }
+.overflow-hidden { overflow: hidden; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.pointer-events-none { pointer-events: none; }
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

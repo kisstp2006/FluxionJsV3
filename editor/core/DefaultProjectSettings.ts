@@ -77,11 +77,12 @@ const renderingSettings: SettingDescriptor[] = [
   {
     key: 'project.rendering.shadowMapSize',
     label: 'Shadow Map Size',
-    description: 'Default shadow map resolution for lights.',
+    description: 'Default shadow map resolution for lights. Requires restart.',
     type: 'select',
     defaultValue: '2048',
     category: 'Rendering',
     order: 2,
+    requiresRestart: true,
     options: [
       { value: '512', label: '512' },
       { value: '1024', label: '1024' },
@@ -132,11 +133,12 @@ const renderingSettings: SettingDescriptor[] = [
   {
     key: 'project.rendering.antialias',
     label: 'Antialiasing',
-    description: 'Enable MSAA antialiasing in game builds.',
+    description: 'Enable MSAA antialiasing in game builds. Requires restart.',
     type: 'boolean',
     defaultValue: true,
     category: 'Rendering/Quality',
     order: 2,
+    requiresRestart: true,
   },
   {
     key: 'project.rendering.bloom',
@@ -162,11 +164,12 @@ const renderingSettings: SettingDescriptor[] = [
   {
     key: 'project.rendering.fxaa',
     label: 'FXAA',
-    description: 'Enable FXAA pass in game builds.',
+    description: 'Enable FXAA pass in game builds. Requires restart.',
     type: 'boolean',
     defaultValue: true,
     category: 'Rendering/Quality',
     order: 5,
+    requiresRestart: true,
   },
   {
     key: 'project.rendering.vignette',
@@ -262,11 +265,12 @@ const audioSettings: SettingDescriptor[] = [
   {
     key: 'project.audio.spatialModel',
     label: 'Spatial Audio Model',
-    description: 'Default spatialization model.',
+    description: 'Default spatialization model. Requires restart.',
     type: 'select',
     defaultValue: 'HRTF',
     category: 'Audio',
     order: 2,
+    requiresRestart: true,
     options: [
       { value: 'HRTF', label: 'HRTF' },
       { value: 'equalpower', label: 'Equal Power' },

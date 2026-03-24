@@ -33,6 +33,8 @@ class ProjectSettingsRegistryImpl {
   private _values = new Map<string, unknown>();
   private _categories = new Map<string, CategoryInfo>();
   private _listeners: ProjectSettingsListener[] = [];
+  private _restartSnapshots = new Map<string, unknown>();
+  private _pendingRestart = new Set<string>();
 
   // ── Registration ──
 
@@ -73,6 +75,15 @@ class ProjectSettingsRegistryImpl {
         console.error(`[ProjectSettingsRegistry] onChange error for "${key}":`, e);
       }
     }
+    // Track restart-required changes against startup snapshot
+    if (desc?.requiresRestart && this._restartSnapshots.has(key)) {
+      const snap = this._restartSnapshots.get(key);
+      if (JSON.stringify(value) !== JSON.stringify(snap)) {
+        this._pendingRestart.add(key);
+      } else {
+        this._pendingRestart.delete(key);
+      }
+    }
     this._emit({ type: 'changed', key, value, previousValue: previous });
   }
 
@@ -91,6 +102,29 @@ class ProjectSettingsRegistryImpl {
     const desc = this._settings.get(key);
     if (!desc) return false;
     return JSON.stringify(this._values.get(key)) !== JSON.stringify(desc.defaultValue);
+  }
+
+  // ── Restart Tracking ──
+
+  snapshotRestartValues(): void {
+    this._pendingRestart.clear();
+    for (const [key, desc] of this._settings) {
+      if (desc.requiresRestart) {
+        this._restartSnapshots.set(key, structuredClone(this._values.get(key)));
+      }
+    }
+  }
+
+  hasPendingRestart(): boolean {
+    return this._pendingRestart.size > 0;
+  }
+
+  isRestartPending(key: string): boolean {
+    return this._pendingRestart.has(key);
+  }
+
+  getPendingRestartKeys(): string[] {
+    return Array.from(this._pendingRestart);
   }
 
   // ── Query ──

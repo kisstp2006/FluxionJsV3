@@ -9,131 +9,10 @@ import { Icons } from '../ui/Icons';
 
 // ── Category Registration ──
 
-SettingsRegistry.registerCategory('Renderer', { label: 'Renderer', icon: Icons.monitor, order: 10 });
-SettingsRegistry.registerCategory('Renderer/Shadows', { label: 'Shadows', icon: Icons.moon, order: 11 });
-SettingsRegistry.registerCategory('Renderer/Post Processing', { label: 'Post Processing', icon: Icons.particle, order: 12 });
 SettingsRegistry.registerCategory('Editor', { label: 'Editor', icon: Icons.settings, order: 20 });
 SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: Icons.eye, order: 21 });
 SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: Icons.move, order: 22 });
-SettingsRegistry.registerCategory('Physics', { label: 'Physics', icon: Icons.physics, order: 30 });
 SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
-
-// ── Renderer Settings ──
-
-const rendererSettings: SettingDescriptor[] = [
-  {
-    key: 'renderer.antialias',
-    label: 'Antialiasing',
-    description: 'Enable MSAA antialiasing for smoother edges. Requires restart.',
-    type: 'boolean',
-    defaultValue: true,
-    category: 'Renderer',
-    order: 1,
-  },
-  {
-    key: 'renderer.pixelRatio',
-    label: 'Pixel Ratio',
-    description: 'Rendering resolution multiplier. Higher values improve quality but decrease performance.',
-    type: 'slider',
-    defaultValue: 1,
-    category: 'Renderer',
-    order: 2,
-    min: 0.5,
-    max: 2,
-    step: 0.25,
-  },
-  {
-    key: 'renderer.toneMapping',
-    label: 'Tone Mapping',
-    description: 'HDR to LDR tone mapping algorithm.',
-    type: 'select',
-    defaultValue: 'ACES',
-    category: 'Renderer',
-    order: 3,
-    options: [
-      { value: 'None', label: 'None' },
-      { value: 'Linear', label: 'Linear' },
-      { value: 'Reinhard', label: 'Reinhard' },
-      { value: 'ACES', label: 'ACES Filmic' },
-      { value: 'AgX', label: 'AgX' },
-    ],
-  },
-  {
-    key: 'renderer.toneMappingExposure',
-    label: 'Exposure',
-    description: 'Tone mapping exposure level.',
-    type: 'slider',
-    defaultValue: 1.2,
-    category: 'Renderer',
-    order: 4,
-    min: 0.1,
-    max: 5,
-    step: 0.1,
-  },
-  {
-    key: 'renderer.shadows.enabled',
-    label: 'Shadows',
-    description: 'Enable real-time shadow mapping.',
-    type: 'boolean',
-    defaultValue: true,
-    category: 'Renderer/Shadows',
-    order: 1,
-  },
-  {
-    key: 'renderer.shadows.mapSize',
-    label: 'Shadow Map Size',
-    description: 'Resolution of shadow maps in pixels. Higher values produce sharper shadows.',
-    type: 'select',
-    defaultValue: '2048',
-    category: 'Renderer/Shadows',
-    order: 2,
-    options: [
-      { value: '512', label: '512' },
-      { value: '1024', label: '1024' },
-      { value: '2048', label: '2048' },
-      { value: '4096', label: '4096' },
-    ],
-  },
-  {
-    key: 'renderer.postProcessing.bloom',
-    label: 'Bloom',
-    description: 'Enable bloom post-processing effect for bright areas.',
-    type: 'boolean',
-    defaultValue: true,
-    category: 'Renderer/Post Processing',
-    order: 1,
-  },
-  {
-    key: 'renderer.postProcessing.bloomIntensity',
-    label: 'Bloom Intensity',
-    description: 'Strength of the bloom effect.',
-    type: 'slider',
-    defaultValue: 0.5,
-    category: 'Renderer/Post Processing',
-    order: 2,
-    min: 0,
-    max: 3,
-    step: 0.1,
-  },
-  {
-    key: 'renderer.postProcessing.fxaa',
-    label: 'FXAA',
-    description: 'Enable FXAA post-processing antialiasing pass.',
-    type: 'boolean',
-    defaultValue: true,
-    category: 'Renderer/Post Processing',
-    order: 3,
-  },
-  {
-    key: 'renderer.postProcessing.vignette',
-    label: 'Vignette',
-    description: 'Enable vignette darkening around screen edges.',
-    type: 'boolean',
-    defaultValue: false,
-    category: 'Renderer/Post Processing',
-    order: 4,
-  },
-];
 
 // ── Editor Settings ──
 
@@ -288,43 +167,14 @@ const editorSettings: SettingDescriptor[] = [
     max: 10,
     step: 0.05,
   },
-];
-
-// ── Physics Settings ──
-
-const physicsSettings: SettingDescriptor[] = [
   {
-    key: 'physics.gravity',
-    label: 'Gravity',
-    description: 'Gravitational acceleration (Y-axis, negative = downward).',
-    type: 'number',
-    defaultValue: -9.81,
-    category: 'Physics',
-    order: 1,
-    min: -100,
-    max: 100,
-    step: 0.1,
-  },
-  {
-    key: 'physics.fixedTimestep',
-    label: 'Fixed Timestep',
-    description: 'Physics simulation timestep in seconds. Lower values are more precise but slower.',
-    type: 'number',
-    defaultValue: 1 / 60,
-    category: 'Physics',
-    order: 2,
-    min: 0.001,
-    max: 0.1,
-    step: 0.001,
-  },
-  {
-    key: 'physics.debugDraw',
-    label: 'Debug Draw',
+    key: 'editor.viewport.physicsDebugDraw',
+    label: 'Physics Debug Draw',
     description: 'Show physics collider wireframes in the viewport.',
     type: 'boolean',
     defaultValue: false,
-    category: 'Physics',
-    order: 3,
+    category: 'Editor/Viewport',
+    order: 7,
   },
 ];
 
@@ -357,8 +207,6 @@ const audioSettings: SettingDescriptor[] = [
 // ── Register All ──
 
 export function registerDefaultSettings(): void {
-  SettingsRegistry.registerMany(rendererSettings);
   SettingsRegistry.registerMany(editorSettings);
-  SettingsRegistry.registerMany(physicsSettings);
   SettingsRegistry.registerMany(audioSettings);
 }

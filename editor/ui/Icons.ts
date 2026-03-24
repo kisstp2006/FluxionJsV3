@@ -62,6 +62,7 @@ import {
   CircleDot,
   RectangleHorizontal,
   Pill,
+  TriangleAlert,
   type LucideProps,
 } from 'lucide-react';
 
@@ -149,6 +150,9 @@ export const Icons = {
 
   // Lights
   pointLight: ic(Lightbulb),
+
+  // Status
+  warning:    ic(TriangleAlert),
 
   // Labels (keep as text for space toggles)
   localSpace: 'L' as unknown as React.ReactElement,

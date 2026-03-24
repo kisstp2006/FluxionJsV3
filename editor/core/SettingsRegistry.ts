@@ -36,6 +36,8 @@ export interface SettingDescriptor<T = unknown> {
   step?: number;
   /** Optional callback invoked when value changes */
   onChange?: (value: T) => void;
+  /** If true, changes to this setting require an editor restart to take effect. */
+  requiresRestart?: boolean;
 }
 
 // ── Category Info ──
@@ -69,6 +71,8 @@ class SettingsRegistryImpl {
   private _values = new Map<string, unknown>();
   private _categories = new Map<string, CategoryInfo>();
   private _listeners: SettingsListener[] = [];
+  private _restartSnapshots = new Map<string, unknown>();
+  private _pendingRestart = new Set<string>();
 
   // ── Registration ──
 
@@ -121,6 +125,15 @@ class SettingsRegistryImpl {
         console.error(`[SettingsRegistry] onChange error for "${key}":`, e);
       }
     }
+    // Track restart-required changes against startup snapshot
+    if (desc?.requiresRestart && this._restartSnapshots.has(key)) {
+      const snap = this._restartSnapshots.get(key);
+      if (JSON.stringify(value) !== JSON.stringify(snap)) {
+        this._pendingRestart.add(key);
+      } else {
+        this._pendingRestart.delete(key);
+      }
+    }
     this._emit({ type: 'changed', key, value, previousValue: previous });
   }
 
@@ -144,6 +157,33 @@ class SettingsRegistryImpl {
     const desc = this._settings.get(key);
     if (!desc) return false;
     return JSON.stringify(this._values.get(key)) !== JSON.stringify(desc.defaultValue);
+  }
+
+  // ── Restart Tracking ──
+
+  /** Snapshot current values of all restart-required settings. Call once at bind/startup time. */
+  snapshotRestartValues(): void {
+    this._pendingRestart.clear();
+    for (const [key, desc] of this._settings) {
+      if (desc.requiresRestart) {
+        this._restartSnapshots.set(key, structuredClone(this._values.get(key)));
+      }
+    }
+  }
+
+  /** True if any restart-required setting has been changed since snapshot. */
+  hasPendingRestart(): boolean {
+    return this._pendingRestart.size > 0;
+  }
+
+  /** True if a specific setting has a pending restart. */
+  isRestartPending(key: string): boolean {
+    return this._pendingRestart.has(key);
+  }
+
+  /** All keys with pending restart. */
+  getPendingRestartKeys(): string[] {
+    return Array.from(this._pendingRestart);
   }
 
   // ── Query ──

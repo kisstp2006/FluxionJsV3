@@ -132,6 +132,7 @@ const SettingRow: React.FC<{
   isModified: boolean;
 }> = ({ descriptor, value, isModified }) => {
   const [hovered, setHovered] = useState(false);
+  const restartPending = descriptor.requiresRestart && SettingsRegistry.isRestartPending(descriptor.key);
 
   const handleChange = useCallback((v: unknown) => {
     SettingsRegistry.set(descriptor.key, v);
@@ -162,6 +163,23 @@ const SettingRow: React.FC<{
         </div>
         <ResetButton settingKey={descriptor.key} isModified={isModified} />
       </div>
+
+      {/* Restart required badge */}
+      {descriptor.requiresRestart && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          marginTop: '2px',
+          marginLeft: '2px',
+          fontSize: '10px',
+          color: restartPending ? 'var(--accent-yellow)' : 'var(--text-muted)',
+          opacity: restartPending ? 1 : 0.7,
+        }}>
+          {Icons.warning}
+          <span>{restartPending ? 'Restart required' : 'Requires restart'}</span>
+        </div>
+      )}
 
       {/* Description tooltip on hover */}
       {hovered && descriptor.description && (
@@ -482,6 +500,51 @@ export const SettingsPanel: React.FC<{
             )}
           </div>
         </div>
+
+        {/* Restart Banner */}
+        {SettingsRegistry.hasPendingRestart() && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 16px',
+            borderTop: '1px solid var(--border)',
+            background: 'rgba(210, 153, 34, 0.08)',
+          }}>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              color: 'var(--accent-yellow)',
+            }}>
+              {Icons.warning}
+              Some settings require an editor restart to take effect.
+            </span>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                background: 'var(--accent-yellow)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '4px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = '0.85';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = '1';
+              }}
+            >
+              Restart Editor
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

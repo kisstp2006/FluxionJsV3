@@ -202,16 +202,20 @@ class MeshRendererSystem implements System {
   priority = 0;
   enabled = true;
   private tracked: Set<EntityId> = new Set();
+  private trackedMesh: Map<EntityId, THREE.Mesh | THREE.Group | THREE.Object3D> = new Map();
 
   constructor(private renderer: FluxionRenderer) {}
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
-    // Add new meshes
+    // Add new meshes / detect mesh swaps
     for (const entity of entities) {
       const meshComp = ecs.getComponent<MeshRendererComponent>(entity, 'MeshRenderer');
       if (!meshComp?.mesh) continue;
 
+      const currentMesh = this.trackedMesh.get(entity);
+
       if (!this.tracked.has(entity)) {
+        // First time — add to scene
         meshComp.mesh.castShadow = meshComp.castShadow;
         meshComp.mesh.receiveShadow = meshComp.receiveShadow;
 
@@ -226,6 +230,25 @@ class MeshRendererSystem implements System {
 
         this.renderer.addObject(entity, meshComp.mesh);
         this.tracked.add(entity);
+        this.trackedMesh.set(entity, meshComp.mesh);
+      } else if (currentMesh !== meshComp.mesh) {
+        // Mesh reference changed — swap in scene
+        this.renderer.removeObject(entity);
+
+        meshComp.mesh.castShadow = meshComp.castShadow;
+        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
+
+        if (meshComp.mesh instanceof THREE.Group) {
+          meshComp.mesh.traverse(child => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = meshComp.castShadow;
+              child.receiveShadow = meshComp.receiveShadow;
+            }
+          });
+        }
+
+        this.renderer.addObject(entity, meshComp.mesh);
+        this.trackedMesh.set(entity, meshComp.mesh);
       } else if (isDirty(meshComp)) {
         // Sync shadow properties when component is dirty (Stride processor pattern)
         meshComp.mesh.castShadow = meshComp.castShadow;
@@ -249,6 +272,7 @@ class MeshRendererSystem implements System {
       if (!entities.has(entity)) {
         this.renderer.removeObject(entity);
         this.tracked.delete(entity);
+        this.trackedMesh.delete(entity);
       }
     }
   }

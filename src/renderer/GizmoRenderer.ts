@@ -146,4 +146,127 @@ export class GizmoRenderer {
       DebugDraw.drawLineBox(_p0, _p1, c);
     }
   }
+
+  // ── Camera Frustum Visualization ──
+  // Inspired by Stride/ezEngine camera gizmos: shows FOV, near/far planes, view direction
+
+  private static readonly _camColor = new THREE.Color(0.85, 0.65, 0.2);     // warm amber
+  private static readonly _camColorDim = new THREE.Color(0.5, 0.4, 0.15);   // dimmer for far edges
+  private static readonly _camNearColor = new THREE.Color(0.3, 0.8, 0.4);   // green near plane
+  private static readonly _camFarColor = new THREE.Color(0.8, 0.3, 0.3);    // red far plane
+
+  // Reusable vectors for frustum corners
+  private static readonly _fc: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
+  private static readonly _fwd = new THREE.Vector3();
+  private static readonly _up2 = new THREE.Vector3();
+  private static readonly _rt = new THREE.Vector3();
+
+  /**
+   * Draw a camera frustum gizmo showing FOV, near/far planes and direction.
+   * @param pos     Camera world position
+   * @param quat    Camera world rotation
+   * @param fov     Vertical FOV in degrees (perspective) 
+   * @param near    Near clip plane distance
+   * @param far     Far clip plane (clamped for visibility)
+   * @param aspect  Aspect ratio (width/height)
+   * @param isOrtho Whether orthographic
+   * @param orthoSize Orthographic half-size
+   * @param isSelected Whether the entity is currently selected (brighter)
+   */
+  static drawCameraFrustum(
+    pos: THREE.Vector3,
+    quat: THREE.Quaternion,
+    fov: number,
+    near: number,
+    far: number,
+    aspect: number,
+    isOrtho: boolean,
+    orthoSize: number,
+    isSelected: boolean,
+  ): void {
+    // Clamp far for visual clarity (don't draw 1000-unit-long frustum)
+    const visFar = Math.min(far, 15);
+
+    // Compute local axes
+    this._fwd.set(0, 0, -1).applyQuaternion(quat);
+    this._up2.set(0, 1, 0).applyQuaternion(quat);
+    this._rt.set(1, 0, 0).applyQuaternion(quat);
+
+    const fc = this._fc;
+
+    if (isOrtho) {
+      const hw = orthoSize * aspect;
+      const hh = orthoSize;
+      // Near plane corners (0-3), Far plane corners (4-7)
+      for (let i = 0; i < 2; i++) {
+        const dist = i === 0 ? near : visFar;
+        const base = i * 4;
+        const center = _p0.copy(pos).addScaledVector(this._fwd, dist);
+        fc[base + 0].copy(center).addScaledVector(this._rt, -hw).addScaledVector(this._up2, hh);
+        fc[base + 1].copy(center).addScaledVector(this._rt, hw).addScaledVector(this._up2, hh);
+        fc[base + 2].copy(center).addScaledVector(this._rt, hw).addScaledVector(this._up2, -hh);
+        fc[base + 3].copy(center).addScaledVector(this._rt, -hw).addScaledVector(this._up2, -hh);
+      }
+    } else {
+      const fovRad = THREE.MathUtils.degToRad(fov);
+      const nearH = Math.tan(fovRad * 0.5) * near;
+      const nearW = nearH * aspect;
+      const farH = Math.tan(fovRad * 0.5) * visFar;
+      const farW = farH * aspect;
+
+      // Near plane corners
+      const nc = _p0.copy(pos).addScaledVector(this._fwd, near);
+      fc[0].copy(nc).addScaledVector(this._rt, -nearW).addScaledVector(this._up2, nearH);
+      fc[1].copy(nc).addScaledVector(this._rt, nearW).addScaledVector(this._up2, nearH);
+      fc[2].copy(nc).addScaledVector(this._rt, nearW).addScaledVector(this._up2, -nearH);
+      fc[3].copy(nc).addScaledVector(this._rt, -nearW).addScaledVector(this._up2, -nearH);
+
+      // Far plane corners
+      const frc = _p1.copy(pos).addScaledVector(this._fwd, visFar);
+      fc[4].copy(frc).addScaledVector(this._rt, -farW).addScaledVector(this._up2, farH);
+      fc[5].copy(frc).addScaledVector(this._rt, farW).addScaledVector(this._up2, farH);
+      fc[6].copy(frc).addScaledVector(this._rt, farW).addScaledVector(this._up2, -farH);
+      fc[7].copy(frc).addScaledVector(this._rt, -farW).addScaledVector(this._up2, -farH);
+    }
+
+    const lineColor = isSelected ? this._camColor : this._camColorDim;
+    const nearC = isSelected ? this._camNearColor : this._camColorDim;
+    const farC = isSelected ? this._camFarColor : this._camColorDim;
+
+    // Near plane (green when selected)
+    DebugDraw.drawLineWorld(fc[0], fc[1], nearC);
+    DebugDraw.drawLineWorld(fc[1], fc[2], nearC);
+    DebugDraw.drawLineWorld(fc[2], fc[3], nearC);
+    DebugDraw.drawLineWorld(fc[3], fc[0], nearC);
+
+    // Far plane (red when selected)
+    DebugDraw.drawLineWorld(fc[4], fc[5], farC);
+    DebugDraw.drawLineWorld(fc[5], fc[6], farC);
+    DebugDraw.drawLineWorld(fc[6], fc[7], farC);
+    DebugDraw.drawLineWorld(fc[7], fc[4], farC);
+
+    // Side edges (connecting near → far)
+    DebugDraw.drawLineWorld(fc[0], fc[4], lineColor);
+    DebugDraw.drawLineWorld(fc[1], fc[5], lineColor);
+    DebugDraw.drawLineWorld(fc[2], fc[6], lineColor);
+    DebugDraw.drawLineWorld(fc[3], fc[7], lineColor);
+
+    // Direction arrow from camera position
+    const arrowLen = visFar * 0.3;
+    const arrowTip = _o.copy(pos).addScaledVector(this._fwd, arrowLen);
+    DebugDraw.drawLineWorld(pos, arrowTip, lineColor);
+
+    // Up indicator (small line showing camera up)
+    const upLen = visFar * 0.12;
+    const upMid = _t.copy(fc[0]).add(fc[1]).multiplyScalar(0.5); // top edge midpoint of near plane
+    const upEnd = _p0.copy(upMid).addScaledVector(this._up2, upLen);
+    DebugDraw.drawLineWorld(upMid, upEnd, lineColor);
+    // Small triangle at top of up indicator
+    const triW = upLen * 0.3;
+    const triLeft = _p1.copy(upEnd).addScaledVector(this._rt, -triW).addScaledVector(this._up2, -triW);
+    DebugDraw.drawLineWorld(upEnd, triLeft, lineColor);
+    const triRight = _p0.copy(upEnd).addScaledVector(this._rt, triW).addScaledVector(this._up2, -triW);
+    DebugDraw.drawLineWorld(upEnd, triRight, lineColor);
+    DebugDraw.drawLineWorld(triLeft, triRight, lineColor);
+  }
 }

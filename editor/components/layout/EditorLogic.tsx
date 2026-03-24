@@ -7,9 +7,10 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useEditor, useEngine, EditorTool } from '../../core/EditorContext';
-import { TransformComponent } from '../../../src/core/Components';
+import { TransformComponent, CameraComponent } from '../../../src/core/Components';
 import { undoManager, TransformCommand } from '../../core/UndoService';
 import { DebugDraw } from '../../../src/renderer/DebugDraw';
+import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
 
 // ── Keyboard shortcut handler ──
@@ -249,6 +250,47 @@ export const GizmoSync: React.FC = () => {
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
   }, [engine]);
+
+  return null;
+};
+
+// ── Camera frustum visualization per frame ──
+export const CameraGizmoSync: React.FC = () => {
+  const { state } = useEditor();
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const ecs = engine.engine.ecs;
+      const allEntities = ecs.getAllEntities();
+      const aspect = engine.editorCamera.aspect || 16 / 9;
+
+      for (const eid of allEntities) {
+        const cam = ecs.getComponent<CameraComponent>(eid, 'Camera');
+        if (!cam || !cam.enabled) continue;
+
+        const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
+        if (!t) continue;
+
+        const isSelected = state.selectedEntity === eid;
+
+        GizmoRenderer.drawCameraFrustum(
+          t.position,
+          t.quaternion,
+          cam.fov,
+          cam.near,
+          cam.far,
+          aspect,
+          cam.isOrthographic,
+          cam.orthoSize,
+          isSelected,
+        );
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine, state.selectedEntity]);
 
   return null;
 };

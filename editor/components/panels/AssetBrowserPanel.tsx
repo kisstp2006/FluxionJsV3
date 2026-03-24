@@ -327,6 +327,17 @@ export const AssetBrowserPanel: React.FC<{
           return (
             <div
               key={entry.path}
+              draggable={!entry.isDirectory}
+              onDragStart={(e) => {
+                if (entry.isDirectory) return;
+                // Store project-relative path for drop targets
+                const relPath = projectManager.projectDir
+                  ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
+                  : entry.name;
+                e.dataTransfer.setData('application/x-fluxion-asset', relPath);
+                e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
+                e.dataTransfer.effectAllowed = 'copyLink';
+              }}
               onDoubleClick={() => handleDoubleClick(entry)}
               style={{
                 display: 'flex',

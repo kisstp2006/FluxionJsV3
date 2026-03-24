@@ -126,6 +126,18 @@ AssetTypeRegistry.register({
   color: '#81c784',
   canImport: true,
   importFilters: [{ name: '3D Models', extensions: ['glb', 'gltf', 'fbx', 'obj'] }],
+  defaultImportSettings: { scale: 1, generateCollider: false },
+  importProcessor: async (_fs, importedPath, meta) => {
+    // Enrich metadata with model-specific info
+    const ext = importedPath.substring(importedPath.lastIndexOf('.')).toLowerCase();
+    meta.importSettings = {
+      ...meta.importSettings,
+      format: ext === '.glb' ? 'glb' : ext === '.gltf' ? 'gltf' : ext === '.fbx' ? 'fbx' : 'obj',
+    };
+    // Write updated meta back
+    const metaPath = importedPath + '.fluxmeta';
+    await _fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+  },
 });
 
 AssetTypeRegistry.register({

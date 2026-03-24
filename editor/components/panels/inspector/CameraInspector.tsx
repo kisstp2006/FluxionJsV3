@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, NumberInput, Icons } from '../../../ui';
+import { Section, PropertyRow, NumberInput, Checkbox, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { CameraComponent } from '../../../../src/core/Components';
@@ -17,8 +17,26 @@ export const CameraInspector: React.FC<{ entity: EntityId; onRemoved: () => void
 
   const update = () => forceUpdate((n) => n + 1);
 
+  const handleSetMain = (checked: boolean) => {
+    if (checked) {
+      // Unset isMain on all other cameras in the scene
+      const allEntities = engine.engine.ecs.getAllEntities();
+      for (const eid of allEntities) {
+        const other = engine.engine.ecs.getComponent<CameraComponent>(eid, 'Camera');
+        if (other && other !== cam && other.isMain) {
+          setProperty(undoManager, other, 'isMain', false);
+        }
+      }
+    }
+    setProperty(undoManager, cam, 'isMain', checked);
+    update();
+  };
+
   return (
     <Section title="Camera" icon={Icons.camera} actions={<RemoveComponentButton entity={entity} componentType="Camera" onRemoved={onRemoved} />}>
+      <PropertyRow label="Main Camera">
+        <Checkbox checked={cam.isMain} onChange={handleSetMain} />
+      </PropertyRow>
       <PropertyRow label="FOV">
         <NumberInput value={cam.fov} step={1} onChange={(v) => { setProperty(undoManager, cam, 'fov', v); update(); }} />
       </PropertyRow>

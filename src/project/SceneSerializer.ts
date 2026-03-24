@@ -19,6 +19,8 @@ import {
   AudioSourceComponent,
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
+import { AssetManager } from '../assets/AssetManager';
+import { projectManager } from './ProjectManager';
 
 // ── Material serialization data ──
 
@@ -82,25 +84,34 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
     const meshComp = engine.ecs.getComponent<MeshRendererComponent>(entityId, 'MeshRenderer');
     if (meshComp) {
       const data: Record<string, any> = {
-        primitiveType: meshComp.primitiveType || 'cube',
         castShadow: meshComp.castShadow,
         receiveShadow: meshComp.receiveShadow,
       };
 
-      // Serialize geometry dimensions
-      if (meshComp.mesh instanceof THREE.Mesh) {
-        const geom = meshComp.mesh.geometry;
-        const params = (geom as any).parameters || {};
-        data.geometry = {};
-        if (params.width !== undefined) data.geometry.width = params.width;
-        if (params.height !== undefined) data.geometry.height = params.height;
-        if (params.depth !== undefined) data.geometry.depth = params.depth;
-        if (params.radius !== undefined) data.geometry.radius = params.radius;
-        if (params.radiusTop !== undefined) data.geometry.radiusTop = params.radiusTop;
-        if (params.radiusBottom !== undefined) data.geometry.radiusBottom = params.radiusBottom;
-        if (params.tube !== undefined) data.geometry.tube = params.tube;
+      if (meshComp.modelPath) {
+        // Model asset — store path reference only
+        data.modelPath = meshComp.modelPath;
+      } else {
+        // Primitive — store type + geometry + material
+        data.primitiveType = meshComp.primitiveType || 'cube';
 
-        // Serialize material
+        // Serialize geometry dimensions
+        if (meshComp.mesh instanceof THREE.Mesh) {
+          const geom = meshComp.mesh.geometry;
+          const params = (geom as any).parameters || {};
+          data.geometry = {};
+          if (params.width !== undefined) data.geometry.width = params.width;
+          if (params.height !== undefined) data.geometry.height = params.height;
+          if (params.depth !== undefined) data.geometry.depth = params.depth;
+          if (params.radius !== undefined) data.geometry.radius = params.radius;
+          if (params.radiusTop !== undefined) data.geometry.radiusTop = params.radiusTop;
+          if (params.radiusBottom !== undefined) data.geometry.radiusBottom = params.radiusBottom;
+          if (params.tube !== undefined) data.geometry.tube = params.tube;
+        }
+      }
+
+      // Serialize material (both primitives and models can have overridden materials)
+      if (meshComp.mesh instanceof THREE.Mesh) {
         const mat = meshComp.mesh.material;
         if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
           data.material = {
@@ -129,6 +140,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
         data: {
           fov: cam.fov, near: cam.near, far: cam.far,
           isOrthographic: cam.isOrthographic, orthoSize: cam.orthoSize, priority: cam.priority,
+          isMain: cam.isMain,
         },
       });
     }
@@ -272,6 +284,9 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
     }
   }
 
+  // Deferred model loads — collected here, awaited after entity creation
+  const deferredModelLoads: Array<{ meshComp: MeshRendererComponent; modelPath: string }> = [];
+
   // Build entity ID mapping (old ID → new ID)
   const idMap = new Map<number, EntityId>();
 
@@ -295,33 +310,39 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
         case 'MeshRenderer': {
           const m = new MeshRendererComponent();
           const d = comp.data;
-          m.primitiveType = d.primitiveType || 'cube';
           m.castShadow = d.castShadow ?? true;
           m.receiveShadow = d.receiveShadow ?? true;
 
-          // Reconstruct geometry
-          const geom = d.geometry || {};
-          const geometry = buildGeometry(m.primitiveType || 'cube', geom);
+          if (d.modelPath) {
+            // 3D model asset — load async, mesh appears when ready
+            m.modelPath = d.modelPath;
+            deferredModelLoads.push({ meshComp: m, modelPath: d.modelPath });
+          } else {
+            // Primitive geometry
+            m.primitiveType = d.primitiveType || 'cube';
+            const geom = d.geometry || {};
+            const geometry = buildGeometry(m.primitiveType || 'cube', geom);
 
-          // Reconstruct material
-          const matData = d.material || {};
-          const material = new THREE.MeshStandardMaterial({
-            color: matData.color ? new THREE.Color(matData.color[0], matData.color[1], matData.color[2]) : 0x888888,
-            roughness: matData.roughness ?? 0.6,
-            metalness: matData.metalness ?? 0.1,
-          });
-          if (matData.emissive) {
-            material.emissive = new THREE.Color(matData.emissive[0], matData.emissive[1], matData.emissive[2]);
-            material.emissiveIntensity = matData.emissiveIntensity ?? 1;
-          }
-          if (matData.transparent) {
-            material.transparent = true;
-            material.opacity = matData.opacity ?? 1;
+            const matData = d.material || {};
+            const material = new THREE.MeshStandardMaterial({
+              color: matData.color ? new THREE.Color(matData.color[0], matData.color[1], matData.color[2]) : 0x888888,
+              roughness: matData.roughness ?? 0.6,
+              metalness: matData.metalness ?? 0.1,
+            });
+            if (matData.emissive) {
+              material.emissive = new THREE.Color(matData.emissive[0], matData.emissive[1], matData.emissive[2]);
+              material.emissiveIntensity = matData.emissiveIntensity ?? 1;
+            }
+            if (matData.transparent) {
+              material.transparent = true;
+              material.opacity = matData.opacity ?? 1;
+            }
+
+            m.mesh = new THREE.Mesh(geometry, material);
+            m.mesh.castShadow = m.castShadow;
+            m.mesh.receiveShadow = m.receiveShadow;
           }
 
-          m.mesh = new THREE.Mesh(geometry, material);
-          m.mesh.castShadow = m.castShadow;
-          m.mesh.receiveShadow = m.receiveShadow;
           engine.ecs.addComponent(entityId, m);
           break;
         }
@@ -335,6 +356,7 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           c.isOrthographic = d.isOrthographic ?? false;
           c.orthoSize = d.orthoSize ?? 10;
           c.priority = d.priority ?? 0;
+          c.isMain = d.isMain ?? false;
           engine.ecs.addComponent(entityId, c);
           break;
         }
@@ -434,6 +456,41 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
         engine.ecs.setParent(childId, parentId);
       }
     }
+  }
+
+  // Load deferred 3D model assets (fire-and-forget, non-blocking)
+  for (const deferred of deferredModelLoads) {
+    loadDeferredModel(engine, deferred.meshComp, deferred.modelPath);
+  }
+}
+
+/** Resolve path and load a 3D model asset onto a MeshRendererComponent */
+async function loadDeferredModel(
+  engine: Engine,
+  meshComp: MeshRendererComponent,
+  modelPath: string,
+): Promise<void> {
+  try {
+    let loadPath: string;
+    try {
+      loadPath = projectManager.resolvePath(modelPath);
+    } catch {
+      loadPath = modelPath;
+    }
+
+    const fileUrl = loadPath.startsWith('file://') ? loadPath : `file:///${loadPath.replace(/\\/g, '/')}`;
+    const assets = engine.getSubsystem('assets') as AssetManager;
+    const gltf = await assets.loadModel(fileUrl);
+    const scene = gltf.scene.clone();
+    scene.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = meshComp.castShadow;
+        child.receiveShadow = meshComp.receiveShadow;
+      }
+    });
+    meshComp.mesh = scene;
+  } catch (err) {
+    console.error(`[SceneSerializer] Failed to load model "${modelPath}":`, err);
   }
 }
 

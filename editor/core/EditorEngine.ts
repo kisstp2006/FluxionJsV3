@@ -65,6 +65,7 @@ export async function initEditorEngine(
 
   const materials = new MaterialSystem();
   const assets = new AssetManager();
+  engine.registerSubsystem('assets', assets);
   const input = new InputManager(engine);
   const audio = new AudioSystem(engine);
 

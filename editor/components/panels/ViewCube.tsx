@@ -14,7 +14,7 @@ import { SettingsRegistry } from '../../core/SettingsRegistry';
 // ── Constants ──
 
 const CUBE_SIZE_DEFAULT = 120;
-const CAMERA_DISTANCE = 3.8;
+const CAMERA_DISTANCE = 3.7;
 const ANIM_DURATION_DEFAULT = 400; // ms
 const EDGE_THICKNESS = 0.08;
 const CORNER_SIZE = 0.22;

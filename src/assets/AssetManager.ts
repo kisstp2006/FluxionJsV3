@@ -7,7 +7,14 @@
 import * as THREE from 'three';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
+
+/** Unified model result — all formats return { scene: THREE.Group } */
+export interface ModelResult {
+  scene: THREE.Group;
+}
 
 export type AssetType = 'texture' | 'model' | 'audio' | 'json' | 'shader' | string;
 
@@ -31,6 +38,8 @@ export class AssetManager {
   private loading: Map<string, Promise<any>> = new Map();
   private textureLoader = new THREE.TextureLoader();
   private gltfLoader: GLTFLoader;
+  private fbxLoader = new FBXLoader();
+  private objLoader = new OBJLoader();
   private audioContext: AudioContext | null = null;
 
   onProgress?: (progress: LoadProgress) => void;
@@ -93,44 +102,117 @@ export class AssetManager {
     return promise;
   }
 
-  // ── Model Loading (GLTF/GLB) ──
+  // ── Model Loading (GLTF/GLB/FBX/OBJ) ──
 
-  async loadModel(path: string): Promise<GLTF> {
-    const cached = this.getFromCache<GLTF>(path);
+  /** Detect model format from path extension */
+  private getModelFormat(path: string): 'gltf' | 'fbx' | 'obj' {
+    const lower = path.toLowerCase().replace(/\?.*$/, '');
+    if (lower.endsWith('.fbx')) return 'fbx';
+    if (lower.endsWith('.obj')) return 'obj';
+    return 'gltf'; // .glb, .gltf, or default
+  }
+
+  /** Enable shadows on all meshes in a scene graph */
+  private enableShadows(root: THREE.Object3D): void {
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+  }
+
+  async loadModel(path: string): Promise<ModelResult> {
+    const cached = this.getFromCache<ModelResult>(path);
     if (cached) return cached;
 
     if (this.loading.has(path)) return this.loading.get(path)!;
 
-    const promise = new Promise<GLTF>((resolve, reject) => {
-      this.gltfLoader.load(
-        path,
-        (gltf) => {
-          // Enable shadows on all meshes
-          gltf.scene.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
+    const format = this.getModelFormat(path);
+    let promise: Promise<ModelResult>;
 
-          this.addToCache(path, 'model', gltf, 0);
-          this.loading.delete(path);
-          resolve(gltf);
-        },
-        (progress) => {
-          this.onProgress?.({
-            loaded: progress.loaded,
-            total: progress.total,
-            currentAsset: path,
-            percent: progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0,
-          });
-        },
-        (error) => {
-          this.loading.delete(path);
-          reject(error);
-        }
-      );
-    });
+    switch (format) {
+      case 'fbx':
+        promise = new Promise<ModelResult>((resolve, reject) => {
+          this.fbxLoader.load(
+            path,
+            (group) => {
+              this.enableShadows(group);
+              const result: ModelResult = { scene: group };
+              this.addToCache(path, 'model', result, 0);
+              this.loading.delete(path);
+              resolve(result);
+            },
+            (progress) => {
+              this.onProgress?.({
+                loaded: progress.loaded,
+                total: progress.total,
+                currentAsset: path,
+                percent: progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0,
+              });
+            },
+            (error) => {
+              this.loading.delete(path);
+              reject(error);
+            },
+          );
+        });
+        break;
+
+      case 'obj':
+        promise = new Promise<ModelResult>((resolve, reject) => {
+          this.objLoader.load(
+            path,
+            (group) => {
+              this.enableShadows(group);
+              const result: ModelResult = { scene: group };
+              this.addToCache(path, 'model', result, 0);
+              this.loading.delete(path);
+              resolve(result);
+            },
+            (progress) => {
+              this.onProgress?.({
+                loaded: progress.loaded,
+                total: progress.total,
+                currentAsset: path,
+                percent: progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0,
+              });
+            },
+            (error) => {
+              this.loading.delete(path);
+              reject(error);
+            },
+          );
+        });
+        break;
+
+      default: // gltf / glb
+        promise = new Promise<ModelResult>((resolve, reject) => {
+          this.gltfLoader.load(
+            path,
+            (gltf) => {
+              this.enableShadows(gltf.scene);
+              const result: ModelResult = { scene: gltf.scene };
+              this.addToCache(path, 'model', result, 0);
+              this.loading.delete(path);
+              resolve(result);
+            },
+            (progress) => {
+              this.onProgress?.({
+                loaded: progress.loaded,
+                total: progress.total,
+                currentAsset: path,
+                percent: progress.total > 0 ? (progress.loaded / progress.total) * 100 : 0,
+              });
+            },
+            (error) => {
+              this.loading.delete(path);
+              reject(error);
+            },
+          );
+        });
+        break;
+    }
 
     this.loading.set(path, promise);
     return promise;

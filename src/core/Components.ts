@@ -55,6 +55,8 @@ export class MeshRendererComponent implements Component {
   layer = 0;
   /** Tracks the primitive type used to create this mesh (for serialization) */
   primitiveType?: string;
+  /** Project-relative path to a 3D model asset (glTF/GLB). When set, mesh is loaded from the asset pipeline. */
+  modelPath?: string;
 }
 
 // ── Camera ──
@@ -71,6 +73,7 @@ export class CameraComponent implements Component {
   orthoSize = 10;
   clearColor = new THREE.Color(0x1a1a2e);
   priority = 0;
+  isMain = false;
 
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null;
 }

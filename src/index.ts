@@ -41,7 +41,7 @@ export { InputManager, MouseButton } from './input/InputManager';
 export { AudioSystem } from './audio/AudioSystem';
 
 // Assets
-export { AssetManager, AssetType, LoadProgress } from './assets/AssetManager';
+export { AssetManager, AssetType, LoadProgress, ModelResult } from './assets/AssetManager';
 export { AssetTypeRegistry, AssetTypeDefinition } from './assets/AssetTypeRegistry';
 export { AssetImporter, assetImporter, ImportRequest, ImportResult, ImportProgress, ImportOptions } from './assets/AssetImporter';
 export { AssetMeta, readAssetMeta, writeAssetMeta, metaPathFor } from './assets/AssetMeta';

@@ -8,9 +8,21 @@ import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
+import { CameraComponent } from '../../../src/core/Components';
+import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 
 export interface ViewportProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+}
+
+/** Find the entity with the main camera in the scene. */
+function findMainCamera(engine: NonNullable<ReturnType<typeof useEngine>>): CameraComponent | null {
+  const allEntities = engine.engine.ecs.getAllEntities();
+  for (const eid of allEntities) {
+    const cam = engine.engine.ecs.getComponent<CameraComponent>(eid, 'Camera');
+    if (cam && cam.isMain && cam.enabled) return cam;
+  }
+  return null;
 }
 
 export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
@@ -21,6 +33,55 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const [vpContextMenu, setVpContextMenu] = useState<{ pos: { x: number; y: number }; worldPos?: THREE.Vector3 } | null>(null);
   const [dragDelta, setDragDelta] = useState<string | null>(null);
   const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
+
+  const isGameView = state.viewportTab === 'Game';
+
+  // Switch camera when toggling between Scene and Game tab
+  useEffect(() => {
+    if (!engine) return;
+    if (isGameView) {
+      const mainCam = findMainCamera(engine);
+      if (mainCam?.camera) {
+        engine.renderer.setActiveCamera(mainCam.camera);
+        engine.orbitControls.enabled = false;
+        engine.gizmoService.detach();
+        engine.selectionOutline.visible = false;
+      }
+    } else {
+      engine.renderer.setActiveCamera(engine.editorCamera);
+      engine.orbitControls.enabled = true;
+      // Re-attach gizmo to selected entity
+      if (state.selectedEntity !== null) {
+        const obj = engine.renderer.getObject(state.selectedEntity);
+        if (obj) {
+          engine.gizmoService.attach(obj);
+          engine.selectionOutline.setFromObject(obj);
+          engine.selectionOutline.visible = true;
+        }
+      }
+    }
+  }, [engine, isGameView]);
+
+  // Keep game view camera in sync every frame
+  useEffect(() => {
+    if (!engine || !isGameView) return;
+    const onUpdate = () => {
+      const mainCam = findMainCamera(engine);
+      if (mainCam?.camera) {
+        if (engine.renderer.getActiveCamera() !== mainCam.camera) {
+          engine.renderer.setActiveCamera(mainCam.camera);
+        }
+        // Update aspect ratio to match viewport
+        if (containerRef.current && mainCam.camera instanceof THREE.PerspectiveCamera) {
+          const rect = containerRef.current.getBoundingClientRect();
+          mainCam.camera.aspect = rect.width / rect.height;
+          mainCam.camera.updateProjectionMatrix();
+        }
+      }
+    };
+    engine.engine.events.on('engine:update', onUpdate);
+    return () => engine.engine.events.off('engine:update', onUpdate);
+  }, [engine, isGameView]);
 
   // Report canvas to parent for engine initialization
   const setCanvasRef = useCallback((node: HTMLCanvasElement | null) => {
@@ -269,9 +330,77 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     setVpContextMenu({ pos: { x: e.clientX, y: e.clientY }, worldPos });
   }, [engine]);
 
+  // ── Model asset drag-and-drop from Asset Browser ──
+  const [isAssetDragOver, setIsAssetDragOver] = useState(false);
+
+  const handleAssetDragOver = useCallback((e: React.DragEvent) => {
+    if (isGameView) return;
+    if (e.dataTransfer.types.includes('application/x-fluxion-asset')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsAssetDragOver(true);
+    }
+  }, [isGameView]);
+
+  const handleAssetDragLeave = useCallback(() => {
+    setIsAssetDragOver(false);
+  }, []);
+
+  const handleAssetDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsAssetDragOver(false);
+    if (!engine || isGameView) return;
+
+    const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
+    const absPath = e.dataTransfer.getData('application/x-fluxion-asset-abs');
+    if (!assetPath) return;
+
+    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
+    if (!typeDef || typeDef.type !== 'model') return;
+
+    // Raycast to find drop position
+    const rect = canvasRef.current?.getBoundingClientRect();
+    let worldPos = new THREE.Vector3(0, 0, 0);
+    if (rect && canvasRef.current) {
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, engine.editorCamera);
+      const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
+      for (const hit of intersects) {
+        if (hit.object.type === 'LineSegments') continue;
+        worldPos = hit.point.clone();
+        break;
+      }
+    }
+
+    // Extract filename without extension for entity name
+    const fileName = assetPath.replace(/\\/g, '/').split('/').pop() || 'Model';
+    const entityName = fileName.replace(/\.[^.]+$/, '');
+
+    try {
+      const entityId = await engine.scene.createModelEntity(entityName, assetPath, absPath || undefined);
+      // Set position at drop point
+      const t = engine.engine.ecs.getComponent<any>(entityId, 'Transform');
+      if (t) t.position.copy(worldPos);
+      // Wait a frame for MeshRendererSystem to pick up the loaded mesh
+      requestAnimationFrame(() => {
+        dispatch({ type: 'SELECT_ENTITY', entity: entityId });
+      });
+      log(`Added model: ${entityName}`, 'info');
+    } catch (err: any) {
+      log(`Failed to load model: ${err.message}`, 'error');
+    }
+  }, [engine, isGameView, dispatch, log]);
+
   return (
     <div
       ref={containerRef}
+      onDragOver={handleAssetDragOver}
+      onDragLeave={handleAssetDragLeave}
+      onDrop={handleAssetDrop}
       style={{
         flex: 1,
         position: 'relative',
@@ -279,6 +408,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
+        outline: isAssetDragOver ? '2px dashed var(--accent)' : 'none',
       }}
     >
       {/* Viewport Tabs */}
@@ -290,19 +420,44 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         />
       </div>
 
-      {/* ViewCube — interactive 3D orientation cube */}
-      <ViewCube />
+      {/* ViewCube — interactive 3D orientation cube (Scene view only) */}
+      {!isGameView && <ViewCube />}
 
       {/* Canvas */}
       <canvas
         ref={setCanvasRef}
         id="viewport-canvas"
-        onClick={handleClick}
-        onContextMenu={handleRightClick}
+        onClick={isGameView ? undefined : handleClick}
+        onContextMenu={isGameView ? undefined : handleRightClick}
         style={{ width: '100%', height: '100%', display: 'block' }}
       />
 
-      {/* Viewport Stats Overlay */}
+      {/* Game View — no main camera message */}
+      {isGameView && engine && !findMainCamera(engine) && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          gap: '8px',
+          color: 'var(--text-muted)',
+          fontSize: '13px',
+          pointerEvents: 'none',
+          background: 'rgba(10,14,23,0.85)',
+          zIndex: 7,
+        }}>
+          {Icons.camera}
+          <span>No Main Camera in scene</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-disabled)' }}>
+            Add a Camera component and mark it as Main
+          </span>
+        </div>
+      )}
+
+      {/* Viewport Stats Overlay (Scene view only) */}
+      {!isGameView && (
       <div style={{
         position: 'absolute',
         bottom: '8px',
@@ -325,9 +480,10 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         <span>{state.triangles.toLocaleString()} tris</span>
         <span>{state.entityCount} entities</span>
       </div>
+      )}
 
-      {/* Drag Delta Overlay */}
-      {dragDelta && (
+      {/* Drag Delta Overlay (Scene view only) */}
+      {!isGameView && dragDelta && (
         <div style={{
           position: 'absolute',
           bottom: '40px',
@@ -348,8 +504,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         </div>
       )}
 
-      {/* Viewport Right-Click Context Menu */}
-      {vpContextMenu && engine && (
+      {/* Viewport Right-Click Context Menu (Scene view only) */}
+      {!isGameView && vpContextMenu && engine && (
         <ContextMenu
           position={vpContextMenu.pos}
           onClose={() => setVpContextMenu(null)}

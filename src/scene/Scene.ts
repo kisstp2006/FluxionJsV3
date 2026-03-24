@@ -19,6 +19,7 @@ import {
   AudioSourceComponent,
   SpriteComponent,
 } from '../core/Components';
+import { AssetManager } from '../assets/AssetManager';
 
 export interface SceneData {
   name: string;
@@ -126,9 +127,14 @@ export class Scene {
     const mesh = ecs.getComponent<MeshRendererComponent>(entityId, 'MeshRenderer');
     if (mesh && mesh.mesh) {
       const meshComp = new MeshRendererComponent();
+      meshComp.modelPath = mesh.modelPath;
+      meshComp.castShadow = mesh.castShadow;
+      meshComp.receiveShadow = mesh.receiveShadow;
       const srcMesh = mesh.mesh;
       if (srcMesh instanceof THREE.Mesh) {
         meshComp.mesh = new THREE.Mesh(srcMesh.geometry, srcMesh.material);
+      } else if (srcMesh instanceof THREE.Group) {
+        meshComp.mesh = srcMesh.clone();
       }
       ecs.addComponent(clone, meshComp);
     }
@@ -198,6 +204,56 @@ export class Scene {
     const meshComp = new MeshRendererComponent();
     meshComp.mesh = new THREE.Mesh(geometry, material);
     this.engine.ecs.addComponent(entity, meshComp);
+    return entity;
+  }
+
+  /**
+   * Create an entity from a 3D model asset (glTF/GLB).
+   * The model is loaded asynchronously via the AssetManager.
+   * @param name Entity display name
+   * @param modelPath Project-relative path to the model asset
+   * @param absolutePath Optional absolute path for loading (if known)
+   * @returns EntityId — mesh is attached once loading completes
+   */
+  async createModelEntity(
+    name: string,
+    modelPath: string,
+    absolutePath?: string,
+  ): Promise<EntityId> {
+    const entity = this.createEmpty(name);
+    const meshComp = new MeshRendererComponent();
+    meshComp.modelPath = modelPath;
+    this.engine.ecs.addComponent(entity, meshComp);
+
+    // Resolve absolute path for loading
+    let loadPath = absolutePath;
+    if (!loadPath) {
+      try {
+        const { projectManager } = await import('../project/ProjectManager');
+        loadPath = projectManager.resolvePath(modelPath);
+      } catch {
+        loadPath = modelPath;
+      }
+    }
+
+    // Load model via AssetManager
+    try {
+      const assets = this.engine.getSubsystem('assets') as AssetManager;
+      // Convert to file:// URL for THREE.js loaders in Electron
+      const fileUrl = loadPath!.startsWith('file://') ? loadPath! : `file:///${loadPath!.replace(/\\/g, '/')}`;
+      const gltf = await assets.loadModel(fileUrl);
+      const scene = gltf.scene.clone();
+      scene.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = meshComp.castShadow;
+          child.receiveShadow = meshComp.receiveShadow;
+        }
+      });
+      meshComp.mesh = scene;
+    } catch (err) {
+      console.error(`[Scene] Failed to load model "${modelPath}":`, err);
+    }
+
     return entity;
   }
 

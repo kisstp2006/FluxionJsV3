@@ -9,12 +9,31 @@ import { markComponentDirty } from '../../../core/ComponentService';
 export const TransformInspector: React.FC<{ entity: EntityId }> = ({ entity }) => {
   const engine = useEngine();
   const [, forceUpdate] = useState(0);
+  const [uniformScale, setUniformScale] = useState(true);
   if (!engine) return null;
 
   const t = engine.engine.ecs.getComponent<TransformComponent>(entity, 'Transform');
   if (!t) return null;
 
   const update = () => forceUpdate((n) => n + 1);
+
+  const handleScaleChange = (axis: 'x' | 'y' | 'z', val: number) => {
+    if (uniformScale) {
+      const prev = t.scale[axis];
+      if (prev !== 0) {
+        const ratio = val / prev;
+        t.scale.x *= ratio;
+        t.scale.y *= ratio;
+        t.scale.z *= ratio;
+      } else {
+        t.scale.set(val, val, val);
+      }
+    } else {
+      t.scale[axis] = val;
+    }
+    markComponentDirty(t, 'scale');
+    update();
+  };
 
   return (
     <Section title="Transform" icon={Icons.move}>
@@ -41,10 +60,30 @@ export const TransformInspector: React.FC<{ entity: EntityId }> = ({ entity }) =
         />
       </PropertyRow>
       <PropertyRow label="Scale">
-        <Vector3Input
-          value={t.scale}
-          onChange={(axis, val) => { t.scale[axis] = val; markComponentDirty(t, 'scale'); update(); }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+          <Vector3Input
+            value={t.scale}
+            onChange={handleScaleChange}
+          />
+          <button
+            onClick={() => setUniformScale(!uniformScale)}
+            title={uniformScale ? 'Uniform scale (linked)' : 'Per-axis scale (unlinked)'}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              color: uniformScale ? 'var(--accent)' : 'var(--text-muted)',
+              fontSize: '14px',
+              lineHeight: 1,
+              flexShrink: 0,
+              opacity: uniformScale ? 1 : 0.5,
+              transition: 'color 150ms, opacity 150ms',
+            }}
+          >
+            {uniformScale ? '🔗' : '🔓'}
+          </button>
+        </div>
       </PropertyRow>
     </Section>
   );

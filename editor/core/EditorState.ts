@@ -24,8 +24,14 @@ export interface SnapConfig {
   scaleSnap: number;
 }
 
+export interface SelectedAsset {
+  path: string;
+  type: string;
+}
+
 export interface EditorState {
   selectedEntity: EntityId | null;
+  selectedAsset: SelectedAsset | null;
   activeTool: EditorTool;
   transformSpace: TransformSpace;
   isPlaying: boolean;
@@ -60,6 +66,7 @@ export interface EditorState {
 // ── Actions ──
 export type EditorAction =
   | { type: 'SELECT_ENTITY'; entity: EntityId | null }
+  | { type: 'SELECT_ASSET'; asset: SelectedAsset | null }
   | { type: 'SET_TOOL'; tool: EditorTool }
   | { type: 'SET_TRANSFORM_SPACE'; space: TransformSpace }
   | { type: 'TOGGLE_PLAY' }
@@ -86,6 +93,7 @@ export type EditorAction =
 // ── Initial State ──
 export const initialEditorState: EditorState = {
   selectedEntity: null,
+  selectedAsset: null,
   activeTool: 'select',
   transformSpace: 'local',
   isPlaying: false,
@@ -125,7 +133,9 @@ export const initialEditorState: EditorState = {
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'SELECT_ENTITY':
-      return { ...state, selectedEntity: action.entity };
+      return { ...state, selectedEntity: action.entity, selectedAsset: null };
+    case 'SELECT_ASSET':
+      return { ...state, selectedAsset: action.asset, selectedEntity: null };
     case 'SET_TOOL':
       return { ...state, activeTool: action.tool };
     case 'SET_TRANSFORM_SPACE':

@@ -57,6 +57,8 @@ export class MeshRendererComponent implements Component {
   primitiveType?: string;
   /** Project-relative path to a 3D model asset (glTF/GLB). When set, mesh is loaded from the asset pipeline. */
   modelPath?: string;
+  /** Project-relative path to a .fluxmat material asset. When set, material is loaded from the asset pipeline. */
+  materialPath?: string;
 }
 
 // ── Camera ──

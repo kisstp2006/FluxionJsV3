@@ -15,6 +15,18 @@ import { ComponentRegistry } from '../../../src/core/ComponentRegistry';
 import { TransformInspector } from './inspector/TransformInspector';
 import { MeshRendererInspector } from './inspector/MeshRendererInspector';
 import { AutoInspector } from './inspector/AutoInspector';
+import { AssetInspectorRegistry } from '../../core/AssetInspectorRegistry';
+import { GenericAssetInspector } from './inspector/GenericAssetInspector';
+import { TextureInspector } from './inspector/TextureInspector';
+import { AudioInspector } from './inspector/AudioInspector';
+import { MaterialInspector } from './inspector/MaterialInspector';
+import { ModelInspector } from './inspector/ModelInspector';
+
+// Register built-in asset inspectors
+AssetInspectorRegistry.register('texture', TextureInspector);
+AssetInspectorRegistry.register('audio', AudioInspector);
+AssetInspectorRegistry.register('material', MaterialInspector);
+AssetInspectorRegistry.register('model', ModelInspector);
 
 // Component types that have hand-written inspectors (complex UI needs).
 // Everything else is auto-generated from ComponentRegistry metadata.
@@ -89,6 +101,29 @@ export const InspectorPanel: React.FC = () => {
 
   const refreshInspector = useCallback(() => setRevision((n) => n + 1), []);
 
+  // ── Asset Inspector Mode ──
+  if (state.selectedAsset) {
+    const { path, type } = state.selectedAsset;
+    const CustomInspector = AssetInspectorRegistry.get(type);
+    const Inspector = CustomInspector || GenericAssetInspector;
+
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-panel)',
+      }}>
+        <PanelHeader title="Inspector" />
+        <div key={path} style={{ flex: 1, overflowY: 'auto' }}>
+          <Inspector assetPath={path} assetType={type} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Entity Inspector Mode ──
   if (state.selectedEntity === null || !engine) {
     return (
       <div style={{

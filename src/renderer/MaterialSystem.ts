@@ -5,6 +5,30 @@
 
 import * as THREE from 'three';
 
+/** Shape of a parsed .fluxmat JSON file */
+export interface FluxMatData {
+  type?: string;
+  color?: [number, number, number];
+  roughness?: number;
+  metalness?: number;
+  emissive?: [number, number, number];
+  emissiveIntensity?: number;
+  transparent?: boolean;
+  opacity?: number;
+  doubleSided?: boolean;
+  wireframe?: boolean;
+  alphaTest?: number;
+  envMapIntensity?: number;
+  normalScale?: number;
+  aoIntensity?: number;
+  albedoMap?: string;
+  normalMap?: string;
+  roughnessMap?: string;
+  metalnessMap?: string;
+  aoMap?: string;
+  emissiveMap?: string;
+}
+
 export interface PBRMaterialConfig {
   name?: string;
   albedo?: THREE.Color | string | number;
@@ -94,6 +118,69 @@ export class MaterialSystem {
       mat.dispose();
     }
     this.materials.clear();
+  }
+
+  /**
+   * Create a PBR material from a parsed .fluxmat JSON object.
+   * Texture map paths are resolved and loaded via the provided loader callback.
+   */
+  async createFromFluxMat(
+    data: FluxMatData,
+    loadTexture: (relPath: string) => Promise<THREE.Texture>,
+    name?: string,
+  ): Promise<THREE.MeshStandardMaterial> {
+    const config: PBRMaterialConfig = {
+      name,
+      albedo: data.color
+        ? new THREE.Color(data.color[0], data.color[1], data.color[2])
+        : new THREE.Color(0xffffff),
+      roughness: data.roughness ?? 0.5,
+      metalness: data.metalness ?? 0.0,
+      transparent: data.transparent ?? false,
+      opacity: data.opacity ?? 1.0,
+      doubleSided: data.doubleSided ?? false,
+      wireframe: data.wireframe ?? false,
+      alphaTest: data.alphaTest ?? 0,
+      envMapIntensity: data.envMapIntensity ?? 1.0,
+    };
+
+    if (data.emissive) {
+      config.emissive = new THREE.Color(data.emissive[0], data.emissive[1], data.emissive[2]);
+    }
+    config.emissiveIntensity = data.emissiveIntensity ?? 1.0;
+
+    if (data.normalScale !== undefined) {
+      const s = typeof data.normalScale === 'number' ? data.normalScale : 1;
+      config.normalScale = new THREE.Vector2(s, s);
+    }
+    if (data.aoIntensity !== undefined) {
+      config.aoIntensity = data.aoIntensity;
+    }
+
+    // Load texture maps in parallel
+    const mapEntries: [keyof FluxMatData, 'albedoMap' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'aoMap' | 'emissiveMap'][] = [
+      ['albedoMap', 'albedoMap'],
+      ['normalMap', 'normalMap'],
+      ['roughnessMap', 'roughnessMap'],
+      ['metalnessMap', 'metalnessMap'],
+      ['aoMap', 'aoMap'],
+      ['emissiveMap', 'emissiveMap'],
+    ];
+
+    const texPromises: Promise<void>[] = [];
+    for (const [jsonKey, configKey] of mapEntries) {
+      const path = data[jsonKey] as string | undefined;
+      if (path) {
+        texPromises.push(
+          loadTexture(path)
+            .then((tex) => { (config as any)[configKey] = tex; })
+            .catch(() => { /* texture not found — skip silently */ })
+        );
+      }
+    }
+    await Promise.all(texPromises);
+
+    return this.createPBR(config);
   }
 
   // ── Preset materials ──

@@ -188,6 +188,10 @@ AssetTypeRegistry.register({
   extensions: ['.mat', '.fluxmat'],
   category: 'Materials',
   color: '#f06292',
+  loader: async (fs, path) => {
+    const text = await fs.readFile(path);
+    return JSON.parse(text);
+  },
   createDefault: async (fs, dirPath, name) => {
     const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
     const filePath = `${dirPath}/${safeName}.fluxmat`;

@@ -109,7 +109,7 @@ const FolderTreeItem: React.FC<{
 export const AssetBrowserPanel: React.FC<{
   onOpenScene?: (path: string) => void;
 }> = ({ onOpenScene }) => {
-  const { state, log } = useEditor();
+  const { state, dispatch, log } = useEditor();
   const [selectedFolder, setSelectedFolder] = useState('');
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -338,9 +338,15 @@ export const AssetBrowserPanel: React.FC<{
                 e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
                 e.dataTransfer.effectAllowed = 'copyLink';
               }}
+              onClick={() => {
+                if (!entry.isDirectory) {
+                  dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
+                }
+              }}
               onDoubleClick={() => handleDoubleClick(entry)}
               style={{
                 display: 'flex',
+                border: state.selectedAsset?.path === entry.path ? '1px solid var(--accent)' : '1px solid transparent',
                 flexDirection: 'column',
                 alignItems: 'center',
                 padding: '8px 4px',

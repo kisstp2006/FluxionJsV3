@@ -9,27 +9,6 @@ import { useEditor, useEngine } from '../../core/EditorContext';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { serializeScene, loadSceneFromFile } from '../../../src/project/SceneSerializer';
 
-declare global {
-  interface Window {
-    fluxionAPI?: {
-      openFileDialog: (filters?: any) => Promise<string | null>;
-      saveFileDialog: (filters?: any) => Promise<string | null>;
-      readFile: (path: string) => Promise<string>;
-      writeFile: (path: string, data: string) => Promise<boolean>;
-      listDir: (path: string) => Promise<any[]>;
-      openDirDialog: () => Promise<string | null>;
-      readDir: (path: string) => Promise<{ name: string; isDirectory: boolean; path: string }[]>;
-      mkdir: (path: string) => Promise<boolean>;
-      exists: (path: string) => Promise<boolean>;
-      deleteFile: (path: string) => Promise<boolean>;
-      getAppDataPath: () => Promise<string>;
-      minimize: () => void;
-      maximize: () => void;
-      close: () => void;
-    };
-  }
-}
-
 export const Titlebar: React.FC<{
   onSaveScene?: () => void;
   onCloseProject?: () => void;

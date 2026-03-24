@@ -14,7 +14,7 @@ import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
 import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
-import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync } from './EditorLogic';
+import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, MaterialSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene } from '../../core/SceneService';
@@ -319,6 +319,7 @@ export const EditorLayout: React.FC = () => {
       <GridSync />
       <GizmoSync />
       <CameraGizmoSync />
+      <MaterialSync />
 
       {/* Settings Modal */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

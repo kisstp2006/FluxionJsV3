@@ -313,3 +313,133 @@ export const CameraGizmoSync: React.FC = () => {
 
   return null;
 };
+
+// ── Live material re-application when .fluxmat files change ──
+export const MaterialSync: React.FC = () => {
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+
+    const handler = async (e: Event) => {
+      const changedPath = (e as CustomEvent).detail?.path as string | undefined;
+      if (!changedPath) return;
+
+      const ecs = engine.engine.ecs;
+      const assets = engine.engine.getSubsystem('assets') as any;
+      const materials = engine.engine.getSubsystem('materials') as any;
+      if (!assets || !materials) return;
+
+      // Invalidate the cached material so loadAsset re-reads from disk
+      assets.invalidateCache(changedPath);
+
+      // Derive project-relative path for comparison with component fields
+      let relPath: string | null = null;
+      try {
+        const { projectManager } = await import('../../../src/project/ProjectManager');
+        relPath = projectManager.relativePath(changedPath);
+      } catch { /* ignore */ }
+
+      const loadTexture = async (texRelPath: string): Promise<THREE.Texture> => {
+        let texAbsPath: string;
+        try {
+          const { projectManager: pm } = await import('../../../src/project/ProjectManager');
+          texAbsPath = pm.resolvePath(texRelPath);
+        } catch { texAbsPath = texRelPath; }
+        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+        return assets.loadTexture(texUrl);
+      };
+
+      // Re-load the updated material data from disk
+      let matData: any;
+      try {
+        matData = await assets.loadAsset(changedPath, 'material');
+      } catch { return; }
+      if (!matData) return;
+
+      // Iterate all MeshRenderers and re-apply where this material is referenced
+      const allMR = ecs.getComponentsOfType<any>('MeshRenderer');
+      for (const [, mr] of allMR) {
+        if (!mr.mesh) continue;
+
+        // Case 1: single materialPath matches
+        const mrMatPath = mr.materialPath;
+        if (mrMatPath && (mrMatPath === changedPath || mrMatPath === relPath)) {
+          try {
+            const mat = await materials.createFromFluxMat(matData, loadTexture, changedPath);
+            if (mr.mesh instanceof THREE.Mesh) {
+              mr.mesh.material = mat;
+            } else if (mr.mesh instanceof THREE.Group) {
+              mr.mesh.traverse((child: THREE.Object3D) => {
+                if (child instanceof THREE.Mesh) child.material = mat;
+              });
+            }
+          } catch { /* skip */ }
+          continue;
+        }
+
+        // Case 2: .fluxmesh with materialSlots — check slot overrides and defaults
+        if (!mr.modelPath?.endsWith('.fluxmesh') || !mr.mesh) continue;
+
+        // Gather which slot indices reference the changed material
+        const slotsToUpdate: number[] = [];
+        let fluxSlots: any[] | null = null;
+
+        try {
+          const { projectManager } = await import('../../../src/project/ProjectManager');
+          const { getFileSystem } = await import('../../../src/filesystem');
+          const fs = getFileSystem();
+          const absFluxmesh = projectManager.resolvePath(mr.modelPath);
+          const fluxmeshDir = absFluxmesh.substring(0, absFluxmesh.lastIndexOf('/'));
+          const text = await fs.readFile(absFluxmesh);
+          const data = JSON.parse(text);
+          fluxSlots = (data.materialSlots || []).map((s: any) => ({
+            ...s,
+            defaultMaterial: s.defaultMaterial && !/^[A-Z]:/i.test(s.defaultMaterial) && !s.defaultMaterial.startsWith('/')
+              ? `${fluxmeshDir}/${s.defaultMaterial}`
+              : s.defaultMaterial,
+          }));
+        } catch { continue; }
+
+        if (!fluxSlots) continue;
+
+        // Check overrides
+        const overrides = mr.materialSlots || [];
+        for (let idx = 0; idx < fluxSlots.length; idx++) {
+          const override = overrides.find((o: any) => o.slotIndex === idx);
+          if (override) {
+            const oPath = override.materialPath;
+            if (oPath === changedPath || oPath === relPath) {
+              slotsToUpdate.push(idx);
+            }
+          } else {
+            // Default material
+            const defMat = fluxSlots[idx].defaultMaterial;
+            if (defMat === changedPath || defMat === relPath) {
+              slotsToUpdate.push(idx);
+            }
+          }
+        }
+
+        if (slotsToUpdate.length === 0) continue;
+
+        // Re-create the material and apply to matching sub-meshes
+        try {
+          const { applyMaterialsToModel } = await import('../../../src/assets/FluxMeshData');
+          const mat = await materials.createFromFluxMat(matData, loadTexture, changedPath);
+          for (const slotIdx of slotsToUpdate) {
+            const slot = fluxSlots[slotIdx];
+            if (slot) {
+              applyMaterialsToModel(mr.mesh, [slot], [mat]);
+            }
+          }
+        } catch { /* skip */ }
+      }
+    };
+
+    window.addEventListener('fluxion:material-changed', handler);
+    return () => window.removeEventListener('fluxion:material-changed', handler);
+  }, [engine]);
+
+  return null;
+};

@@ -360,6 +360,15 @@ export class AssetManager {
     return null;
   }
 
+  /** Remove a cached asset so next loadAsset() re-reads from disk. */
+  invalidateCache(path: string): void {
+    const entry = this.cache.get(path);
+    if (entry) {
+      this.disposeAsset(entry);
+      this.cache.delete(path);
+    }
+  }
+
   release(path: string): void {
     const entry = this.cache.get(path);
     if (!entry) return;

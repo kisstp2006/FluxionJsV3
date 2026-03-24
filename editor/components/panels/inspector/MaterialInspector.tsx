@@ -73,7 +73,11 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
   const saveData = useCallback((updated: FluxMatData) => {
     setSaving(true);
     getFileSystem().writeFile(assetPath, JSON.stringify(updated, null, 2))
-      .then(() => setSaving(false))
+      .then(() => {
+        setSaving(false);
+        // Notify scene to re-apply this material on all objects that reference it
+        window.dispatchEvent(new CustomEvent('fluxion:material-changed', { detail: { path: assetPath } }));
+      })
       .catch(() => setSaving(false));
   }, [assetPath]);
 

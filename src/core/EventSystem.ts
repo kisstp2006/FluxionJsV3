@@ -84,4 +84,5 @@ export const EngineEvents = {
   ENTITY_DESTROYED: 'entity:destroyed',
   COMPONENT_ADDED: 'component:added',
   COMPONENT_REMOVED: 'component:removed',
+  MATERIAL_CHANGED: 'material:changed',
 } as const;

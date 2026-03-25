@@ -170,6 +170,7 @@ ipcMain.handle('vme:open', async (_, filePath: string) => {
     minHeight: 500,
     title: 'Visual Material Editor',
     backgroundColor: '#1e1e2e',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -177,6 +178,8 @@ ipcMain.handle('vme:open', async (_, filePath: string) => {
     },
     icon: path.join(__dirname, '../../Data/icon.png'),
   });
+
+  vmeWindow.setMenuBarVisibility(false);
 
   vmeWindow.loadFile(path.join(__dirname, '../editor/vme-window.html'), {
     query: { filePath },

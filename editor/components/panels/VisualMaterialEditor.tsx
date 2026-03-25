@@ -6,6 +6,8 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -19,7 +21,9 @@ import {
   Position,
   NodeProps,
   BackgroundVariant,
+  ConnectionLineType,
   type NodeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -180,6 +184,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
               type="target"
               position={Position.Left}
               id={`in-${port.name}`}
+              className="vme-handle"
               style={{
                 width: 10,
                 height: 10,
@@ -266,6 +271,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
               type="source"
               position={Position.Right}
               id={`out-${port.name}`}
+              className="vme-handle"
               style={{
                 width: 10,
                 height: 10,
@@ -681,7 +687,13 @@ interface VisualMaterialEditorProps {
   onClose: () => void;
 }
 
-export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
+export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = (props) => (
+  <ReactFlowProvider>
+    <VisualMaterialEditorInner {...props} />
+  </ReactFlowProvider>
+);
+
+const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
   filePath,
   onClose,
 }) => {
@@ -691,7 +703,7 @@ export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
   const [palettePos, setPalettePos] = useState<{ x: number; y: number } | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
-  const reactFlowRef = useRef<any>(null);
+  const rfInstance = useReactFlow();
 
   const fileName = filePath.replace(/\\/g, '/').split('/').pop() || '';
 
@@ -817,10 +829,9 @@ export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
       if (!def) return;
 
       // Convert screen position to flow position
-      const flowInstance = reactFlowRef.current;
       let position = { x: screenPos.x - 300, y: screenPos.y - 100 };
-      if (flowInstance) {
-        position = flowInstance.screenToFlowPosition(screenPos);
+      if (rfInstance) {
+        position = rfInstance.screenToFlowPosition(screenPos);
       }
 
       const nodeId = generateNodeId(type);
@@ -970,7 +981,6 @@ export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
         {/* React Flow Canvas */}
         <div style={{ flex: 1, position: 'relative' }}>
           <ReactFlow
-            ref={reactFlowRef}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -987,6 +997,8 @@ export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
               style: { strokeWidth: 2 },
               animated: false,
             }}
+            connectionLineType={ConnectionLineType.SmoothStep}
+            connectionLineStyle={{ stroke: '#e040fb', strokeWidth: 2, strokeDasharray: '6 3' }}
             proOptions={{ hideAttribution: true }}
             style={{ background: '#11111b' }}
           >

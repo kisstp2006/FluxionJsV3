@@ -36,6 +36,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
   const rightDownRef = useRef<{ x: number; y: number } | null>(null);
   const rightDraggedRef = useRef(false);
+  const leftDownRef = useRef<{ x: number; y: number } | null>(null);
+  const wasDraggingRef = useRef(false);
 
   const isGameView = state.viewportTab === 'Game';
 
@@ -97,7 +99,11 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   // Raycaster pick
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engine || !canvasRef.current) return;
-    if (engine.gizmoService.isDragging) return;
+    // Skip selection if we just finished a gizmo drag or camera drag
+    if (engine.gizmoService.isDragging || wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      return;
+    }
 
     const rect = canvasRef.current.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -469,6 +475,10 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
             rightDownRef.current = { x: e.clientX, y: e.clientY };
             rightDraggedRef.current = false;
           }
+          if (e.button === 0) {
+            leftDownRef.current = { x: e.clientX, y: e.clientY };
+            wasDraggingRef.current = false;
+          }
         }}
         onMouseMove={isGameView ? undefined : (e) => {
           if (rightDownRef.current) {
@@ -476,9 +486,15 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
             const dy = e.clientY - rightDownRef.current.y;
             if (dx * dx + dy * dy > 9) rightDraggedRef.current = true;
           }
+          if (leftDownRef.current) {
+            const dx = e.clientX - leftDownRef.current.x;
+            const dy = e.clientY - leftDownRef.current.y;
+            if (dx * dx + dy * dy > 9) wasDraggingRef.current = true;
+          }
         }}
         onMouseUp={isGameView ? undefined : (e) => {
           if (e.button === 2) rightDownRef.current = null;
+          if (e.button === 0) leftDownRef.current = null;
         }}
         style={{ width: '100%', height: '100%', display: 'block' }}
       />

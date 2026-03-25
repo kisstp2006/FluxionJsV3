@@ -34,6 +34,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const [vpContextMenu, setVpContextMenu] = useState<{ pos: { x: number; y: number }; worldPos?: THREE.Vector3 } | null>(null);
   const [dragDelta, setDragDelta] = useState<string | null>(null);
   const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
+  const rightDownRef = useRef<{ x: number; y: number } | null>(null);
+  const rightDraggedRef = useRef(false);
 
   const isGameView = state.viewportTab === 'Game';
 
@@ -317,9 +319,10 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     engine.orbitControls.update();
   }, [engine]);
 
-  // Right-click context menu on viewport
+  // Right-click context menu on viewport — only if the mouse didn't move (camera orbit)
   const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (rightDraggedRef.current) return;
     if (!engine || !canvasRef.current) return;
 
     // Raycast to find world position for "Add entity at position"
@@ -461,6 +464,22 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         id="viewport-canvas"
         onClick={isGameView ? undefined : handleClick}
         onContextMenu={isGameView ? undefined : handleRightClick}
+        onMouseDown={isGameView ? undefined : (e) => {
+          if (e.button === 2) {
+            rightDownRef.current = { x: e.clientX, y: e.clientY };
+            rightDraggedRef.current = false;
+          }
+        }}
+        onMouseMove={isGameView ? undefined : (e) => {
+          if (rightDownRef.current) {
+            const dx = e.clientX - rightDownRef.current.x;
+            const dy = e.clientY - rightDownRef.current.y;
+            if (dx * dx + dy * dy > 9) rightDraggedRef.current = true;
+          }
+        }}
+        onMouseUp={isGameView ? undefined : (e) => {
+          if (e.button === 2) rightDownRef.current = null;
+        }}
         style={{ width: '100%', height: '100%', display: 'block' }}
       />
 

@@ -662,6 +662,74 @@ const SSGI_BLUR_FRAG = `
   }
 `;
 
+// ── SSGI Bilateral Upscale — half-res → full-res depth-guided interpolation ──
+const SSGI_UPSCALE_FRAG = `
+  uniform sampler2D tInput;      // half-res blurred SSGI
+  uniform sampler2D tDepth;      // full-res depth
+  uniform vec2 lowResolution;    // half-res size
+  uniform vec2 hiResolution;     // full-res size
+  uniform float cameraNear;
+  uniform float cameraFar;
+  varying vec2 vUv;
+
+  float linearizeDepth(float d) {
+    return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+  }
+
+  void main() {
+    float hiDepth = linearizeDepth(texture2D(tDepth, vUv).r);
+
+    // Sky — pass through
+    if (texture2D(tDepth, vUv).r >= 1.0) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      return;
+    }
+
+    // Map full-res UV to low-res texel center
+    vec2 lowTexel = 1.0 / lowResolution;
+    vec2 lowUV = vUv * lowResolution - 0.5; // continuous low-res coords
+    vec2 base = (floor(lowUV) + 0.5) * lowTexel;
+    vec2 frac_ = fract(lowUV);
+
+    // 4 nearest low-res texels (bilinear neighbourhood)
+    vec2 offsets[4];
+    offsets[0] = vec2(0.0, 0.0);
+    offsets[1] = vec2(lowTexel.x, 0.0);
+    offsets[2] = vec2(0.0, lowTexel.y);
+    offsets[3] = vec2(lowTexel.x, lowTexel.y);
+
+    // Bilinear spatial weights
+    float bilinW[4];
+    bilinW[0] = (1.0 - frac_.x) * (1.0 - frac_.y);
+    bilinW[1] = frac_.x * (1.0 - frac_.y);
+    bilinW[2] = (1.0 - frac_.x) * frac_.y;
+    bilinW[3] = frac_.x * frac_.y;
+
+    float depthSigma = hiDepth * 0.03;
+    float invDepthSigma2 = 1.0 / (2.0 * depthSigma * depthSigma + 0.0001);
+
+    vec4 result = vec4(0.0);
+    float totalWeight = 0.0;
+
+    for (int i = 0; i < 4; i++) {
+      vec2 sampleUV = base + offsets[i];
+      vec4 sampleVal = texture2D(tInput, sampleUV);
+
+      // Read depth at the low-res sample position in full-res depth buffer
+      float sampleDepth = linearizeDepth(texture2D(tDepth, sampleUV).r);
+
+      float depthDiff = hiDepth - sampleDepth;
+      float depthW = exp(-depthDiff * depthDiff * invDepthSigma2);
+
+      float w = bilinW[i] * depthW;
+      result += sampleVal * w;
+      totalWeight += w;
+    }
+
+    gl_FragColor = (totalWeight > 0.001) ? result / totalWeight : texture2D(tInput, vUv);
+  }
+`;
+
 // ── Volumetric Clouds Shader — Ray marching through cloud slab with FBM noise ──
 const CLOUD_FRAG = `
   uniform sampler2D tDepth;
@@ -891,6 +959,7 @@ export class PostProcessingPipeline {
   private ssgiRT: THREE.WebGLRenderTarget;
   private ssgiBlurRT: THREE.WebGLRenderTarget;
   private ssgiBlurRT2: THREE.WebGLRenderTarget;
+  private ssgiUpscaleRT: THREE.WebGLRenderTarget;
   private cloudRT: THREE.WebGLRenderTarget;
 
   // Passes
@@ -903,6 +972,7 @@ export class PostProcessingPipeline {
   private ssgiPass: FullScreenPass;
   private ssgiBlurHPass: FullScreenPass;
   private ssgiBlurVPass: FullScreenPass;
+  private ssgiUpscalePass: FullScreenPass;
   private cloudPass: FullScreenPass;
   private compositePass: FullScreenPass;
 
@@ -970,6 +1040,7 @@ export class PostProcessingPipeline {
     this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT2 = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    this.ssgiUpscaleRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.cloudRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
 
     // ── Bloom bright pass ──
@@ -1108,6 +1179,20 @@ export class PostProcessingPipeline {
       },
     }));
 
+    // ── SSGI Bilateral Upscale pass (half-res → full-res) ──
+    this.ssgiUpscalePass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: SSGI_UPSCALE_FRAG,
+      uniforms: {
+        tInput: { value: null },
+        tDepth: { value: null },
+        lowResolution: { value: new THREE.Vector2(halfW, halfH) },
+        hiResolution: { value: new THREE.Vector2(w, h) },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
+      },
+    }));
+
     // ── Cloud pass ──
     this.cloudPass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -1207,6 +1292,10 @@ export class PostProcessingPipeline {
       this.ssgiBlurVPass.material.uniforms['cameraNear'].value = near;
       this.ssgiBlurVPass.material.uniforms['cameraFar'].value = far;
 
+      // SSGI Upscale
+      this.ssgiUpscalePass.material.uniforms['cameraNear'].value = near;
+      this.ssgiUpscalePass.material.uniforms['cameraFar'].value = far;
+
       // Clouds
       this.cloudPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
       this.cloudPass.material.uniforms['cameraNear'].value = near;
@@ -1291,6 +1380,11 @@ export class PostProcessingPipeline {
 
       this.ssgiBlurVPass.material.uniforms['tInput'].value = this.ssgiBlurRT.texture;
       this.ssgiBlurVPass.render(this.renderer, this.ssgiBlurRT2);
+
+      // Bilateral upscale half-res → full-res
+      this.ssgiUpscalePass.material.uniforms['tInput'].value = this.ssgiBlurRT2.texture;
+      this.ssgiUpscalePass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
+      this.ssgiUpscalePass.render(this.renderer, this.ssgiUpscaleRT);
     }
 
     // 4. SSR
@@ -1359,7 +1453,7 @@ export class PostProcessingPipeline {
     cu['ssaoEnabled'].value = doSSAO;
     cu['tSSR'].value = this.ssrRT.texture;
     cu['ssrEnabled'].value = doSSR;
-    cu['tSSGI'].value = this.ssgiBlurRT2.texture;
+    cu['tSSGI'].value = this.ssgiUpscaleRT.texture;
     cu['ssgiEnabled'].value = doSSGI;
     cu['tClouds'].value = this.cloudRT.texture;
     cu['cloudsEnabled'].value = doClouds;
@@ -1400,6 +1494,7 @@ export class PostProcessingPipeline {
     this.ssgiRT.setSize(halfW, halfH);
     this.ssgiBlurRT.setSize(halfW, halfH);
     this.ssgiBlurRT2.setSize(halfW, halfH);
+    this.ssgiUpscaleRT.setSize(width, height);
     this.cloudRT.setSize(halfW, halfH);
 
 
@@ -1409,6 +1504,8 @@ export class PostProcessingPipeline {
     this.ssgiPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiBlurVPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.ssgiUpscalePass.material.uniforms['lowResolution'].value.set(halfW, halfH);
+    this.ssgiUpscalePass.material.uniforms['hiResolution'].value.set(width, height);
     this.cloudPass.material.uniforms['resolution'].value.set(halfW, halfH);
   }
 
@@ -1421,6 +1518,7 @@ export class PostProcessingPipeline {
     this.ssgiRT.dispose();
     this.ssgiBlurRT.dispose();
     this.ssgiBlurRT2.dispose();
+    this.ssgiUpscaleRT.dispose();
     this.cloudRT.dispose();
     this.bloomBrightPass.dispose();
     this.bloomDownPass.dispose();
@@ -1431,6 +1529,7 @@ export class PostProcessingPipeline {
     this.ssgiPass.dispose();
     this.ssgiBlurHPass.dispose();
     this.ssgiBlurVPass.dispose();
+    this.ssgiUpscalePass.dispose();
     this.cloudPass.dispose();
     this.compositePass.dispose();
   }

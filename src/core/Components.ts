@@ -245,6 +245,17 @@ export class AnimationComponent implements Component {
 export type ToneMappingMode = 'None' | 'Linear' | 'Reinhard' | 'ACES' | 'AgX';
 export type BackgroundMode = 'color' | 'skybox';
 export type FogMode = 'exponential' | 'linear';
+export type SkyboxMode = 'panorama' | 'cubemap';
+
+/** Face order matches THREE.CubeTextureLoader: +X, -X, +Y, -Y, +Z, -Z */
+export interface CubemapFaces {
+  right: string | null;   // +X
+  left: string | null;    // -X
+  top: string | null;     // +Y
+  bottom: string | null;  // -Y
+  front: string | null;   // +Z
+  back: string | null;    // -Z
+}
 
 export class EnvironmentComponent implements Component {
   readonly type = 'Environment';
@@ -254,7 +265,11 @@ export class EnvironmentComponent implements Component {
   // ── Background ──
   backgroundMode: BackgroundMode = 'color';
   backgroundColor = new THREE.Color(0x0a0e17);
+  skyboxMode: SkyboxMode = 'panorama';
+  /** Single equirectangular panorama image path (project-relative) */
   skyboxPath: string | null = null;
+  /** 6-face cubemap paths (project-relative) */
+  skyboxFaces: CubemapFaces = { right: null, left: null, top: null, bottom: null, front: null, back: null };
 
   // ── Ambient Light ──
   ambientColor = new THREE.Color(0.27, 0.27, 0.35);

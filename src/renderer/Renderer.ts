@@ -15,6 +15,7 @@ import {
   LightComponent,
   EnvironmentComponent,
   ToneMappingMode,
+  CubemapFaces,
 } from '../core/Components';
 import { PostProcessingPipeline } from './PostProcessing';
 import { DebugDraw } from './DebugDraw';
@@ -526,7 +527,10 @@ class EnvironmentSystem implements System {
 
   private renderer: FluxionRenderer;
   private ambientLight: THREE.AmbientLight | null = null;
-  private currentSkyboxPath: string | null = null;
+
+  // Skybox cache — avoids reloading every frame
+  private loadedSkyboxKey: string | null = null;
+  private skyboxLoading = false;
 
   constructor(renderer: FluxionRenderer) {
     this.renderer = renderer;
@@ -555,9 +559,11 @@ class EnvironmentSystem implements System {
     // ── Background ──
     if (env.backgroundMode === 'color') {
       scene.background = env.backgroundColor;
+      // Clear skybox cache so it reloads if user switches back
+      this.loadedSkyboxKey = null;
+    } else if (env.backgroundMode === 'skybox') {
+      this.applySkybox(env, scene);
     }
-    // skybox is loaded asynchronously via the inspector / asset system;
-    // if a CubeTexture is needed, it's set externally on scene.background.
 
     // ── Ambient Light ──
     if (!this.ambientLight) {
@@ -618,12 +624,77 @@ class EnvironmentSystem implements System {
     pp.config.exposure = env.exposure;
   }
 
+  /** Load and apply a skybox (panorama or 6-face cubemap) to the scene. */
+  private applySkybox(env: EnvironmentComponent, scene: THREE.Scene): void {
+    const key = this.buildSkyboxKey(env);
+    if (!key || key === this.loadedSkyboxKey || this.skyboxLoading) return;
+
+    this.skyboxLoading = true;
+
+    if (env.skyboxMode === 'panorama' && env.skyboxPath) {
+      const url = `file:///${env.skyboxPath.replace(/\\/g, '/')}`;
+      new THREE.TextureLoader().load(
+        url,
+        (texture) => {
+          texture.mapping = THREE.EquirectangularReflectionMapping;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          scene.background = texture;
+          scene.environment = texture;
+          this.loadedSkyboxKey = key;
+          this.skyboxLoading = false;
+        },
+        undefined,
+        () => {
+          console.warn('[EnvironmentSystem] Failed to load panorama:', env.skyboxPath);
+          this.skyboxLoading = false;
+        },
+      );
+    } else if (env.skyboxMode === 'cubemap') {
+      const f = env.skyboxFaces;
+      const paths = [f.right, f.left, f.top, f.bottom, f.front, f.back];
+      if (paths.every((p) => p != null)) {
+        const urls = paths.map((p) => `file:///${p!.replace(/\\/g, '/')}`);
+        new THREE.CubeTextureLoader().load(
+          urls,
+          (cubeTexture) => {
+            cubeTexture.colorSpace = THREE.SRGBColorSpace;
+            scene.background = cubeTexture;
+            scene.environment = cubeTexture;
+            this.loadedSkyboxKey = key;
+            this.skyboxLoading = false;
+          },
+          undefined,
+          () => {
+            console.warn('[EnvironmentSystem] Failed to load cubemap faces');
+            this.skyboxLoading = false;
+          },
+        );
+      } else {
+        this.skyboxLoading = false;
+      }
+    } else {
+      this.skyboxLoading = false;
+    }
+  }
+
+  /** Build a cache key from the current skybox configuration. */
+  private buildSkyboxKey(env: EnvironmentComponent): string | null {
+    if (env.skyboxMode === 'panorama') {
+      return env.skyboxPath ? `panorama:${env.skyboxPath}` : null;
+    }
+    const f = env.skyboxFaces;
+    const faces = [f.right, f.left, f.top, f.bottom, f.front, f.back];
+    if (faces.some((p) => !p)) return null;
+    return `cubemap:${faces.join('|')}`;
+  }
+
   private cleanup(): void {
     if (this.ambientLight) {
       this.renderer.scene.remove(this.ambientLight);
       this.ambientLight.dispose();
       this.ambientLight = null;
     }
+    this.loadedSkyboxKey = null;
   }
 
   destroy(): void {

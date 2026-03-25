@@ -470,7 +470,9 @@ export class Scene {
           data: {
             backgroundMode: env.backgroundMode,
             backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
+            skyboxMode: env.skyboxMode,
             skyboxPath: env.skyboxPath,
+            skyboxFaces: { ...env.skyboxFaces },
             ambientColor: [env.ambientColor.r, env.ambientColor.g, env.ambientColor.b],
             ambientIntensity: env.ambientIntensity,
             fogEnabled: env.fogEnabled,

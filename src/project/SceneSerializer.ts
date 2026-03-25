@@ -283,7 +283,9 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
         data: {
           backgroundMode: env.backgroundMode,
           backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
+          skyboxMode: env.skyboxMode,
           skyboxPath: env.skyboxPath,
+          skyboxFaces: { ...env.skyboxFaces },
           ambientColor: [env.ambientColor.r, env.ambientColor.g, env.ambientColor.b],
           ambientIntensity: env.ambientIntensity,
           fogEnabled: env.fogEnabled,
@@ -580,7 +582,18 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           const d = comp.data;
           e.backgroundMode = d.backgroundMode ?? 'color';
           if (d.backgroundColor) e.backgroundColor = new THREE.Color(d.backgroundColor[0], d.backgroundColor[1], d.backgroundColor[2]);
+          e.skyboxMode = d.skyboxMode ?? 'panorama';
           e.skyboxPath = d.skyboxPath ?? null;
+          if (d.skyboxFaces) {
+            e.skyboxFaces = {
+              right: d.skyboxFaces.right ?? null,
+              left: d.skyboxFaces.left ?? null,
+              top: d.skyboxFaces.top ?? null,
+              bottom: d.skyboxFaces.bottom ?? null,
+              front: d.skyboxFaces.front ?? null,
+              back: d.skyboxFaces.back ?? null,
+            };
+          }
           if (d.ambientColor) e.ambientColor = new THREE.Color(d.ambientColor[0], d.ambientColor[1], d.ambientColor[2]);
           e.ambientIntensity = d.ambientIntensity ?? 0.5;
           e.fogEnabled = d.fogEnabled ?? true;

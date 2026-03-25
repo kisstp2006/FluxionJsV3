@@ -1,11 +1,77 @@
-import React, { useState } from 'react';
-import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons } from '../../../ui';
+import React, { useState, useCallback } from 'react';
+import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons, TextInput } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
-import { EnvironmentComponent, ToneMappingMode, BackgroundMode, FogMode } from '../../../../src/core/Components';
+import { EnvironmentComponent, ToneMappingMode, BackgroundMode, FogMode, SkyboxMode, CubemapFaces } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
-import { setProperty, setColorProperty } from '../../../core/ComponentService';
+import { setProperty, setColorProperty, markComponentDirty } from '../../../core/ComponentService';
+import { projectManager } from '../../../../src/project/ProjectManager';
+
+/** Style for a texture slot row */
+const slotStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 4, width: '100%',
+};
+const pathStyle: React.CSSProperties = {
+  flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)',
+  color: 'var(--text-secondary)', overflow: 'hidden',
+  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+const btnStyle: React.CSSProperties = {
+  padding: '2px 6px', fontSize: 11, cursor: 'pointer',
+  background: 'var(--bg-hover)', border: '1px solid var(--border)',
+  borderRadius: 3, color: 'var(--text-primary)',
+};
+const clearBtnStyle: React.CSSProperties = {
+  ...btnStyle, padding: '2px 4px', color: 'var(--text-muted)',
+};
+
+/** Helper: pick an image file and return absolute path */
+async function pickImage(): Promise<string | null> {
+  const api = (window as any).fluxionAPI;
+  if (!api?.openFileDialog) return null;
+  return api.openFileDialog([
+    { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'hdr', 'exr', 'webp', 'tga', 'bmp'] },
+  ]);
+}
+
+/** Convert absolute path to project-relative, or return as-is */
+function toProjectRelative(absPath: string): string {
+  try {
+    const projDir = (projectManager as any)._projectDir;
+    if (!projDir) return absPath;
+    const normalized = absPath.replace(/\\/g, '/');
+    const projNorm = projDir.replace(/\\/g, '/').replace(/\/$/, '') + '/';
+    if (normalized.startsWith(projNorm)) return normalized.substring(projNorm.length);
+  } catch { /* */ }
+  return absPath;
+}
+
+/** Single image slot with Browse / Clear */
+const ImageSlot: React.FC<{
+  label: string;
+  path: string | null;
+  onChange: (newPath: string | null) => void;
+}> = ({ label, path, onChange }) => {
+  const browse = useCallback(async () => {
+    const picked = await pickImage();
+    if (picked) onChange(picked);
+  }, [onChange]);
+
+  const fileName = path ? path.replace(/\\/g, '/').split('/').pop() : null;
+
+  return (
+    <PropertyRow label={label}>
+      <div style={slotStyle}>
+        <span style={pathStyle} title={path ?? '(none)'}>
+          {fileName ?? <em style={{ color: 'var(--text-muted)' }}>None</em>}
+        </span>
+        <button style={btnStyle} onClick={browse} title="Browse...">...</button>
+        {path && <button style={clearBtnStyle} onClick={() => onChange(null)} title="Clear">\u00d7</button>}
+      </div>
+    </PropertyRow>
+  );
+};
 
 export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
   const engine = useEngine();
@@ -42,6 +108,43 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
               onChange={(v) => { setColorProperty(undoManager, env, 'backgroundColor', v); update(); }}
             />
           </PropertyRow>
+        )}
+        {env.backgroundMode === 'skybox' && (
+          <>
+            <PropertyRow label="Source">
+              <Select
+                value={env.skyboxMode}
+                onChange={(v) => { setProperty(undoManager, env, 'skyboxMode', v as SkyboxMode); update(); }}
+                options={[
+                  { value: 'panorama', label: 'Panorama (1 image)' },
+                  { value: 'cubemap', label: 'Cubemap (6 faces)' },
+                ]}
+              />
+            </PropertyRow>
+            {env.skyboxMode === 'panorama' && (
+              <ImageSlot
+                label="Image"
+                path={env.skyboxPath}
+                onChange={(p) => { setProperty(undoManager, env, 'skyboxPath', p); update(); }}
+              />
+            )}
+            {env.skyboxMode === 'cubemap' && (
+              <>
+                {(['right', 'left', 'top', 'bottom', 'front', 'back'] as const).map((face) => (
+                  <ImageSlot
+                    key={face}
+                    label={face.charAt(0).toUpperCase() + face.slice(1)}
+                    path={env.skyboxFaces[face]}
+                    onChange={(p) => {
+                      env.skyboxFaces = { ...env.skyboxFaces, [face]: p };
+                      markComponentDirty(env, 'skyboxFaces');
+                      update();
+                    }}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </Section>
 

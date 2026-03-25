@@ -20,6 +20,7 @@ import {
   EnvironmentComponent,
   SpriteComponent,
   TextRendererComponent,
+  CSGBrushComponent,
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
@@ -399,6 +400,26 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           dofMaxBlur: env.dofMaxBlur,
           shadowCascades: env.shadowCascades,
           shadowDistance: env.shadowDistance,
+        },
+      });
+    }
+
+    const csgBrush = engine.ecs.getComponent<CSGBrushComponent>(entityId, 'CSGBrush');
+    if (csgBrush) {
+      components.push({
+        type: 'CSGBrush',
+        data: {
+          enabled: csgBrush.enabled,
+          shape: csgBrush.shape,
+          operation: csgBrush.operation,
+          size: [csgBrush.size.x, csgBrush.size.y, csgBrush.size.z],
+          radius: csgBrush.radius,
+          segments: csgBrush.segments,
+          stairSteps: csgBrush.stairSteps,
+          generateCollision: csgBrush.generateCollision,
+          castShadow: csgBrush.castShadow,
+          receiveShadow: csgBrush.receiveShadow,
+          materialPath: csgBrush.materialPath,
         },
       });
     }
@@ -786,6 +807,25 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.shadowCascades = d.shadowCascades ?? 4;
           e.shadowDistance = d.shadowDistance ?? 200;
           engine.ecs.addComponent(entityId, e);
+          break;
+        }
+
+        case 'CSGBrush': {
+          const b = new CSGBrushComponent();
+          const d = comp.data;
+          b.enabled = d.enabled ?? true;
+          b.shape = d.shape ?? 'box';
+          b.operation = d.operation ?? 'additive';
+          if (d.size) b.size.set(d.size[0], d.size[1], d.size[2]);
+          b.radius = d.radius ?? 0.5;
+          b.segments = d.segments ?? 16;
+          b.stairSteps = d.stairSteps ?? 8;
+          b.generateCollision = d.generateCollision ?? true;
+          b.castShadow = d.castShadow ?? true;
+          b.receiveShadow = d.receiveShadow ?? true;
+          b.materialPath = d.materialPath ?? null;
+          b._dirty = true;
+          engine.ecs.addComponent(entityId, b);
           break;
         }
       }

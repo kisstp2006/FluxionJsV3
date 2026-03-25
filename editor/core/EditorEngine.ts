@@ -16,6 +16,7 @@ import { InputManager } from '../../src/input/InputManager';
 import { AudioSystem } from '../../src/audio/AudioSystem';
 import { Scene } from '../../src/scene/Scene';
 import { AssetManager } from '../../src/assets/AssetManager';
+import { CSGSystem } from '../../src/csg/CSGSystem';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -78,6 +79,10 @@ export async function initEditorEngine(
   // Particles
   const particleSys = new ParticleRenderSystem(renderer.scene);
   engine.ecs.addSystem(particleSys);
+
+  // CSG System
+  const csgSystem = new CSGSystem(renderer);
+  engine.ecs.addSystem(csgSystem);
 
   // Wire soft-particle depth texture + camera after PP pipeline exists
   const depthTex = renderer.postProcessing.getSceneDepthTexture();

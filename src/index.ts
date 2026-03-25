@@ -21,6 +21,7 @@ export {
   SpriteComponent,
   TextRendererComponent,
   AnimationComponent,
+  CSGBrushComponent,
 } from './core/Components';
 
 // Renderer
@@ -40,6 +41,9 @@ export { InputManager, MouseButton } from './input/InputManager';
 
 // Audio
 export { AudioSystem } from './audio/AudioSystem';
+
+// CSG (Constructive Solid Geometry)
+export { CSG, CSGSystem, csgToGeometry, geometryToCSG } from './csg';
 
 // Visual Materials
 export {

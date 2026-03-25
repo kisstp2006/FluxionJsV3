@@ -17,6 +17,7 @@ import {
   SpriteComponent,
   EnvironmentComponent,
   TextRendererComponent,
+  CSGBrushComponent,
 } from './Components';
 
 // ── Property Descriptor ──────────────────────────────────────
@@ -271,4 +272,41 @@ ComponentRegistry.register({
   addable: true,
   properties: [],  // Custom inspector handles the UI
   create: () => new EnvironmentComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'CSGBrush',
+  displayName: 'CSG Brush',
+  icon: '🧊',
+  addable: true,
+  properties: [
+    {
+      key: 'shape', type: 'select', label: 'Shape',
+      options: [
+        { value: 'box', label: 'Box' },
+        { value: 'cylinder', label: 'Cylinder' },
+        { value: 'cone', label: 'Cone' },
+        { value: 'sphere', label: 'Sphere' },
+        { value: 'wedge', label: 'Wedge' },
+        { value: 'stairs', label: 'Stairs' },
+        { value: 'arch', label: 'Arch' },
+      ],
+    },
+    {
+      key: 'operation', type: 'select', label: 'Operation',
+      options: [
+        { value: 'additive', label: 'Additive' },
+        { value: 'subtractive', label: 'Subtractive' },
+      ],
+    },
+    { key: 'size', type: 'vector3', label: 'Size' },
+    { key: 'radius', type: 'number', label: 'Radius', min: 0.01, step: 0.1 },
+    { key: 'segments', type: 'number', label: 'Segments', min: 3, max: 64, step: 1 },
+    { key: 'stairSteps', type: 'number', label: 'Stair Steps', min: 1, max: 32, step: 1 },
+    { key: 'generateCollision', type: 'boolean', label: 'Generate Collision' },
+    { key: 'castShadow', type: 'boolean', label: 'Cast Shadow' },
+    { key: 'receiveShadow', type: 'boolean', label: 'Receive Shadow' },
+    { key: 'materialPath', type: 'string', label: 'Material' },
+  ],
+  create: () => new CSGBrushComponent(),
 });

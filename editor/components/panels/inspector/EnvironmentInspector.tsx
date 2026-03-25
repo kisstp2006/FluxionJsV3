@@ -345,6 +345,16 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
           </>
         )}
       </Section>
+
+      {/* ── Shadows (CSM) ── */}
+      <Section title="Shadows" defaultOpen={false}>
+        <PropertyRow label="Cascades">
+          <Slider value={env.shadowCascades} min={0} max={6} step={1} onChange={(v) => { setProperty(undoManager, env, 'shadowCascades', v); update(); }} />
+        </PropertyRow>
+        <PropertyRow label="Distance">
+          <NumberInput value={env.shadowDistance} step={10} min={10} onChange={(v) => { setProperty(undoManager, env, 'shadowDistance', v); update(); }} />
+        </PropertyRow>
+      </Section>
     </Section>
   );
 };

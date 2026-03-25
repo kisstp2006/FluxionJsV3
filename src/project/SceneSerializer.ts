@@ -391,6 +391,8 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           vignetteEnabled: env.vignetteEnabled,
           vignetteIntensity: env.vignetteIntensity,
           vignetteRoundness: env.vignetteRoundness,
+          shadowCascades: env.shadowCascades,
+          shadowDistance: env.shadowDistance,
         },
       });
     }
@@ -769,6 +771,8 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.vignetteEnabled = d.vignetteEnabled ?? false;
           e.vignetteIntensity = d.vignetteIntensity ?? 0.3;
           e.vignetteRoundness = d.vignetteRoundness ?? 0.5;
+          e.shadowCascades = d.shadowCascades ?? 4;
+          e.shadowDistance = d.shadowDistance ?? 200;
           engine.ecs.addComponent(entityId, e);
           break;
         }

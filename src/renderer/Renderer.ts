@@ -22,6 +22,7 @@ import {
 } from '../core/Components';
 import { PostProcessingPipeline } from './PostProcessing';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
 
 export interface RendererConfig {
@@ -39,6 +40,7 @@ export class FluxionRenderer {
   readonly scene: THREE.Scene;
   readonly gizmoScene: THREE.Scene;
   readonly postProcessing: PostProcessingPipeline;
+  csm: CSM | null = null;
 
   readonly engine: Engine;
   private activeCamera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -791,6 +793,12 @@ class LightSystem implements System {
       lightComp.light.color.copy(lightComp.color);
       lightComp.light.intensity = lightComp.intensity;
 
+      // When CSM is active, suppress the user's directional light (CSM provides its own)
+      if (lightComp.light instanceof THREE.DirectionalLight && this.renderer.csm) {
+        lightComp.light.intensity = 0;
+        lightComp.light.castShadow = false;
+      }
+
       if (lightComp.light instanceof THREE.PointLight) {
         lightComp.light.distance = lightComp.range;
         lightComp.light.castShadow = lightComp.castShadow;
@@ -837,7 +845,9 @@ class LightSystem implements System {
         }
       }
       if (lightComp.light instanceof THREE.DirectionalLight) {
-        lightComp.light.castShadow = lightComp.castShadow;
+        if (!this.renderer.csm) {
+          lightComp.light.castShadow = lightComp.castShadow;
+        }
 
         // Update target from transform forward direction (local -Z)
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(transform.quaternion);
@@ -939,6 +949,9 @@ class EnvironmentSystem implements System {
   private sky: Sky | null = null;
   private sunHelper: THREE.Vector3 = new THREE.Vector3();
   private pmremGenerator: THREE.PMREMGenerator | null = null;
+
+  // CSM shadow tracking
+  private csmKey: string | null = null;
 
   constructor(renderer: FluxionRenderer) {
     this.renderer = renderer;
@@ -1093,6 +1106,9 @@ class EnvironmentSystem implements System {
     };
 
     pp.config.exposure = env.exposure;
+
+    // ── CSM (Cascaded Shadow Maps) ──
+    this.updateCSM(env, ecs);
   }
 
   /** Create / update a procedural sky using Three.js Sky addon (Preetham model). */
@@ -1213,6 +1229,129 @@ class EnvironmentSystem implements System {
     return `cubemap:${faces.join('|')}`;
   }
 
+  /** Remove CSM instance and reset all CSM-patched materials. */
+  private removeCSM(): void {
+    if (this.renderer.csm) {
+      this.renderer.csm.remove();
+      this.renderer.csm.dispose();
+      this.renderer.csm = null;
+      this.csmKey = null;
+    }
+  }
+
+  /** Create or update CSM based on EnvironmentComponent settings. */
+  private updateCSM(env: EnvironmentComponent, ecs: ECSManager): void {
+    const cascades = env.shadowCascades;
+
+    // Find the first directional light entity for direction / color / intensity
+    let dirLightComp: LightComponent | null = null;
+    let dirTransform: TransformComponent | null = null;
+    for (const entityId of ecs.getAllEntities()) {
+      const lc = ecs.getComponent<LightComponent>(entityId, 'Light');
+      if (lc?.lightType === 'directional') {
+        const tc = ecs.getComponent<TransformComponent>(entityId, 'Transform');
+        if (tc) {
+          dirLightComp = lc;
+          dirTransform = tc;
+          break;
+        }
+      }
+    }
+
+    // No directional light → clean up CSM if present
+    if (!dirLightComp || !dirTransform || cascades < 2) {
+      if (this.renderer.csm) this.removeCSM();
+      return;
+    }
+
+    const camera = this.renderer.getActiveCamera();
+    if (!(camera instanceof THREE.PerspectiveCamera)) {
+      if (this.renderer.csm) this.removeCSM();
+      return;
+    }
+
+    // Build a key to detect whether CSM needs recreation (struct changes)
+    const key = `${cascades}:${env.shadowDistance}:${dirLightComp.shadowMapSize}`;
+    if (key !== this.csmKey) {
+      // Recreate CSM
+      this.removeCSM();
+
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+
+      this.renderer.csm = new CSM({
+        camera,
+        parent: this.renderer.scene,
+        cascades,
+        maxFar: env.shadowDistance,
+        mode: 'practical',         // PSSM with lambda = 0.5
+        shadowMapSize: dirLightComp.shadowMapSize || 2048,
+        shadowBias: -0.0001,
+        lightDirection: forward.negate(),   // CSM expects direction FROM light
+        lightIntensity: dirLightComp.intensity,
+        lightNear: 0.5,
+        lightFar: env.shadowDistance + 200,
+        lightMargin: 100,
+      });
+
+      // Patch CSM's injected shader chunk: CSMShader calls getPointShadow
+      // with 7 params but Three.js 0.170+ expects 8 (added shadowIntensity).
+      const chunk = THREE.ShaderChunk.lights_fragment_begin;
+      if (chunk.includes('getPointShadow') &&
+          !chunk.includes('pointLightShadow.shadowIntensity')) {
+        THREE.ShaderChunk.lights_fragment_begin = chunk.replace(
+          'getPointShadow( pointShadowMap[ i ], pointLightShadow.shadowMapSize, pointLightShadow.shadowBias, pointLightShadow.shadowRadius,',
+          'getPointShadow( pointShadowMap[ i ], pointLightShadow.shadowMapSize, pointLightShadow.shadowIntensity, pointLightShadow.shadowBias, pointLightShadow.shadowRadius,',
+        );
+      }
+
+      // Copy color to all cascade lights
+      for (const cl of this.renderer.csm.lights) {
+        cl.color.copy(dirLightComp.color);
+      }
+
+      // Setup CSM for all existing materials in the scene
+      this.renderer.scene.traverse((obj: THREE.Object3D) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mat = (obj as THREE.Mesh).material;
+          if (Array.isArray(mat)) {
+            mat.forEach((m) => this.renderer.csm!.setupMaterial(m));
+          } else if (mat) {
+            this.renderer.csm!.setupMaterial(mat);
+          }
+        }
+      });
+
+      this.csmKey = key;
+    }
+
+    // ── Per-frame CSM sync ──
+    const csm = this.renderer.csm!;
+
+    // Sync light direction from directional light transform
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+    csm.lightDirection.copy(forward).negate();
+
+    // Sync color + intensity
+    for (const cl of csm.lights) {
+      cl.color.copy(dirLightComp.color);
+      cl.intensity = dirLightComp.intensity;
+    }
+
+    // Setup new materials that haven't been patched yet
+    this.renderer.scene.traverse((obj: THREE.Object3D) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mat = (obj as THREE.Mesh).material;
+        if (mat && !Array.isArray(mat) && !mat.defines?.USE_CSM) {
+          csm.setupMaterial(mat);
+        }
+      }
+    });
+
+    // Update frustums and shadow positions
+    csm.update();
+    csm.updateUniforms();
+  }
+
   private cleanup(): void {
     if (this.ambientLight) {
       this.renderer.scene.remove(this.ambientLight);
@@ -1221,6 +1360,7 @@ class EnvironmentSystem implements System {
     }
     this.removeProceduralSky(this.renderer.scene);
     this.loadedSkyboxKey = null;
+    this.removeCSM();
   }
 
   destroy(): void {

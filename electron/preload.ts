@@ -56,4 +56,14 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   minimize: () => ipcRenderer.invoke('window:minimize'),
   maximize: () => ipcRenderer.invoke('window:maximize'),
   close: () => ipcRenderer.invoke('window:close'),
+
+  // Visual Material Editor (separate window)
+  openVisualMaterialEditor: (filePath: string) => ipcRenderer.invoke('vme:open', filePath),
+  notifyMaterialChanged: (filePath: string) => ipcRenderer.invoke('vme:materialChanged', filePath),
+  onMaterialChangedRelay: (callback: (path: string) => void) => {
+    ipcRenderer.on('vme:material-changed-relay', (_, path) => callback(path));
+  },
+  offMaterialChangedRelay: () => {
+    ipcRenderer.removeAllListeners('vme:material-changed-relay');
+  },
 });

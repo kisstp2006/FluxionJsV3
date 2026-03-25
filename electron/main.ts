@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
+const vmeWindows = new Map<string, BrowserWindow>();
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -33,6 +34,11 @@ function createWindow(): void {
   mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
+    // Close all VME child windows when the main editor window closes
+    for (const [, win] of vmeWindows) {
+      if (!win.isDestroyed()) win.close();
+    }
+    vmeWindows.clear();
     mainWindow = null;
   });
 }
@@ -129,21 +135,64 @@ ipcMain.handle('app:getPath', async (_, name: string) => {
   return app.getPath(name as any);
 });
 
-// Window controls
-ipcMain.handle('window:minimize', () => {
-  mainWindow?.minimize();
+// Window controls (sender-aware so they work for any window)
+ipcMain.handle('window:minimize', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
 
-ipcMain.handle('window:maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
+ipcMain.handle('window:maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win?.isMaximized()) {
+    win.unmaximize();
   } else {
-    mainWindow?.maximize();
+    win?.maximize();
   }
 });
 
-ipcMain.handle('window:close', () => {
-  mainWindow?.close();
+ipcMain.handle('window:close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+// ── Visual Material Editor Window ──
+
+ipcMain.handle('vme:open', async (_, filePath: string) => {
+  // If already open for this file, focus instead of creating a new window
+  const existing = vmeWindows.get(filePath);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return;
+  }
+
+  const vmeWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 500,
+    title: 'Visual Material Editor',
+    backgroundColor: '#1e1e2e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    icon: path.join(__dirname, '../../Data/icon.png'),
+  });
+
+  vmeWindow.loadFile(path.join(__dirname, '../editor/vme-window.html'), {
+    query: { filePath },
+  });
+
+  vmeWindows.set(filePath, vmeWindow);
+  vmeWindow.on('closed', () => {
+    vmeWindows.delete(filePath);
+  });
+});
+
+ipcMain.handle('vme:materialChanged', async (_event, filePath: string) => {
+  // Relay material-changed to the main editor window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vme:material-changed-relay', filePath);
+  }
 });
 
 ipcMain.handle('fs:listDir', async (_, dirPath: string) => {

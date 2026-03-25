@@ -734,6 +734,8 @@ export const VisualMaterialEditor: React.FC<VisualMaterialEditorProps> = ({
               detail: { path: filePath },
             }),
           );
+          // Notify main editor window via IPC (cross-window sync)
+          window.fluxionAPI?.notifyMaterialChanged?.(filePath);
         })
         .catch((err) =>
           console.error('[VisualMaterialEditor] Save failed:', err),

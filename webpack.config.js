@@ -83,4 +83,26 @@ const editorRenderer = {
   ],
 };
 
-module.exports = [electronMain, electronPreload, editorRenderer];
+// Visual Material Editor (separate window)
+const vmeWindow = {
+  entry: './editor/vme-window.tsx',
+  target: 'web',
+  output: {
+    path: path.resolve(__dirname, 'dist/editor'),
+    filename: 'vme-window.bundle.js',
+    globalObject: 'self',
+  },
+  module: { rules: commonRules },
+  resolve,
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './editor/vme-window.html',
+      filename: 'vme-window.html',
+    }),
+    new (require('webpack')).DefinePlugin({
+      'global': 'globalThis',
+    }),
+  ],
+};
+
+module.exports = [electronMain, electronPreload, editorRenderer, vmeWindow];

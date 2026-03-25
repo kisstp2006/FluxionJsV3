@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Checkbox, NumberInput, Button, Icons } from '../../../ui';
+import { Section, PropertyRow, Checkbox, NumberInput, Button, Icons, Vector2Input } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
@@ -11,6 +11,37 @@ import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshMaterialSlot } from '../../../../src/assets/FluxMeshData';
 import { applyMaterialsToModel } from '../../../../src/assets/FluxMeshData';
 import type { VisualMaterialFile } from '../../../../src/materials/VisualMaterialGraph';
+
+/** Apply UV scale / offset / rotation to every texture map on the mesh's materials. */
+function applyUvTransform(mesh: THREE.Mesh | THREE.Group | null, scale: { x: number; y: number }, offset: { x: number; y: number }, rotationDeg: number) {
+  if (!mesh) return;
+  const rotRad = (rotationDeg * Math.PI) / 180;
+  const visit = (mat: THREE.Material) => {
+    if (!(mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial)) return;
+    const maps: (THREE.Texture | null)[] = [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap, mat.emissiveMap];
+    for (const tex of maps) {
+      if (!tex) continue;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(scale.x, scale.y);
+      tex.offset.set(offset.x, offset.y);
+      tex.rotation = rotRad;
+      tex.center.set(0.5, 0.5);
+      tex.needsUpdate = true;
+    }
+  };
+  if (mesh instanceof THREE.Mesh) {
+    if (Array.isArray(mesh.material)) mesh.material.forEach(visit);
+    else visit(mesh.material);
+  } else {
+    mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (Array.isArray(child.material)) child.material.forEach(visit);
+        else visit(child.material);
+      }
+    });
+  }
+}
 
 export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
   const engine = useEngine();
@@ -469,6 +500,50 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
       <PropertyRow label="Layer">
         <NumberInput value={mr.layer} step={1} onChange={(v) => { setProperty(undoManager, mr, 'layer', v); update(); }} />
       </PropertyRow>
+
+      {/* UV Transform — tiling, offset, rotation applied to all texture maps */}
+      {mr.mesh && (
+        <div style={{ marginTop: '4px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text)', fontWeight: 600, marginBottom: '4px' }}>
+            UV Transform
+          </div>
+          <PropertyRow label="Tiling">
+            <Vector2Input
+              value={mr.uvScale}
+              step={0.1}
+              onChange={(axis, v) => {
+                const next = { ...mr.uvScale, [axis]: v };
+                setProperty(undoManager, mr, 'uvScale', next);
+                applyUvTransform(mr.mesh, next, mr.uvOffset, mr.uvRotation);
+                update();
+              }}
+            />
+          </PropertyRow>
+          <PropertyRow label="Offset">
+            <Vector2Input
+              value={mr.uvOffset}
+              step={0.05}
+              onChange={(axis, v) => {
+                const next = { ...mr.uvOffset, [axis]: v };
+                setProperty(undoManager, mr, 'uvOffset', next);
+                applyUvTransform(mr.mesh, mr.uvScale, next, mr.uvRotation);
+                update();
+              }}
+            />
+          </PropertyRow>
+          <PropertyRow label="Rotation">
+            <NumberInput
+              value={parseFloat(mr.uvRotation.toFixed(1))}
+              step={1}
+              onChange={(v) => {
+                setProperty(undoManager, mr, 'uvRotation', v);
+                applyUvTransform(mr.mesh, mr.uvScale, mr.uvOffset, v);
+                update();
+              }}
+            />
+          </PropertyRow>
+        </div>
+      )}
 
       {/* Material slots for .fluxmesh models */}
       {isFluxMesh && fluxMeshSlots && fluxMeshSlots.length > 0 && (

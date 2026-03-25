@@ -4,6 +4,7 @@ export { Icons } from './Icons';
 // Inputs
 export { NumberInput } from './inputs/NumberInput';
 export { TextInput } from './inputs/TextInput';
+export { Vector2Input } from './inputs/Vector2Input';
 export { Vector3Input } from './inputs/Vector3Input';
 export { ColorInput } from './inputs/ColorInput';
 export { Slider } from './inputs/Slider';

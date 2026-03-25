@@ -142,6 +142,17 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
         }));
       }
 
+      // Store UV transform (only if non-default)
+      if (meshComp.uvScale.x !== 1 || meshComp.uvScale.y !== 1) {
+        data.uvScale = [meshComp.uvScale.x, meshComp.uvScale.y];
+      }
+      if (meshComp.uvOffset.x !== 0 || meshComp.uvOffset.y !== 0) {
+        data.uvOffset = [meshComp.uvOffset.x, meshComp.uvOffset.y];
+      }
+      if (meshComp.uvRotation !== 0) {
+        data.uvRotation = meshComp.uvRotation;
+      }
+
       // Serialize material (both primitives and models can have overridden materials)
       if (meshComp.mesh instanceof THREE.Mesh) {
         const mat = meshComp.mesh.material;
@@ -487,6 +498,11 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
               materialPath: s.materialPath,
             }));
           }
+
+          // Restore UV transform
+          if (d.uvScale) { m.uvScale = { x: d.uvScale[0], y: d.uvScale[1] }; }
+          if (d.uvOffset) { m.uvOffset = { x: d.uvOffset[0], y: d.uvOffset[1] }; }
+          if (d.uvRotation !== undefined) { m.uvRotation = d.uvRotation; }
 
           if (d.modelPath) {
             // 3D model asset — load async, mesh appears when ready
@@ -865,6 +881,7 @@ async function loadDeferredFluxMesh(
     const loadedMaterials = await Promise.all(matPromises);
     applyMaterialsToModel(scene, result.slots, loadedMaterials);
     meshComp.mesh = scene;
+    applyComponentUvTransform(meshComp);
   } catch (err) {
     console.error(`[SceneSerializer] Failed to load .fluxmesh "${fluxmeshPath}":`, err);
   }
@@ -895,6 +912,7 @@ async function loadDeferredModel(
       }
     });
     meshComp.mesh = scene;
+    applyComponentUvTransform(meshComp);
   } catch (err) {
     console.error(`[SceneSerializer] Failed to load model "${modelPath}":`, err);
   }
@@ -970,12 +988,47 @@ async function loadDeferredMaterial(
         }
       });
     }
+    applyComponentUvTransform(meshComp);
   } catch (err) {
     console.error(`[SceneSerializer] Failed to load material "${materialPath}":`, err);
   }
 }
 
 // ── Geometry reconstruction ──
+
+/** Apply component-level UV transform to all texture maps on a mesh's materials. */
+function applyComponentUvTransform(meshComp: MeshRendererComponent): void {
+  if (!meshComp.mesh) return;
+  const { uvScale, uvOffset, uvRotation } = meshComp;
+  if (uvScale.x === 1 && uvScale.y === 1 && uvOffset.x === 0 && uvOffset.y === 0 && uvRotation === 0) return;
+  const rotRad = (uvRotation * Math.PI) / 180;
+  const visit = (mat: THREE.Material) => {
+    if (!(mat instanceof THREE.MeshStandardMaterial) && !(mat instanceof THREE.MeshPhysicalMaterial)) return;
+    const maps: (THREE.Texture | null)[] = [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap, mat.emissiveMap];
+    for (const tex of maps) {
+      if (!tex) continue;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(uvScale.x, uvScale.y);
+      tex.offset.set(uvOffset.x, uvOffset.y);
+      tex.rotation = rotRad;
+      tex.center.set(0.5, 0.5);
+      tex.needsUpdate = true;
+    }
+  };
+  const mesh = meshComp.mesh;
+  if (mesh instanceof THREE.Mesh) {
+    if (Array.isArray(mesh.material)) mesh.material.forEach(visit);
+    else visit(mesh.material);
+  } else {
+    mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (Array.isArray(child.material)) child.material.forEach(visit);
+        else visit(child.material);
+      }
+    });
+  }
+}
 
 function buildGeometry(primitiveType: string, params: any): THREE.BufferGeometry {
   switch (primitiveType) {

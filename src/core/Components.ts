@@ -61,6 +61,12 @@ export class MeshRendererComponent implements Component {
   materialPath?: string;
   /** Per-slot material overrides for .fluxmesh models. Sparse — only non-default entries. */
   materialSlots?: Array<{ slotIndex: number; materialPath: string }>;
+  /** UV tiling (repeat). Default {x:1, y:1}. Applied to all texture maps on the material. */
+  uvScale = { x: 1, y: 1 };
+  /** UV offset. Default {x:0, y:0}. Shifts texture coordinates. */
+  uvOffset = { x: 0, y: 0 };
+  /** UV rotation in degrees. Default 0. Rotates around center (0.5, 0.5). */
+  uvRotation = 0;
 }
 
 // ── Camera ──

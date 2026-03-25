@@ -66,4 +66,11 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   offMaterialChangedRelay: () => {
     ipcRenderer.removeAllListeners('vme:material-changed-relay');
   },
+  // VME tab management (main process → VME window)
+  onVmeOpenTab: (callback: (path: string) => void) => {
+    ipcRenderer.on('vme:open-tab', (_, path) => callback(path));
+  },
+  offVmeOpenTab: () => {
+    ipcRenderer.removeAllListeners('vme:open-tab');
+  },
 });

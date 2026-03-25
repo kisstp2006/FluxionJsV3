@@ -343,6 +343,9 @@ export const AssetHotReload: React.FC = () => {
 
     // ── Helpers shared across handlers ──
 
+    /** Normalize path to forward slashes for reliable comparison. */
+    const norm = (p: string) => p.replace(/\\/g, '/');
+
     const getSubsystems = () => {
       const ecs = engine.engine.ecs;
       const assets = engine.engine.getSubsystem('assets') as any;
@@ -383,23 +386,26 @@ export const AssetHotReload: React.FC = () => {
       const { ecs, assets, materials } = getSubsystems();
       if (!assets || !materials) return;
 
-      const isVisualMat = changedPath.endsWith('.fluxvismat');
+      const nChanged = norm(changedPath);
+      const isVisualMat = nChanged.endsWith('.fluxvismat');
       assets.invalidateCache(changedPath);
+      if (nChanged !== changedPath) assets.invalidateCache(nChanged);
 
       const relPath = await resolveRelPath(changedPath);
-      const matDir = changedPath.substring(0, changedPath.lastIndexOf('/'));
+      const nRel = relPath ? norm(relPath) : null;
+      const matDir = nChanged.substring(0, nChanged.lastIndexOf('/'));
       const loadTexture = buildLoadTexture(matDir, assets);
 
       const createMaterial = async (): Promise<THREE.Material | null> => {
         try {
           if (isVisualMat) {
-            const visData = await assets.loadAsset(changedPath, 'visual_material');
+            const visData = await assets.loadAsset(nChanged, 'visual_material');
             if (!visData) return null;
-            return materials.createFromVisualMat(visData, loadTexture, changedPath);
+            return materials.createFromVisualMat(visData, loadTexture, nChanged);
           } else {
-            const matData = await assets.loadAsset(changedPath, 'material');
+            const matData = await assets.loadAsset(nChanged, 'material');
             if (!matData) return null;
-            return materials.createFromFluxMat(matData, loadTexture, changedPath);
+            return materials.createFromFluxMat(matData, loadTexture, nChanged);
           }
         } catch { return null; }
       };
@@ -409,7 +415,8 @@ export const AssetHotReload: React.FC = () => {
         if (!mr.mesh) continue;
 
         const mrMatPath = mr.materialPath;
-        if (mrMatPath && (mrMatPath === changedPath || mrMatPath === relPath)) {
+        const nMrMat = mrMatPath ? norm(mrMatPath) : null;
+        if (nMrMat && (nMrMat === nChanged || nMrMat === nRel)) {
           const mat = await createMaterial();
           if (mat) {
             if (mr.mesh instanceof THREE.Mesh) {
@@ -423,7 +430,7 @@ export const AssetHotReload: React.FC = () => {
           continue;
         }
 
-        if (!mr.modelPath?.endsWith('.fluxmesh') || !mr.mesh) continue;
+        if (!mr.modelPath?.toLowerCase().endsWith('.fluxmesh') || !mr.mesh) continue;
 
         const slotsToUpdate: number[] = [];
         let fluxSlots: any[] | null = null;
@@ -432,7 +439,7 @@ export const AssetHotReload: React.FC = () => {
           const { projectManager } = await import('../../../src/project/ProjectManager');
           const { getFileSystem } = await import('../../../src/filesystem');
           const fs = getFileSystem();
-          const absFluxmesh = projectManager.resolvePath(mr.modelPath);
+          const absFluxmesh = norm(projectManager.resolvePath(mr.modelPath));
           const fluxmeshDir = absFluxmesh.substring(0, absFluxmesh.lastIndexOf('/'));
           const text = await fs.readFile(absFluxmesh);
           const data = JSON.parse(text);
@@ -450,11 +457,16 @@ export const AssetHotReload: React.FC = () => {
         for (let idx = 0; idx < fluxSlots.length; idx++) {
           const override = overrides.find((o: any) => o.slotIndex === idx);
           if (override) {
-            const oPath = override.materialPath;
-            if (oPath === changedPath || oPath === relPath) slotsToUpdate.push(idx);
+            const oPath = norm(override.materialPath || '');
+            let oAbs: string | null = null;
+            try {
+              const { projectManager: pm } = await import('../../../src/project/ProjectManager');
+              oAbs = norm(pm.resolvePath(override.materialPath));
+            } catch {}
+            if (oPath === nChanged || oPath === nRel || oAbs === nChanged) slotsToUpdate.push(idx);
           } else {
-            const defMat = fluxSlots[idx].defaultMaterial;
-            if (defMat === changedPath || defMat === relPath) slotsToUpdate.push(idx);
+            const defMat = norm(fluxSlots[idx].defaultMaterial || '');
+            if (defMat === nChanged || defMat === nRel) slotsToUpdate.push(idx);
           }
         }
 
@@ -477,13 +489,21 @@ export const AssetHotReload: React.FC = () => {
       const { ecs, assets } = getSubsystems();
       if (!assets) return;
 
+      const nChanged = norm(changedPath);
       assets.invalidateCache(changedPath);
       const relPath = await resolveRelPath(changedPath);
+      const nRel = relPath ? norm(relPath) : null;
+
+      const pathEq = (p: string | undefined) => {
+        if (!p) return false;
+        const np = norm(p);
+        return np === nChanged || np === nRel;
+      };
 
       // Sprites — null out spriteTexture so renderer re-loads next frame
       const sprites = ecs.getComponentsOfType<any>('Sprite');
       for (const [, sprite] of sprites) {
-        if (sprite.texturePath === changedPath || sprite.texturePath === relPath) {
+        if (pathEq(sprite.texturePath)) {
           if (sprite.spriteTexture) {
             sprite.spriteTexture.dispose();
             sprite.spriteTexture = null;
@@ -494,7 +514,7 @@ export const AssetHotReload: React.FC = () => {
       // Lights — null out cookie texture so LightSystem re-loads
       const lights = ecs.getComponentsOfType<any>('Light');
       for (const [, light] of lights) {
-        if (light.cookieTexturePath === changedPath || light.cookieTexturePath === relPath) {
+        if (pathEq(light.cookieTexturePath)) {
           if (light.cookieTexture) {
             light.cookieTexture.dispose();
             light.cookieTexture = null;
@@ -508,8 +528,7 @@ export const AssetHotReload: React.FC = () => {
       // Environment skybox — mark for re-apply by clearing the internal skybox texture
       const envs = ecs.getComponentsOfType<any>('Environment');
       for (const [, env] of envs) {
-        const pathMatches = (p: string | undefined) => p && (p === changedPath || p === relPath);
-        if (pathMatches(env.skyboxPath) || (env.skyboxFaces && env.skyboxFaces.some(pathMatches))) {
+        if (pathEq(env.skyboxPath) || (env.skyboxFaces && env.skyboxFaces.some(pathEq))) {
           env._appliedSkybox = null; // forces EnvironmentSystem to re-apply
         }
       }
@@ -531,7 +550,7 @@ export const AssetHotReload: React.FC = () => {
             const tex = m[key] as THREE.Texture | null;
             if (tex && tex.image?.src) {
               const src = decodeURIComponent(tex.image.src.replace('file:///', '').replace(/\\/g, '/'));
-              if (src === changedPath.replace(/\\/g, '/') || src === relPath?.replace(/\\/g, '/')) {
+              if (src === nChanged || src === nRel) {
                 hasTexRef = true;
                 return;
               }
@@ -562,7 +581,9 @@ export const AssetHotReload: React.FC = () => {
       const { ecs, renderer } = getSubsystems();
       if (!renderer) return;
 
+      const nChanged = norm(changedPath);
       const relPath = await resolveRelPath(changedPath);
+      const nRel = relPath ? norm(relPath) : null;
 
       // Access the TextRendererSystem's fontCache and loading set via the renderer
       const textSystem = renderer.systems?.find?.((s: any) => s.name === 'TextRendererSync');
@@ -577,7 +598,8 @@ export const AssetHotReload: React.FC = () => {
       // Force rebuild on all TextRenderers using this font
       const textComps = ecs.getComponentsOfType<any>('TextRenderer');
       for (const [, tc] of textComps) {
-        if (tc.fontPath === changedPath || tc.fontPath === relPath) {
+        const nFont = tc.fontPath ? norm(tc.fontPath) : null;
+        if (nFont && (nFont === nChanged || nFont === nRel)) {
           tc._cacheKey = '';
         }
       }

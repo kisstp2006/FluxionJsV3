@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
-const vmeWindows = new Map<string, BrowserWindow>();
+let vmeWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -34,11 +34,9 @@ function createWindow(): void {
   mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
-    // Close all VME child windows when the main editor window closes
-    for (const [, win] of vmeWindows) {
-      if (!win.isDestroyed()) win.close();
-    }
-    vmeWindows.clear();
+    // Close VME window when the main editor window closes
+    if (vmeWindow && !vmeWindow.isDestroyed()) vmeWindow.close();
+    vmeWindow = null;
     mainWindow = null;
   });
 }
@@ -156,14 +154,14 @@ ipcMain.handle('window:close', (event) => {
 // ── Visual Material Editor Window ──
 
 ipcMain.handle('vme:open', async (_, filePath: string) => {
-  // If already open for this file, focus instead of creating a new window
-  const existing = vmeWindows.get(filePath);
-  if (existing && !existing.isDestroyed()) {
-    existing.focus();
+  // If a VME window already exists, send the new file as a tab
+  if (vmeWindow && !vmeWindow.isDestroyed()) {
+    vmeWindow.webContents.send('vme:open-tab', filePath);
+    vmeWindow.focus();
     return;
   }
 
-  const vmeWindow = new BrowserWindow({
+  vmeWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
@@ -185,9 +183,8 @@ ipcMain.handle('vme:open', async (_, filePath: string) => {
     query: { filePath },
   });
 
-  vmeWindows.set(filePath, vmeWindow);
   vmeWindow.on('closed', () => {
-    vmeWindows.delete(filePath);
+    vmeWindow = null;
   });
 });
 

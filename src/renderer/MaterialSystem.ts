@@ -15,11 +15,11 @@ import { buildVisualMaterial, updateVisualMaterialTime } from '../materials/Visu
  * references are collected the entry is automatically purged.
  */
 export class TextureCache {
-  private cache = new Map<string, { ref: WeakRef<THREE.Texture>; promise: Promise<THREE.Texture> }>();
+  private cache = new Map<string, { ref: WeakRef<THREE.Texture> | null; promise: Promise<THREE.Texture> }>();
   private registry = new FinalizationRegistry<string>((key) => {
     const entry = this.cache.get(key);
     // Only delete if the WeakRef is actually dead
-    if (entry && entry.ref.deref() === undefined) {
+    if (entry && (!entry.ref || entry.ref.deref() === undefined)) {
       this.cache.delete(key);
     }
   });
@@ -32,8 +32,10 @@ export class TextureCache {
   load(key: string, loader: (key: string) => Promise<THREE.Texture>): Promise<THREE.Texture> {
     const entry = this.cache.get(key);
     if (entry) {
-      const tex = entry.ref.deref();
+      const tex = entry.ref?.deref();
       if (tex) return Promise.resolve(tex);
+      // Still loading (ref is null) — return the in-flight promise
+      if (!entry.ref) return entry.promise;
       // WeakRef died but entry lingered — remove stale
       this.cache.delete(key);
     }
@@ -45,8 +47,8 @@ export class TextureCache {
       return tex;
     });
 
-    // Store with a temporary placeholder ref that will be replaced above
-    this.cache.set(key, { ref: new WeakRef(null as any), promise });
+    // Store with null ref — promise is in-flight
+    this.cache.set(key, { ref: null, promise });
     return promise;
   }
 

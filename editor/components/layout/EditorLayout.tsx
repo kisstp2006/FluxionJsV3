@@ -14,6 +14,7 @@ import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
 import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
+import { VisualMaterialEditor } from '../panels/VisualMaterialEditor';
 import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, MaterialSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
@@ -31,7 +32,18 @@ export const EditorLayout: React.FC = () => {
   const [canvasReady, setCanvasReady] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
   const [showProjectSettings, setShowProjectSettings] = React.useState(false);
+  const [visualMatEditorPath, setVisualMatEditorPath] = React.useState<string | null>(null);
   const engineRef = useRef<EngineSubsystems | null>(null);
+
+  // Listen for open-visual-material-editor events from the inspector
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path;
+      if (path) setVisualMatEditorPath(path);
+    };
+    window.addEventListener('fluxion:open-visual-material-editor', handler);
+    return () => window.removeEventListener('fluxion:open-visual-material-editor', handler);
+  }, []);
 
   const handleLog = useCallback((text: string, type: 'info' | 'warn' | 'error' | 'system') => {
     log(text, type);
@@ -318,6 +330,14 @@ export const EditorLayout: React.FC = () => {
 
       {/* Project Settings Modal */}
       {showProjectSettings && <ProjectSettingsPanel onClose={() => setShowProjectSettings(false)} />}
+
+      {/* Visual Material Editor Modal */}
+      {visualMatEditorPath && (
+        <VisualMaterialEditor
+          filePath={visualMatEditorPath}
+          onClose={() => setVisualMatEditorPath(null)}
+        />
+      )}
     </EngineProvider>
   );
 };

@@ -4,6 +4,8 @@
 // ============================================================
 
 import * as THREE from 'three';
+import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
+import { buildVisualMaterial, updateVisualMaterialTime } from '../materials/VisualMaterialCompiler';
 
 /** Shape of a parsed .fluxmat JSON file */
 export interface FluxMatData {
@@ -237,5 +239,50 @@ export class MaterialSystem {
 
   static ground(): PBRMaterialConfig {
     return { albedo: 0x4a6741, metalness: 0.0, roughness: 0.85 };
+  }
+
+  // ── Visual Material (.fluxvismat) support ──
+
+  private visualMaterials: Map<string, THREE.MeshPhysicalMaterial> = new Map();
+
+  /**
+   * Create a PBR material from a parsed .fluxvismat file.
+   * Textures are loaded via the provided callback (same pattern as createFromFluxMat).
+   */
+  async createFromVisualMat(
+    data: VisualMaterialFile,
+    loadTexture: (relPath: string) => Promise<THREE.Texture>,
+    name?: string,
+  ): Promise<THREE.MeshPhysicalMaterial> {
+    const { material } = await buildVisualMaterial(data, loadTexture);
+
+    const matName = name ?? data.name ?? `vismat_${this.visualMaterials.size}`;
+    material.name = matName;
+
+    if (this.envMap) {
+      material.envMap = this.envMap;
+    }
+
+    this.visualMaterials.set(matName, material);
+    return material;
+  }
+
+  /** Call once per frame to update time uniforms on all visual materials. */
+  updateVisualMaterials(time: number): void {
+    for (const mat of this.visualMaterials.values()) {
+      updateVisualMaterialTime(mat, time);
+    }
+  }
+
+  getVisualMaterial(name: string): THREE.MeshPhysicalMaterial | undefined {
+    return this.visualMaterials.get(name);
+  }
+
+  disposeVisualMaterial(name: string): void {
+    const mat = this.visualMaterials.get(name);
+    if (mat) {
+      mat.dispose();
+      this.visualMaterials.delete(name);
+    }
   }
 }

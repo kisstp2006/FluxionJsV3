@@ -41,6 +41,18 @@ export { InputManager, MouseButton } from './input/InputManager';
 // Audio
 export { AudioSystem } from './audio/AudioSystem';
 
+// Visual Materials
+export {
+  VisualMaterialFile,
+  VisualMaterialGraph,
+  VisualMaterialNode,
+  VisualMaterialConnection,
+  NodeRegistry,
+  compileVisualMaterial,
+  buildVisualMaterial,
+  updateVisualMaterialTime,
+} from './materials';
+
 // Assets
 export { AssetManager, AssetType, LoadProgress, ModelResult } from './assets/AssetManager';
 export { AssetTypeRegistry, AssetTypeDefinition } from './assets/AssetTypeRegistry';

@@ -425,6 +425,32 @@ AssetTypeRegistry.register({
 });
 
 AssetTypeRegistry.register({
+  type: 'visual_material',
+  displayName: 'Visual Material',
+  icon: 'material',
+  extensions: ['.fluxvismat'],
+  category: 'Materials',
+  color: '#e040fb',
+  loader: async (fs, path) => {
+    const text = await fs.readFile(path);
+    return JSON.parse(text);
+  },
+  createDefault: async (fs, dirPath, name) => {
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = `${dirPath}/${safeName}.fluxvismat`;
+    const { createDefaultGraph } = await import('../materials/VisualMaterialGraph');
+    const defaultFile = JSON.stringify(
+      { version: 1, name: safeName, graph: createDefaultGraph() },
+      null,
+      2,
+    );
+    await fs.writeFile(filePath, defaultFile);
+    return filePath;
+  },
+  serializable: true,
+});
+
+AssetTypeRegistry.register({
   type: 'json',
   displayName: 'JSON Data',
   icon: 'json',

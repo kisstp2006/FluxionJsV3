@@ -24,6 +24,8 @@ import {
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
 import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
+import { buildVisualMaterial } from '../materials/VisualMaterialCompiler';
+import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { projectManager } from './ProjectManager';
 import { applyMaterialsToModel } from '../assets/FluxMeshData';
 import type { FluxMeshLoadResult } from '../assets/FluxMeshData';
@@ -898,7 +900,7 @@ async function loadDeferredModel(
   }
 }
 
-/** Resolve a .fluxmat path and apply the material to a MeshRendererComponent */
+/** Resolve a .fluxmat or .fluxvismat path and apply the material to a MeshRendererComponent */
 async function loadDeferredMaterial(
   engine: Engine,
   meshComp: MeshRendererComponent,
@@ -913,13 +915,10 @@ async function loadDeferredMaterial(
     }
 
     const assets = engine.getSubsystem('assets') as AssetManager;
-    const matData = await assets.loadAsset(absPath, 'material') as FluxMatData | null;
-    if (!matData) return;
-
     const materials = engine.getSubsystem('materials') as MaterialSystem;
     if (!materials) return;
 
-    // Resolve texture paths relative to the .fluxmat's directory, with project-relative fallback
+    // Resolve texture paths relative to the material's directory, with project-relative fallback
     const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
     const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
       let texAbsPath: string;
@@ -927,7 +926,6 @@ async function loadDeferredMaterial(
         texAbsPath = relPath;
       } else {
         texAbsPath = `${matDir}/${relPath}`;
-        // Fallback: if the path looks like it might be project-relative (for legacy .fluxmat files)
         try {
           const projResolved = projectManager.resolvePath(relPath);
           const { getFileSystem } = await import('../filesystem');
@@ -940,13 +938,25 @@ async function loadDeferredMaterial(
       return assets.loadTexture(texUrl);
     };
 
-    const mat = await materials.createFromFluxMat(matData, loadTexture, materialPath);
+    let mat: THREE.Material;
 
-    // Store texture map paths in userData for round-trip serialization
-    const mapKeys = ['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
-    for (const key of mapKeys) {
-      if (matData[key]) {
-        mat.userData[key] = matData[key];
+    if (materialPath.endsWith('.fluxvismat')) {
+      // Visual material — compile graph to shader
+      const visData = await assets.loadAsset(absPath, 'visual_material') as VisualMaterialFile | null;
+      if (!visData) return;
+      const result = await materials.createFromVisualMat(visData, loadTexture, materialPath);
+      mat = result;
+    } else {
+      // Standard .fluxmat material
+      const matData = await assets.loadAsset(absPath, 'material') as FluxMatData | null;
+      if (!matData) return;
+      mat = await materials.createFromFluxMat(matData, loadTexture, materialPath);
+      // Store texture map paths in userData for round-trip serialization
+      const mapKeys = ['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+      for (const key of mapKeys) {
+        if (matData[key]) {
+          mat.userData[key] = matData[key];
+        }
       }
     }
 

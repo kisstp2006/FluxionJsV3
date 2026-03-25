@@ -12,6 +12,7 @@ import { resolveIcon } from '../../ui/Icons';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
+import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
 import { readAssetMeta } from '../../../src/assets/AssetMeta';
@@ -143,6 +144,22 @@ export const AssetBrowserPanel: React.FC<{
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+
+  // Auto-refresh when filesystem changes are detected by the hot-reload watcher
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const changedPath = (e as CustomEvent).detail?.path as string | undefined;
+      if (!changedPath || !selectedFolder) return;
+      // Refresh if the changed file is inside the currently viewed folder
+      const norm = normalizePath(changedPath);
+      const dir = norm.substring(0, norm.lastIndexOf('/'));
+      if (normalizePath(selectedFolder) === dir) {
+        refresh();
+      }
+    };
+    window.addEventListener('fluxion:fs-changed', handler);
+    return () => window.removeEventListener('fluxion:fs-changed', handler);
+  }, [selectedFolder, refresh]);
 
   // Set initial folder to project root
   useEffect(() => {

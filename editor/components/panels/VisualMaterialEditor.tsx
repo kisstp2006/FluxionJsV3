@@ -704,6 +704,7 @@ const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
   const [palettePos, setPalettePos] = useState<{ x: number; y: number } | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
+  const clipboardRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const rfInstance = useReactFlow();
 
   const fileName = filePath.replace(/\\/g, '/').split('/').pop() || '';
@@ -897,14 +898,119 @@ const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
     [nodes, edges],
   );
 
-  // Close on Escape
+  // Close on Escape + keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !palettePos) onClose();
+      // Don't handle shortcuts when palette is open or typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key === 'Escape') {
+        if (palettePos) setPalettePos(null);
+        else onClose();
+        return;
+      }
+
+      const selected = nodes.filter((n) => n.selected);
+      const selectedIds = new Set(selected.map((n) => n.id));
+
+      // Delete / Backspace — delete selected nodes (except PBROutput)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selected.length === 0) return;
+        const toRemove = selected.filter((n) => (n.data as FlowNodeData).vmNode.type !== 'PBROutput');
+        if (toRemove.length === 0) return;
+        const removeIds = new Set(toRemove.map((n) => n.id));
+        setNodes((nds) => nds.filter((n) => !removeIds.has(n.id)));
+        setEdges((eds) => eds.filter((e) => !removeIds.has(e.source) && !removeIds.has(e.target)));
+        setSelectedNodeId(null);
+        return;
+      }
+
+      // Ctrl+C — copy selected nodes
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+        if (selected.length === 0) return;
+        const copiedEdges = edges.filter((ed) => selectedIds.has(ed.source) && selectedIds.has(ed.target));
+        clipboardRef.current = { nodes: selected, edges: copiedEdges };
+        return;
+      }
+
+      // Ctrl+V — paste copied nodes
+      if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+        if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return;
+        e.preventDefault();
+        const idMap = new Map<string, string>();
+        const offset = { x: 40, y: 40 };
+        const newNodes: Node[] = clipboardRef.current.nodes
+          .filter((n) => (n.data as FlowNodeData).vmNode.type !== 'PBROutput')
+          .map((n) => {
+            const d = n.data as FlowNodeData;
+            const newId = generateNodeId(d.vmNode.type);
+            idMap.set(n.id, newId);
+            return {
+              ...n,
+              id: newId,
+              position: { x: n.position.x + offset.x, y: n.position.y + offset.y },
+              selected: true,
+              data: {
+                ...d,
+                vmNode: { ...d.vmNode, id: newId, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, properties: { ...d.vmNode.properties } },
+              },
+            };
+          });
+        const newEdges: Edge[] = clipboardRef.current.edges
+          .filter((ed) => idMap.has(ed.source) && idMap.has(ed.target))
+          .map((ed) => ({
+            ...ed,
+            id: generateConnectionId(),
+            source: idMap.get(ed.source)!,
+            target: idMap.get(ed.target)!,
+          }));
+        setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
+        setEdges((eds) => [...eds, ...newEdges]);
+        // Shift clipboard offset so repeated paste doesn't overlap
+        clipboardRef.current = { nodes: newNodes, edges: newEdges };
+        return;
+      }
+
+      // Ctrl+D — duplicate selected nodes in-place
+      if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (selected.length === 0) return;
+        const idMap = new Map<string, string>();
+        const offset = { x: 40, y: 40 };
+        const duped: Node[] = selected
+          .filter((n) => (n.data as FlowNodeData).vmNode.type !== 'PBROutput')
+          .map((n) => {
+            const d = n.data as FlowNodeData;
+            const newId = generateNodeId(d.vmNode.type);
+            idMap.set(n.id, newId);
+            return {
+              ...n,
+              id: newId,
+              position: { x: n.position.x + offset.x, y: n.position.y + offset.y },
+              selected: true,
+              data: {
+                ...d,
+                vmNode: { ...d.vmNode, id: newId, position: { x: n.position.x + offset.x, y: n.position.y + offset.y }, properties: { ...d.vmNode.properties } },
+              },
+            };
+          });
+        const dupedEdges: Edge[] = edges
+          .filter((ed) => idMap.has(ed.source) && idMap.has(ed.target))
+          .map((ed) => ({
+            ...ed,
+            id: generateConnectionId(),
+            source: idMap.get(ed.source)!,
+            target: idMap.get(ed.target)!,
+          }));
+        setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...duped]);
+        setEdges((eds) => [...eds, ...dupedEdges]);
+        return;
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose, palettePos]);
+  }, [onClose, palettePos, nodes, edges]);
 
   return (
     <div

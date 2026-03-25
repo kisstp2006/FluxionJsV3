@@ -14,7 +14,7 @@ import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
 import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
-import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, MaterialSync } from './EditorLogic';
+import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, AssetHotReload } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene } from '../../core/SceneService';
@@ -23,6 +23,7 @@ import { serializeScene } from '../../../src/project/SceneSerializer';
 import { SettingsService } from '../../core/SettingsService';
 import { ProjectSettingsService } from '../../core/ProjectSettingsService';
 import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
+import { AssetHotReloadService } from '../../core/AssetHotReloadService';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
@@ -134,6 +135,11 @@ export const EditorLayout: React.FC = () => {
       }
     }
 
+    // Start watching project directory for file changes
+    if (projectManager.projectDir) {
+      AssetHotReloadService.start(projectManager.projectDir).catch(() => {});
+    }
+
     await projectManager.addToRecent(config.name, projectPath);
   }, [dispatch, handleLog]);
 
@@ -161,6 +167,7 @@ export const EditorLayout: React.FC = () => {
     if (eng) {
       eng.scene.clear();
     }
+    AssetHotReloadService.stop().catch(() => {});
     disposeSettingsBindings();
     ProjectSettingsService.dispose();
     SettingsService.dispose();
@@ -333,7 +340,7 @@ export const EditorLayout: React.FC = () => {
       <GridSync />
       <GizmoSync />
       <CameraGizmoSync />
-      <MaterialSync />
+      <AssetHotReload />
 
       {/* Settings Modal */}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

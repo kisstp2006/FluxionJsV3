@@ -314,42 +314,52 @@ export const CameraGizmoSync: React.FC = () => {
   return null;
 };
 
-// ── Live material re-application when .fluxmat files change ──
-export const MaterialSync: React.FC = () => {
+// ── Unified asset hot-reload: materials, textures, fonts, models, audio ──
+// Listens to both 'fluxion:material-changed' (editor UI saves) and
+// 'fluxion:asset-changed' (FileWatcher detections) with dedup.
+export const AssetHotReload: React.FC = () => {
   const engine = useEngine();
 
   useEffect(() => {
     if (!engine) return;
 
-    const handler = async (e: Event) => {
-      const changedPath = (e as CustomEvent).detail?.path as string | undefined;
-      if (!changedPath) return;
+    // Dedup map: path → timestamp of last reload (prevents double-fire within 500ms)
+    const recentReloads = new Map<string, number>();
+    const DEDUP_MS = 500;
 
+    const isDuplicate = (path: string): boolean => {
+      const now = Date.now();
+      const last = recentReloads.get(path);
+      if (last && now - last < DEDUP_MS) return true;
+      recentReloads.set(path, now);
+      // Housekeep old entries
+      if (recentReloads.size > 100) {
+        for (const [k, v] of recentReloads) {
+          if (now - v > DEDUP_MS * 2) recentReloads.delete(k);
+        }
+      }
+      return false;
+    };
+
+    // ── Helpers shared across handlers ──
+
+    const getSubsystems = () => {
       const ecs = engine.engine.ecs;
       const assets = engine.engine.getSubsystem('assets') as any;
       const materials = engine.engine.getSubsystem('materials') as any;
-      if (!assets || !materials) return;
+      const renderer = engine.engine.getSubsystem('renderer') as any;
+      return { ecs, assets, materials, renderer };
+    };
 
-      // Invalidate the cached material so loadAsset re-reads from disk
-      assets.invalidateCache(changedPath);
-
-      // Derive project-relative path for comparison with component fields
-      let relPath: string | null = null;
+    const resolveRelPath = async (absPath: string): Promise<string | null> => {
       try {
         const { projectManager } = await import('../../../src/project/ProjectManager');
-        relPath = projectManager.relativePath(changedPath);
-      } catch { /* ignore */ }
+        return projectManager.relativePath(absPath);
+      } catch { return null; }
+    };
 
-      // Re-load the updated material data from disk
-      let matData: any;
-      try {
-        matData = await assets.loadAsset(changedPath, 'material');
-      } catch { return; }
-      if (!matData) return;
-
-      // Build a loadTexture that resolves relative to the .fluxmat directory, with project-relative fallback
-      const matDir = changedPath.substring(0, changedPath.lastIndexOf('/'));
-      const loadTexture = async (texRelPath: string): Promise<THREE.Texture> => {
+    const buildLoadTexture = (matDir: string, assets: any) => {
+      return async (texRelPath: string): Promise<THREE.Texture> => {
         let texAbsPath: string;
         if (/^[A-Z]:/i.test(texRelPath) || texRelPath.startsWith('/') || texRelPath.startsWith('file://')) {
           texAbsPath = texRelPath;
@@ -365,17 +375,43 @@ export const MaterialSync: React.FC = () => {
         const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
         return assets.loadTexture(texUrl);
       };
+    };
 
-      // Iterate all MeshRenderers and re-apply where this material is referenced
+    // ── Material reload logic (unchanged from MaterialSync) ──
+
+    const reloadMaterial = async (changedPath: string) => {
+      const { ecs, assets, materials } = getSubsystems();
+      if (!assets || !materials) return;
+
+      const isVisualMat = changedPath.endsWith('.fluxvismat');
+      assets.invalidateCache(changedPath);
+
+      const relPath = await resolveRelPath(changedPath);
+      const matDir = changedPath.substring(0, changedPath.lastIndexOf('/'));
+      const loadTexture = buildLoadTexture(matDir, assets);
+
+      const createMaterial = async (): Promise<THREE.Material | null> => {
+        try {
+          if (isVisualMat) {
+            const visData = await assets.loadAsset(changedPath, 'visual_material');
+            if (!visData) return null;
+            return materials.createFromVisualMat(visData, loadTexture, changedPath);
+          } else {
+            const matData = await assets.loadAsset(changedPath, 'material');
+            if (!matData) return null;
+            return materials.createFromFluxMat(matData, loadTexture, changedPath);
+          }
+        } catch { return null; }
+      };
+
       const allMR = ecs.getComponentsOfType<any>('MeshRenderer');
       for (const [, mr] of allMR) {
         if (!mr.mesh) continue;
 
-        // Case 1: single materialPath matches
         const mrMatPath = mr.materialPath;
         if (mrMatPath && (mrMatPath === changedPath || mrMatPath === relPath)) {
-          try {
-            const mat = await materials.createFromFluxMat(matData, loadTexture, changedPath);
+          const mat = await createMaterial();
+          if (mat) {
             if (mr.mesh instanceof THREE.Mesh) {
               mr.mesh.material = mat;
             } else if (mr.mesh instanceof THREE.Group) {
@@ -383,14 +419,12 @@ export const MaterialSync: React.FC = () => {
                 if (child instanceof THREE.Mesh) child.material = mat;
               });
             }
-          } catch { /* skip */ }
+          }
           continue;
         }
 
-        // Case 2: .fluxmesh with materialSlots — check slot overrides and defaults
         if (!mr.modelPath?.endsWith('.fluxmesh') || !mr.mesh) continue;
 
-        // Gather which slot indices reference the changed material
         const slotsToUpdate: number[] = [];
         let fluxSlots: any[] | null = null;
 
@@ -412,42 +446,209 @@ export const MaterialSync: React.FC = () => {
 
         if (!fluxSlots) continue;
 
-        // Check overrides
         const overrides = mr.materialSlots || [];
         for (let idx = 0; idx < fluxSlots.length; idx++) {
           const override = overrides.find((o: any) => o.slotIndex === idx);
           if (override) {
             const oPath = override.materialPath;
-            if (oPath === changedPath || oPath === relPath) {
-              slotsToUpdate.push(idx);
-            }
+            if (oPath === changedPath || oPath === relPath) slotsToUpdate.push(idx);
           } else {
-            // Default material
             const defMat = fluxSlots[idx].defaultMaterial;
-            if (defMat === changedPath || defMat === relPath) {
-              slotsToUpdate.push(idx);
-            }
+            if (defMat === changedPath || defMat === relPath) slotsToUpdate.push(idx);
           }
         }
 
         if (slotsToUpdate.length === 0) continue;
 
-        // Re-create the material and apply to matching sub-meshes
-        try {
+        const mat = await createMaterial();
+        if (mat) {
           const { applyMaterialsToModel } = await import('../../../src/assets/FluxMeshData');
-          const mat = await materials.createFromFluxMat(matData, loadTexture, changedPath);
           for (const slotIdx of slotsToUpdate) {
             const slot = fluxSlots[slotIdx];
-            if (slot) {
-              applyMaterialsToModel(mr.mesh, [slot], [mat]);
-            }
+            if (slot) applyMaterialsToModel(mr.mesh, [slot], [mat]);
           }
-        } catch { /* skip */ }
+        }
       }
     };
 
-    window.addEventListener('fluxion:material-changed', handler);
-    return () => window.removeEventListener('fluxion:material-changed', handler);
+    // ── Texture reload: sprites, cookie lights, environment ──
+
+    const reloadTexture = async (changedPath: string) => {
+      const { ecs, assets } = getSubsystems();
+      if (!assets) return;
+
+      assets.invalidateCache(changedPath);
+      const relPath = await resolveRelPath(changedPath);
+
+      // Sprites — null out spriteTexture so renderer re-loads next frame
+      const sprites = ecs.getComponentsOfType<any>('Sprite');
+      for (const [, sprite] of sprites) {
+        if (sprite.texturePath === changedPath || sprite.texturePath === relPath) {
+          if (sprite.spriteTexture) {
+            sprite.spriteTexture.dispose();
+            sprite.spriteTexture = null;
+          }
+        }
+      }
+
+      // Lights — null out cookie texture so LightSystem re-loads
+      const lights = ecs.getComponentsOfType<any>('Light');
+      for (const [, light] of lights) {
+        if (light.cookieTexturePath === changedPath || light.cookieTexturePath === relPath) {
+          if (light.cookieTexture) {
+            light.cookieTexture.dispose();
+            light.cookieTexture = null;
+          }
+          if (light.light instanceof THREE.SpotLight) {
+            light.light.map = null;
+          }
+        }
+      }
+
+      // Environment skybox — mark for re-apply by clearing the internal skybox texture
+      const envs = ecs.getComponentsOfType<any>('Environment');
+      for (const [, env] of envs) {
+        const pathMatches = (p: string | undefined) => p && (p === changedPath || p === relPath);
+        if (pathMatches(env.skyboxPath) || (env.skyboxFaces && env.skyboxFaces.some(pathMatches))) {
+          env._appliedSkybox = null; // forces EnvironmentSystem to re-apply
+        }
+      }
+
+      // MeshRenderer materials that reference this texture — force material re-build
+      // We iterate MeshRenderers and check if any materialPath points to a .fluxmat/.fluxvismat
+      // that might use this texture. Since we can't cheaply inspect material internals,
+      // we trigger a material-changed event for each material path to rebuild.
+      const reloadedMats = new Set<string>();
+      const allMR = ecs.getComponentsOfType<any>('MeshRenderer');
+      for (const [, mr] of allMR) {
+        if (!mr.mesh) continue;
+        // Check if any mesh material references the changed texture
+        let hasTexRef = false;
+        const checkMat = (mat: THREE.Material) => {
+          if (hasTexRef) return;
+          const m = mat as any;
+          for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'displacementMap', 'alphaMap']) {
+            const tex = m[key] as THREE.Texture | null;
+            if (tex && tex.image?.src) {
+              const src = decodeURIComponent(tex.image.src.replace('file:///', '').replace(/\\/g, '/'));
+              if (src === changedPath.replace(/\\/g, '/') || src === relPath?.replace(/\\/g, '/')) {
+                hasTexRef = true;
+                return;
+              }
+            }
+          }
+        };
+        if (mr.mesh instanceof THREE.Mesh && mr.mesh.material) {
+          const mats = Array.isArray(mr.mesh.material) ? mr.mesh.material : [mr.mesh.material];
+          mats.forEach(checkMat);
+        } else if (mr.mesh instanceof THREE.Group) {
+          mr.mesh.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh && child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach(checkMat);
+            }
+          });
+        }
+        if (hasTexRef && mr.materialPath && !reloadedMats.has(mr.materialPath)) {
+          reloadedMats.add(mr.materialPath);
+          await reloadMaterial(mr.materialPath);
+        }
+      }
+    };
+
+    // ── Font reload: clear fontCache, force text rebuild ──
+
+    const reloadFont = async (changedPath: string) => {
+      const { ecs, renderer } = getSubsystems();
+      if (!renderer) return;
+
+      const relPath = await resolveRelPath(changedPath);
+
+      // Access the TextRendererSystem's fontCache and loading set via the renderer
+      const textSystem = renderer.systems?.find?.((s: any) => s.name === 'TextRendererSync');
+      if (textSystem) {
+        // Delete cached font so it re-loads
+        textSystem.fontCache?.delete?.(changedPath);
+        textSystem.fontCache?.delete?.(relPath);
+        textSystem.loadingFonts?.delete?.(changedPath);
+        textSystem.loadingFonts?.delete?.(relPath);
+      }
+
+      // Force rebuild on all TextRenderers using this font
+      const textComps = ecs.getComponentsOfType<any>('TextRenderer');
+      for (const [, tc] of textComps) {
+        if (tc.fontPath === changedPath || tc.fontPath === relPath) {
+          tc._cacheKey = '';
+        }
+      }
+    };
+
+    // ── Model / mesh reload: cache invalidation only ──
+    // MeshRendererSystem does NOT re-create meshes when mr.mesh is null,
+    // so we must not destroy existing meshes. Just invalidate the cache
+    // so the next scene load picks up the changes.
+
+    const reloadModel = async (changedPath: string) => {
+      const { assets } = getSubsystems();
+      if (!assets) return;
+      assets.invalidateCache(changedPath);
+    };
+
+    // ── Audio reload: invalidate cache only ──
+
+    const reloadAudio = async (changedPath: string) => {
+      const { assets } = getSubsystems();
+      if (!assets) return;
+      assets.invalidateCache(changedPath);
+    };
+
+    // ── Main handler for 'fluxion:material-changed' (editor UI saves) ──
+
+    const materialChangedHandler = async (e: Event) => {
+      const changedPath = (e as CustomEvent).detail?.path as string | undefined;
+      if (!changedPath) return;
+      if (isDuplicate(changedPath)) return;
+      await reloadMaterial(changedPath);
+    };
+
+    // ── Main handler for 'fluxion:asset-changed' (file watcher) ──
+
+    const assetChangedHandler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.path) return;
+      const { path, assetType, eventType } = detail as { path: string; assetType: string; eventType: string };
+      // Skip delete events — no point reloading a deleted asset
+      if (eventType === 'delete') return;
+      if (isDuplicate(path)) return;
+
+      switch (assetType) {
+        case 'material':
+        case 'visual_material':
+          await reloadMaterial(path);
+          break;
+        case 'texture':
+          await reloadTexture(path);
+          break;
+        case 'font':
+          await reloadFont(path);
+          break;
+        case 'model':
+        case 'mesh':
+          await reloadModel(path);
+          break;
+        case 'audio':
+          await reloadAudio(path);
+          break;
+        // shader, scene, json, prefab — no live reload needed
+      }
+    };
+
+    window.addEventListener('fluxion:material-changed', materialChangedHandler);
+    window.addEventListener('fluxion:asset-changed', assetChangedHandler);
+    return () => {
+      window.removeEventListener('fluxion:material-changed', materialChangedHandler);
+      window.removeEventListener('fluxion:asset-changed', assetChangedHandler);
+    };
   }, [engine]);
 
   return null;

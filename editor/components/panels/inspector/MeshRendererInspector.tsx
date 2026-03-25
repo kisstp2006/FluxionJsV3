@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { Section, PropertyRow, Checkbox, NumberInput, Button, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
@@ -10,6 +10,7 @@ import { setProperty } from '../../../core/ComponentService';
 import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshMaterialSlot } from '../../../../src/assets/FluxMeshData';
 import { applyMaterialsToModel } from '../../../../src/assets/FluxMeshData';
+import type { VisualMaterialFile } from '../../../../src/materials/VisualMaterialGraph';
 
 export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
   const engine = useEngine();
@@ -24,6 +25,55 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
   const update = () => forceUpdate((n) => n + 1);
 
   const isFluxMesh = mr.modelPath?.endsWith('.fluxmesh') ?? false;
+
+  /** Check if a dropped asset is any material type (.fluxmat or .fluxvismat) */
+  const isMaterialAsset = (assetPath: string): boolean => {
+    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
+    return !!typeDef && (typeDef.type === 'material' || typeDef.type === 'visual_material');
+  };
+
+  /** Load a material from path — handles both .fluxmat and .fluxvismat */
+  const loadMaterialFromPath = async (
+    assetPath: string,
+  ): Promise<THREE.Material | null> => {
+    try {
+      const { projectManager } = await import('../../../../src/project/ProjectManager');
+      const assets = engine.engine.getSubsystem('assets') as any;
+      const materials = engine.engine.getSubsystem('materials') as any;
+      if (!assets || !materials) return null;
+
+      const matAbsPath = projectManager.resolvePath(assetPath);
+      const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
+      const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+        let texAbsPath: string;
+        if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+          texAbsPath = relPath;
+        } else {
+          texAbsPath = `${matDir}/${relPath}`;
+          try {
+            const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+            const projResolved = projectManager.resolvePath(relPath);
+            if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+          } catch {}
+        }
+        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+        return assets.loadTexture(texUrl);
+      };
+
+      if (assetPath.endsWith('.fluxvismat')) {
+        const visData = await assets.loadAsset(matAbsPath, 'visual_material') as VisualMaterialFile | null;
+        if (!visData) return null;
+        return materials.createFromVisualMat(visData, loadTexture, assetPath);
+      } else {
+        const matData = await assets.loadAsset(matAbsPath, 'material');
+        if (!matData) return null;
+        return materials.createFromFluxMat(matData, loadTexture, assetPath);
+      }
+    } catch (err) {
+      console.error('[MeshRendererInspector] Failed to load material:', err);
+      return null;
+    }
+  };
 
   // Load .fluxmesh slot data when modelPath changes
   useEffect(() => {
@@ -215,14 +265,12 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     update();
   };
 
-  /** Handle dropping a .fluxmat onto a material slot */
+  /** Handle dropping a material (.fluxmat or .fluxvismat) onto a material slot */
   const handleSlotMaterialDrop = async (e: React.DragEvent, slotIndex: number) => {
     e.preventDefault();
     e.stopPropagation();
     const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
-    if (!assetPath) return;
-    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
-    if (!typeDef || typeDef.type !== 'material') return;
+    if (!assetPath || !isMaterialAsset(assetPath)) return;
 
     // Update materialSlots override
     const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
@@ -236,43 +284,17 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
 
     // Load and apply the material to the correct sub-meshes
     if (mr.mesh && fluxMeshSlots) {
-      try {
-        const { projectManager } = await import('../../../../src/project/ProjectManager');
-        const assets = engine.engine.getSubsystem('assets') as any;
-        const materials = engine.engine.getSubsystem('materials') as any;
-        if (assets && materials) {
-          const matAbsPath = projectManager.resolvePath(assetPath);
-          const matData = await assets.loadAsset(matAbsPath, 'material');
-          if (matData) {
-            const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
-            const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-              let texAbsPath: string;
-              if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
-                texAbsPath = relPath;
-              } else {
-                texAbsPath = `${matDir}/${relPath}`;
-                try {
-                  const { getFileSystem: getFs } = await import('../../../../src/filesystem');
-                  const projResolved = projectManager.resolvePath(relPath);
-                  if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
-                } catch {}
-              }
-              const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-              return assets.loadTexture(texUrl);
-            };
-            const mat = await materials.createFromFluxMat(matData, loadTexture, assetPath);
-            const slot = fluxMeshSlots[slotIndex];
-            if (slot) {
-              applyMaterialsToModel(mr.mesh, [slot], [mat]);
-            }
-          }
+      const mat = await loadMaterialFromPath(assetPath);
+      if (mat) {
+        const slot = fluxMeshSlots[slotIndex];
+        if (slot) {
+          applyMaterialsToModel(mr.mesh, [slot], [mat]);
         }
-      } catch (err) {
-        console.error('[MeshRendererInspector] Failed to apply slot material:', err);
       }
     }
     update();
   };
+
 
   /** Clear a slot override back to default */
   const handleClearSlot = async (slotIndex: number) => {
@@ -313,54 +335,25 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     update();
   };
 
-  /** Handle dropping a .fluxmat onto a primitive's material slot */
+  /** Handle dropping a material (.fluxmat or .fluxvismat) onto a primitive's material slot */
   const handlePrimitiveMaterialDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
-    if (!assetPath) return;
-    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
-    if (!typeDef || typeDef.type !== 'material') return;
+    if (!assetPath || !isMaterialAsset(assetPath)) return;
 
     setProperty(undoManager, mr, 'materialPath', assetPath);
 
-    try {
-      const { projectManager } = await import('../../../../src/project/ProjectManager');
-      const assets = engine.engine.getSubsystem('assets') as any;
-      const materials = engine.engine.getSubsystem('materials') as any;
-      if (assets && materials) {
-        const matAbsPath = projectManager.resolvePath(assetPath);
-        const matData = await assets.loadAsset(matAbsPath, 'material');
-        if (matData) {
-          const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
-          const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-            let texAbsPath: string;
-            if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
-              texAbsPath = relPath;
-            } else {
-              texAbsPath = `${matDir}/${relPath}`;
-              try {
-                const { getFileSystem: getFs } = await import('../../../../src/filesystem');
-                const projResolved = projectManager.resolvePath(relPath);
-                if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
-              } catch {}
-            }
-            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-            return assets.loadTexture(texUrl);
-          };
-          const mat = await materials.createFromFluxMat(matData, loadTexture, assetPath);
-          if (mr.mesh instanceof THREE.Mesh) {
-            mr.mesh.material = mat;
-          } else if (mr.mesh instanceof THREE.Group) {
-            mr.mesh.traverse((child: THREE.Object3D) => {
-              if (child instanceof THREE.Mesh) {
-                child.material = mat;
-              }
-            });
+    const mat = await loadMaterialFromPath(assetPath);
+    if (mat) {
+      if (mr.mesh instanceof THREE.Mesh) {
+        mr.mesh.material = mat;
+      } else if (mr.mesh instanceof THREE.Group) {
+        mr.mesh.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh) {
+            child.material = mat;
           }
-        }
+        });
       }
-    } catch (err) {
-      console.error('[MeshRendererInspector] Failed to apply material:', err);
     }
     update();
   };
@@ -546,7 +539,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                         }}
                         title={currentPath}
                       >
-                        {currentPath ? getFileName(currentPath) : 'Drop .fluxmat'}
+                        {currentPath ? getFileName(currentPath) : 'Drop material'}
                       </span>
                       {overridden && (
                         <button
@@ -616,7 +609,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
               }}
               title={mr.materialPath || ''}
             >
-              {mr.materialPath ? getFileName(mr.materialPath) : 'Drop .fluxmat'}
+              {mr.materialPath ? getFileName(mr.materialPath) : 'Drop material'}
             </span>
             {mr.materialPath && (
               <button

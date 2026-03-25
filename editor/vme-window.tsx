@@ -8,13 +8,38 @@ import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
 import { VisualMaterialEditor } from './components/panels/VisualMaterialEditor';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
+import { projectManager } from '../src/project/ProjectManager';
+import { normalizePath } from '../src/filesystem/FileSystem';
 
 // Initialize filesystem before React renders
-setGlobalFileSystem(new ElectronFileSystem());
+const _fs = new ElectronFileSystem();
+setGlobalFileSystem(_fs);
 
 // Read initial filePath from URL query string (set by Electron main process)
 const params = new URLSearchParams(window.location.search);
 const initialFilePath = params.get('filePath') || '';
+
+// Derive project directory from file path by finding .fluxproj
+(async () => {
+  if (!initialFilePath) return;
+  let dir = normalizePath(initialFilePath);
+  dir = dir.substring(0, dir.lastIndexOf('/'));
+  // Walk up the directory tree to find a .fluxproj file
+  while (dir && dir.length > 3) {
+    try {
+      const entries = await _fs.readDir(dir);
+      if (entries.some(e => e.name.endsWith('.fluxproj'))) {
+        // Found the project root — open it
+        const projFile = entries.find(e => e.name.endsWith('.fluxproj'))!;
+        await projectManager.openProject(normalizePath(projFile.path));
+        break;
+      }
+    } catch { /* ignore */ }
+    const parent = dir.substring(0, dir.lastIndexOf('/'));
+    if (parent === dir) break;
+    dir = parent;
+  }
+})();
 
 interface TabInfo {
   id: string;

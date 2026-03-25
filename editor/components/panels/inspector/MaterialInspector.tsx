@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Section, PropertyRow, Slider, ColorInput, Checkbox } from '../../../ui';
+import { Section, PropertyRow, Slider, ColorInput, Checkbox, AssetInput } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem, normalizePath } from '../../../../src/filesystem';
 import { projectManager } from '../../../../src/project/ProjectManager';
@@ -244,45 +244,41 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
 
       {/* Texture Maps */}
       <Section title="Texture Maps" defaultOpen={false}>
-        {(['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const).map((key) => (
-          <PropertyRow key={key} label={key.replace('Map', '')}>
-            <div
-              style={mapSlotStyle}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'link'; }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const projRelPath = e.dataTransfer.getData('application/x-fluxion-asset');
-                if (!projRelPath) return;
-                // Convert project-relative texture path to .fluxmat-relative path
-                const matDir = normalizePath(assetPath).substring(0, normalizePath(assetPath).lastIndexOf('/'));
-                const texAbs = normalizePath(projectManager.resolvePath(projRelPath));
-                const matDirParts = matDir.split('/').filter(Boolean);
-                const texParts = texAbs.split('/').filter(Boolean);
-                let common = 0;
-                while (common < matDirParts.length && common < texParts.length && matDirParts[common].toLowerCase() === texParts[common].toLowerCase()) common++;
-                const ups = matDirParts.length - common;
-                const matRelPath = [...Array(ups).fill('..'), ...texParts.slice(common)].join('/');
-                update({ [key]: matRelPath });
-              }}
-            >
-              {data[key] ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {(data[key] as string).replace(/\\/g, '/').split('/').pop()}
-                  </span>
-                  <span
-                    style={{ cursor: 'pointer', color: 'var(--accent-red)', fontSize: '12px' }}
-                    onClick={() => update({ [key]: undefined })}
-                  >✕</span>
-                </span>
-              ) : (
-                <span style={{ color: 'var(--text-disabled)', fontStyle: 'italic' }}>
-                  Drop texture here
-                </span>
-              )}
-            </div>
-          </PropertyRow>
-        ))}
+        {(['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const).map((key) => {
+          // Convert material-relative path → project-relative for AssetInput display
+          const matDir = normalizePath(assetPath).substring(0, normalizePath(assetPath).lastIndexOf('/'));
+          const matRelVal = data[key] as string | undefined;
+          let projRelVal = '';
+          if (matRelVal) {
+            // Resolve to absolute then to project-relative
+            const absTexture = normalizePath(matDir + '/' + matRelVal);
+            projRelVal = projectManager.relativePath(absTexture);
+          }
+          return (
+            <PropertyRow key={key} label={key.replace('Map', '')}>
+              <AssetInput
+                value={projRelVal}
+                assetType="texture"
+                placeholder="Select texture"
+                onChange={(v) => {
+                  if (!v) {
+                    update({ [key]: undefined });
+                    return;
+                  }
+                  // Convert project-relative → material-relative path
+                  const texAbs = normalizePath(projectManager.resolvePath(v));
+                  const matDirParts = matDir.split('/').filter(Boolean);
+                  const texParts = texAbs.split('/').filter(Boolean);
+                  let common = 0;
+                  while (common < matDirParts.length && common < texParts.length && matDirParts[common].toLowerCase() === texParts[common].toLowerCase()) common++;
+                  const ups = matDirParts.length - common;
+                  const matRelPath = [...Array(ups).fill('..'), ...texParts.slice(common)].join('/');
+                  update({ [key]: matRelPath });
+                }}
+              />
+            </PropertyRow>
+          );
+        })}
       </Section>
     </>
   );

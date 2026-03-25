@@ -10,6 +10,7 @@ export { ColorInput } from './inputs/ColorInput';
 export { Slider } from './inputs/Slider';
 export { Checkbox } from './inputs/Checkbox';
 export { Select } from './inputs/Select';
+export { AssetInput } from './inputs/AssetInput';
 
 // Layout
 export { Button } from './layout/Button';
@@ -26,3 +27,5 @@ export type { SplitPaneProps } from './layout/SplitPane';
 export { ContextMenu } from './overlays/ContextMenu';
 export type { ContextMenuItem } from './overlays/ContextMenu';
 export { Tooltip } from './overlays/Tooltip';
+export { AssetPickerPopup } from './overlays/AssetPickerPopup';
+export type { AssetPickerPopupProps } from './overlays/AssetPickerPopup';

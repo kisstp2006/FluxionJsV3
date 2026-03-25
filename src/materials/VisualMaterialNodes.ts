@@ -50,6 +50,8 @@ export interface PropertyDefinition {
   max?: number;
   step?: number;
   options?: { value: string; label: string }[];
+  /** When type is 'string', specifies the asset type filter for AssetInput (e.g. 'texture') */
+  assetType?: string | string[];
 }
 
 export interface NodeDefinition {
@@ -212,7 +214,7 @@ NodeRegistry.register({
     { name: 'A', type: 'float' },
   ],
   properties: [
-    { name: 'texturePath', type: 'string', default: '' },
+    { name: 'texturePath', type: 'string', default: '', assetType: 'texture' },
   ],
   compile: (ctx) => {
     const uniformName = `u_tex_${ctx.nodeId}`;
@@ -244,7 +246,7 @@ NodeRegistry.register({
   ],
   outputs: [{ name: 'Normal', type: 'vec3' }],
   properties: [
-    { name: 'texturePath', type: 'string', default: '' },
+    { name: 'texturePath', type: 'string', default: '', assetType: 'texture' },
   ],
   compile: (ctx) => {
     const uniformName = `u_nrm_${ctx.nodeId}`;

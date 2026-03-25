@@ -46,6 +46,7 @@ import {
 } from '../../../src/materials/VisualMaterialNodes';
 import { compileVisualMaterial } from '../../../src/materials/VisualMaterialCompiler';
 import { getFileSystem } from '../../../src/filesystem';
+import { AssetInput } from '../../ui/inputs/AssetInput';
 
 // ── Port Color Map ──
 
@@ -576,6 +577,16 @@ const NodePropertiesPanel: React.FC<{
                 }}
               />
             ) : prop.type === 'string' ? (
+              prop.assetType ? (
+                <AssetInput
+                  value={val || ''}
+                  assetType={prop.assetType}
+                  placeholder={`Select ${Array.isArray(prop.assetType) ? prop.assetType.join('/') : prop.assetType}`}
+                  onChange={(v) =>
+                    onPropertyChange(selectedNode.id, prop.name, v)
+                  }
+                />
+              ) : (
               <input
                 type="text"
                 value={val}
@@ -593,6 +604,7 @@ const NodePropertiesPanel: React.FC<{
                   fontFamily: 'var(--font-mono, monospace)',
                 }}
               />
+              )
             ) : prop.type === 'bool' ? (
               <input
                 type="checkbox"

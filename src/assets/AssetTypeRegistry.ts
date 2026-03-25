@@ -111,11 +111,11 @@ AssetTypeRegistry.register({
   type: 'texture',
   displayName: 'Texture',
   icon: 'image',
-  extensions: ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif', '.tga'],
+  extensions: ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif', '.tga', '.hdr', '.exr'],
   category: 'Textures',
   color: '#4fc3f7',
   canImport: true,
-  importFilters: [{ name: 'Image Files', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'svg', 'gif', 'tga'] }],
+  importFilters: [{ name: 'Image Files', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'svg', 'gif', 'tga', 'hdr', 'exr'] }],
 });
 
 AssetTypeRegistry.register({

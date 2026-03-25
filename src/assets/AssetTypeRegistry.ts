@@ -211,6 +211,19 @@ AssetTypeRegistry.register({
         // --- Extract and save textures from the material ---
         const texRefs = getTextureRefsFromMaterial(mat);
         for (const texRef of texRefs) {
+          // Save UV transform from original texture if non-default
+          const srcTex = texRef.texture;
+          if (srcTex.repeat.x !== 1 || srcTex.repeat.y !== 1 ||
+              srcTex.offset.x !== 0 || srcTex.offset.y !== 0 ||
+              srcTex.rotation !== 0) {
+            if (!matJson.uvTransforms) matJson.uvTransforms = {};
+            const t: Record<string, number | number[]> = {};
+            if (srcTex.repeat.x !== 1 || srcTex.repeat.y !== 1) t.repeat = [srcTex.repeat.x, srcTex.repeat.y];
+            if (srcTex.offset.x !== 0 || srcTex.offset.y !== 0) t.offset = [srcTex.offset.x, srcTex.offset.y];
+            if (srcTex.rotation !== 0) t.rotation = srcTex.rotation;
+            matJson.uvTransforms[texRef.fluxmatKey] = t;
+          }
+
           // Check if this texture was already saved (shared across materials)
           const cachedPath = savedTextureCache.get(texRef.texture);
           if (cachedPath) {

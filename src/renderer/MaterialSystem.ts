@@ -27,6 +27,7 @@ export interface FluxMatData {
   metalnessMap?: string;
   aoMap?: string;
   emissiveMap?: string;
+  uvTransforms?: Record<string, { repeat?: [number, number]; offset?: [number, number]; rotation?: number }>;
 }
 
 export interface PBRMaterialConfig {
@@ -167,13 +168,31 @@ export class MaterialSystem {
       ['emissiveMap', 'emissiveMap'],
     ];
 
+    const NON_COLOR_MAPS = new Set(['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']);
     const texPromises: Promise<void>[] = [];
     for (const [jsonKey, configKey] of mapEntries) {
       const path = data[jsonKey] as string | undefined;
       if (path) {
         texPromises.push(
           loadTexture(path)
-            .then((tex) => { (config as any)[configKey] = tex; })
+            .then((tex) => {
+              // Non-color data textures must use linear color space
+              if (NON_COLOR_MAPS.has(configKey)) {
+                tex.colorSpace = THREE.LinearSRGBColorSpace;
+              }
+              // Use repeat wrapping for material textures
+              tex.wrapS = THREE.RepeatWrapping;
+              tex.wrapT = THREE.RepeatWrapping;
+              // Restore UV transform saved in .fluxmat
+              const transform = data.uvTransforms?.[configKey];
+              if (transform) {
+                if (transform.repeat) tex.repeat.set(transform.repeat[0], transform.repeat[1]);
+                if (transform.offset) tex.offset.set(transform.offset[0], transform.offset[1]);
+                if (transform.rotation !== undefined) tex.rotation = transform.rotation;
+              }
+              tex.needsUpdate = true;
+              (config as any)[configKey] = tex;
+            })
             .catch(() => { /* texture not found — skip silently */ })
         );
       }

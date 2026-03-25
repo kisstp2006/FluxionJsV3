@@ -731,6 +731,9 @@ class LightSystem implements System {
       // Detect lightType change → destroy old light and recreate
       const prevType = this.lastLightType.get(entity);
       if (lightComp.light && prevType !== undefined && prevType !== lightComp.lightType) {
+        if ((lightComp.light as any).target) {
+          this.renderer.scene.remove((lightComp.light as any).target);
+        }
         this.renderer.removeObject(entity);
         lightComp.light = null;
         this.tracked.delete(entity);
@@ -757,6 +760,11 @@ class LightSystem implements System {
         lightComp.light.angle = THREE.MathUtils.degToRad(lightComp.spotAngle);
         lightComp.light.penumbra = lightComp.spotPenumbra;
         lightComp.light.castShadow = lightComp.castShadow;
+
+        // Update target from transform forward direction (local -Z)
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(transform.quaternion);
+        lightComp.light.target.position.copy(transform.position).add(forward);
+        lightComp.light.target.updateMatrixWorld();
 
         // Cookie / projection texture
         if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
@@ -790,6 +798,11 @@ class LightSystem implements System {
       }
       if (lightComp.light instanceof THREE.DirectionalLight) {
         lightComp.light.castShadow = lightComp.castShadow;
+
+        // Update target from transform forward direction (local -Z)
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(transform.quaternion);
+        lightComp.light.target.position.copy(transform.position).add(forward);
+        lightComp.light.target.updateMatrixWorld();
       }
 
       if (isDirty(lightComp)) clearDirty(lightComp);
@@ -798,6 +811,10 @@ class LightSystem implements System {
     // Cleanup removed
     for (const entity of this.tracked) {
       if (!entities.has(entity)) {
+        const lightComp = ecs.getComponent<LightComponent>(entity, 'Light');
+        if (lightComp?.light && (lightComp.light as any).target) {
+          this.renderer.scene.remove((lightComp.light as any).target);
+        }
         this.renderer.removeObject(entity);
         this.tracked.delete(entity);
         this.lastLightType.delete(entity);
@@ -821,6 +838,7 @@ class LightSystem implements System {
         dl.shadow.camera.top = s;
         dl.shadow.camera.bottom = -s;
         dl.shadow.bias = -0.0001;
+        this.renderer.scene.add(dl.target);
         light = dl;
         break;
       }
@@ -838,6 +856,7 @@ class LightSystem implements System {
         );
         sl.castShadow = comp.castShadow;
         sl.shadow.mapSize.set(comp.shadowMapSize, comp.shadowMapSize);
+        this.renderer.scene.add(sl.target);
         light = sl;
         break;
       }

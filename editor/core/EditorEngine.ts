@@ -76,7 +76,12 @@ export async function initEditorEngine(
   log('Rapier3D physics initialized', 'system');
 
   // Particles
-  engine.ecs.addSystem(new ParticleRenderSystem(renderer.scene));
+  const particleSys = new ParticleRenderSystem(renderer.scene);
+  engine.ecs.addSystem(particleSys);
+
+  // Wire soft-particle depth texture + camera after PP pipeline exists
+  const depthTex = renderer.postProcessing.getSceneDepthTexture();
+  if (depthTex) particleSys.setDepthTexture(depthTex);
 
   // Scene
   const scene = new Scene(engine, 'Main Scene');
@@ -111,7 +116,11 @@ export async function initEditorEngine(
   renderer.scene.fog = new THREE.FogExp2(0x0a0e17, 0.008);
 
   // Update controls each frame
-  engine.events.on('engine:update', () => orbitControls.update());
+  engine.events.on('engine:update', () => {
+    orbitControls.update();
+    // Feed camera to particle system for billboard + soft-particle near/far
+    particleSys.setCamera(editorCamera, renderer.renderer.domElement.width, renderer.renderer.domElement.height);
+  });
 
   // Start engine
   await engine.start();

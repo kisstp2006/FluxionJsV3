@@ -1409,6 +1409,11 @@ export class PostProcessingPipeline {
     this.camera = camera;
   }
 
+  /** Returns the scene depth texture for soft particles, etc. */
+  getSceneDepthTexture(): THREE.DepthTexture | null {
+    return this.sceneRT?.depthTexture ?? null;
+  }
+
   /** Update camera matrices for all passes that need them */
   private updateCameraUniforms(): void {
     const projMat = (this.camera as THREE.PerspectiveCamera).projectionMatrix;

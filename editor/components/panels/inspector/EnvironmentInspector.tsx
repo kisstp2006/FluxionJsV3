@@ -375,6 +375,16 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
           </>
         )}
       </Section>
+
+      {/* ── Chromatic Aberration & Film Grain ── */}
+      <Section title="Effects" defaultOpen={false}>
+        <PropertyRow label="Chromatic Aberration">
+          <Slider value={env.chromaticAberration} min={0} max={0.02} step={0.001} onChange={(v) => { setProperty(undoManager, env, 'chromaticAberration', v); update(); }} />
+        </PropertyRow>
+        <PropertyRow label="Film Grain">
+          <Slider value={env.filmGrain} min={0} max={0.5} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'filmGrain', v); update(); }} />
+        </PropertyRow>
+      </Section>
     </Section>
   );
 };

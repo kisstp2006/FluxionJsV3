@@ -392,6 +392,10 @@ export class EnvironmentComponent implements Component {
   vignetteIntensity = 0.3;
   vignetteRoundness = 0.5;
 
+  // ── Chromatic Aberration & Film Grain ──
+  chromaticAberration = 0;
+  filmGrain = 0;
+
   // ── Shadows (CSM) ──
   shadowCascades = 0;   // 0 = off; set ≥ 2 to enable CSM
   shadowDistance = 200;

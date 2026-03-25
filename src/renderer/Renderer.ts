@@ -1114,6 +1114,9 @@ class EnvironmentSystem implements System {
 
     pp.config.exposure = env.exposure;
 
+    pp.config.chromaticAberration = env.chromaticAberration;
+    pp.config.filmGrain = env.filmGrain;
+
     // ── CSM (Cascaded Shadow Maps) ──
     this.updateCSM(env, ecs);
   }

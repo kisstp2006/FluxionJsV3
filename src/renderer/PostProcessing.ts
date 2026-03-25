@@ -209,6 +209,9 @@ const COMPOSITE_FRAG = `
   uniform sampler2D tDofCoC;
   uniform bool dofEnabled;
   uniform float dofMaxBlur;
+  uniform float chromaticAberration;
+  uniform float filmGrain;
+  uniform float time;
   varying vec2 vUv;
 
   vec3 acesFilm(vec3 x) {
@@ -221,7 +224,14 @@ const COMPOSITE_FRAG = `
   }
 
   void main() {
-    vec3 scene = texture2D(tScene, vUv).rgb;
+    // Chromatic Aberration
+    vec2 dir = vUv - 0.5;
+    vec2 caOffset = dir * chromaticAberration;
+    vec3 scene = vec3(
+      texture2D(tScene, vUv + caOffset).r,
+      texture2D(tScene, vUv).g,
+      texture2D(tScene, vUv - caOffset).b
+    );
     vec3 bloom = texture2D(tBloom, vUv).rgb;
 
     // SSGI — indirect illumination + AO (overrides SSAO when active)
@@ -272,6 +282,10 @@ const COMPOSITE_FRAG = `
 
     // Gamma correction
     color = pow(color, vec3(1.0 / 2.2));
+
+    // Film Grain (animated)
+    float grain = fract(sin(dot(vUv * 467.759 + time, vec2(12.9898, 78.233))) * 43758.5453);
+    color += (grain - 0.5) * filmGrain;
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -1045,6 +1059,8 @@ export interface PostProcessConfig {
     maxBlur?: number;
   };
   exposure?: number;
+  chromaticAberration?: number;
+  filmGrain?: number;
 }
 
 export class PostProcessingPipeline {
@@ -1106,6 +1122,8 @@ export class PostProcessingPipeline {
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
     dof: { enabled: false, focusDistance: 10, aperture: 0.025, maxBlur: 10 },
     exposure: 1.0,
+    chromaticAberration: 0,
+    filmGrain: 0,
   };
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
@@ -1380,6 +1398,9 @@ export class PostProcessingPipeline {
         tDofCoC: { value: null },
         dofEnabled: { value: false },
         dofMaxBlur: { value: 10 },
+        chromaticAberration: { value: 0 },
+        filmGrain: { value: 0 },
+        time: { value: 0 },
       },
     }));
   }
@@ -1626,6 +1647,9 @@ export class PostProcessingPipeline {
     cu['vignetteIntensity'].value = this.config.vignette?.enabled ? (this.config.vignette.intensity ?? 0.3) : 0;
     cu['vignetteRoundness'].value = this.config.vignette?.roundness ?? 0.5;
     cu['exposure'].value = this.config.exposure ?? 1.0;
+    cu['chromaticAberration'].value = this.config.chromaticAberration ?? 0;
+    cu['filmGrain'].value = this.config.filmGrain ?? 0;
+    cu['time'].value = this._time;
     this.compositePass.render(this.renderer, null); // output to screen
   }
 

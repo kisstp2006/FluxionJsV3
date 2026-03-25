@@ -391,6 +391,8 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           vignetteEnabled: env.vignetteEnabled,
           vignetteIntensity: env.vignetteIntensity,
           vignetteRoundness: env.vignetteRoundness,
+          chromaticAberration: env.chromaticAberration,
+          filmGrain: env.filmGrain,
           dofEnabled: env.dofEnabled,
           dofFocusDistance: env.dofFocusDistance,
           dofAperture: env.dofAperture,
@@ -775,6 +777,8 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.vignetteEnabled = d.vignetteEnabled ?? false;
           e.vignetteIntensity = d.vignetteIntensity ?? 0.3;
           e.vignetteRoundness = d.vignetteRoundness ?? 0.5;
+          e.chromaticAberration = d.chromaticAberration ?? 0;
+          e.filmGrain = d.filmGrain ?? 0;
           e.dofEnabled = d.dofEnabled ?? false;
           e.dofFocusDistance = d.dofFocusDistance ?? 10;
           e.dofAperture = d.dofAperture ?? 0.025;

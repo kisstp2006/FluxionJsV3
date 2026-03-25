@@ -261,7 +261,7 @@ export class Scene {
             try {
               const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
               if (!matData) return null;
-              // Resolve texture paths relative to the .fluxmat's directory
+              // Resolve texture paths relative to the .fluxmat's directory, with project-relative fallback
               const matDir = slot.defaultMaterial.substring(0, slot.defaultMaterial.lastIndexOf('/'));
               const slotLoadTexture = async (relPath: string): Promise<THREE.Texture> => {
                 let texAbsPath: string;
@@ -269,6 +269,14 @@ export class Scene {
                   texAbsPath = relPath;
                 } else {
                   texAbsPath = `${matDir}/${relPath}`;
+                  try {
+                    const { projectManager: pm } = await import('../project/ProjectManager');
+                    const { getFileSystem: getFs } = await import('../filesystem');
+                    const projResolved = pm.resolvePath(relPath);
+                    if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) {
+                      texAbsPath = projResolved;
+                    }
+                  } catch { /* keep matDir-relative */ }
                 }
                 const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
                 return assets.loadTexture(texUrl);

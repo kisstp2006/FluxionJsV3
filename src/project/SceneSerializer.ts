@@ -210,6 +210,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           shadowMapSize: light.shadowMapSize,
           spotAngle: light.spotAngle,
           spotPenumbra: light.spotPenumbra,
+          cookieTexturePath: light.cookieTexturePath,
         },
       });
     }
@@ -304,6 +305,35 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           ssaoRadius: env.ssaoRadius,
           ssaoBias: env.ssaoBias,
           ssaoIntensity: env.ssaoIntensity,
+          ssrEnabled: env.ssrEnabled,
+          ssrMaxDistance: env.ssrMaxDistance,
+          ssrThickness: env.ssrThickness,
+          ssrStride: env.ssrStride,
+          ssrFresnel: env.ssrFresnel,
+          ssrOpacity: env.ssrOpacity,
+          ssgiEnabled: env.ssgiEnabled,
+          ssgiSliceCount: env.ssgiSliceCount,
+          ssgiStepCount: env.ssgiStepCount,
+          ssgiRadius: env.ssgiRadius,
+          ssgiThickness: env.ssgiThickness,
+          ssgiExpFactor: env.ssgiExpFactor,
+          ssgiAoIntensity: env.ssgiAoIntensity,
+          ssgiGiIntensity: env.ssgiGiIntensity,
+          cloudsEnabled: env.cloudsEnabled,
+          cloudMinHeight: env.cloudMinHeight,
+          cloudMaxHeight: env.cloudMaxHeight,
+          cloudCoverage: env.cloudCoverage,
+          cloudDensity: env.cloudDensity,
+          cloudAbsorption: env.cloudAbsorption,
+          cloudScatter: env.cloudScatter,
+          cloudColor: [env.cloudColor.r, env.cloudColor.g, env.cloudColor.b],
+          cloudSpeed: env.cloudSpeed,
+          skyTurbidity: env.skyTurbidity,
+          skyRayleigh: env.skyRayleigh,
+          skyMieCoefficient: env.skyMieCoefficient,
+          skyMieDirectionalG: env.skyMieDirectionalG,
+          sunElevation: env.sunElevation,
+          sunAzimuth: env.sunAzimuth,
           vignetteEnabled: env.vignetteEnabled,
           vignetteIntensity: env.vignetteIntensity,
           vignetteRoundness: env.vignetteRoundness,
@@ -505,6 +535,7 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           l.shadowMapSize = d.shadowMapSize ?? 2048;
           l.spotAngle = d.spotAngle ?? 45;
           l.spotPenumbra = d.spotPenumbra ?? 0.1;
+          l.cookieTexturePath = d.cookieTexturePath ?? null;
           engine.ecs.addComponent(entityId, l);
           break;
         }
@@ -612,6 +643,35 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.ssaoRadius = d.ssaoRadius ?? 0.5;
           e.ssaoBias = d.ssaoBias ?? 0.025;
           e.ssaoIntensity = d.ssaoIntensity ?? 1.0;
+          e.ssrEnabled = d.ssrEnabled ?? false;
+          e.ssrMaxDistance = d.ssrMaxDistance ?? 50;
+          e.ssrThickness = d.ssrThickness ?? 0.5;
+          e.ssrStride = d.ssrStride ?? 0.3;
+          e.ssrFresnel = d.ssrFresnel ?? 1.0;
+          e.ssrOpacity = d.ssrOpacity ?? 0.5;
+          e.ssgiEnabled = d.ssgiEnabled ?? false;
+          e.ssgiSliceCount = d.ssgiSliceCount ?? 2;
+          e.ssgiStepCount = d.ssgiStepCount ?? 8;
+          e.ssgiRadius = d.ssgiRadius ?? 12;
+          e.ssgiThickness = d.ssgiThickness ?? 1;
+          e.ssgiExpFactor = d.ssgiExpFactor ?? 2;
+          e.ssgiAoIntensity = d.ssgiAoIntensity ?? 1;
+          e.ssgiGiIntensity = d.ssgiGiIntensity ?? 10;
+          e.cloudsEnabled = d.cloudsEnabled ?? false;
+          e.cloudMinHeight = d.cloudMinHeight ?? 200;
+          e.cloudMaxHeight = d.cloudMaxHeight ?? 400;
+          e.cloudCoverage = d.cloudCoverage ?? 0.5;
+          e.cloudDensity = d.cloudDensity ?? 0.3;
+          e.cloudAbsorption = d.cloudAbsorption ?? 1.0;
+          e.cloudScatter = d.cloudScatter ?? 1.0;
+          if (d.cloudColor) e.cloudColor = new THREE.Color(d.cloudColor[0], d.cloudColor[1], d.cloudColor[2]);
+          e.cloudSpeed = d.cloudSpeed ?? 1.0;
+          e.skyTurbidity = d.skyTurbidity ?? 2;
+          e.skyRayleigh = d.skyRayleigh ?? 1;
+          e.skyMieCoefficient = d.skyMieCoefficient ?? 0.005;
+          e.skyMieDirectionalG = d.skyMieDirectionalG ?? 0.8;
+          e.sunElevation = d.sunElevation ?? 45;
+          e.sunAzimuth = d.sunAzimuth ?? 180;
           e.vignetteEnabled = d.vignetteEnabled ?? false;
           e.vignetteIntensity = d.vignetteIntensity ?? 0.3;
           e.vignetteRoundness = d.vignetteRoundness ?? 0.5;
@@ -697,7 +757,7 @@ async function loadDeferredFluxMesh(
         const matData = await assets.loadAsset(absMatPath, 'material') as FluxMatData | null;
         if (!matData || !materials) return null;
 
-        // Resolve texture paths relative to the .fluxmat's directory
+        // Resolve texture paths relative to the .fluxmat's directory, with project-relative fallback
         const matDir = absMatPath.substring(0, absMatPath.lastIndexOf('/'));
         const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
           let texAbsPath: string;
@@ -705,6 +765,13 @@ async function loadDeferredFluxMesh(
             texAbsPath = relPath;
           } else {
             texAbsPath = `${matDir}/${relPath}`;
+            try {
+              const projResolved = projectManager.resolvePath(relPath);
+              const { getFileSystem } = await import('../filesystem');
+              if (!(await getFileSystem().exists(texAbsPath)) && await getFileSystem().exists(projResolved)) {
+                texAbsPath = projResolved;
+              }
+            } catch { /* keep matDir-relative */ }
           }
           const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
           return assets.loadTexture(texUrl);
@@ -776,7 +843,7 @@ async function loadDeferredMaterial(
     const materials = engine.getSubsystem('materials') as MaterialSystem;
     if (!materials) return;
 
-    // Resolve texture paths relative to the .fluxmat's directory
+    // Resolve texture paths relative to the .fluxmat's directory, with project-relative fallback
     const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
     const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
       let texAbsPath: string;
@@ -784,6 +851,14 @@ async function loadDeferredMaterial(
         texAbsPath = relPath;
       } else {
         texAbsPath = `${matDir}/${relPath}`;
+        // Fallback: if the path looks like it might be project-relative (for legacy .fluxmat files)
+        try {
+          const projResolved = projectManager.resolvePath(relPath);
+          const { getFileSystem } = await import('../filesystem');
+          if (!(await getFileSystem().exists(texAbsPath)) && await getFileSystem().exists(projResolved)) {
+            texAbsPath = projResolved;
+          }
+        } catch { /* project not loaded or path invalid — keep matDir-relative */ }
       }
       const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
       return assets.loadTexture(texUrl);

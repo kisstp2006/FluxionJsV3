@@ -95,6 +95,9 @@ export class MaterialSystem {
   }
 
   setEnvironmentMap(envMap: THREE.CubeTexture | THREE.Texture): void {
+    if (this.envMap && this.envMap !== envMap) {
+      this.envMap.dispose();
+    }
     this.envMap = envMap;
     for (const mat of this.materials.values()) {
       mat.envMap = envMap;

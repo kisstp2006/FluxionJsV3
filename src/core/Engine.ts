@@ -83,6 +83,12 @@ export class Engine {
       cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
+    // Dispose all subsystems that support it
+    for (const sub of this.subsystems.values()) {
+      if (typeof sub?.dispose === 'function') {
+        sub.dispose();
+      }
+    }
     this.events.emit(EngineEvents.DESTROY);
   }
 

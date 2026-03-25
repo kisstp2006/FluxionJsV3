@@ -100,6 +100,11 @@ export class LightComponent implements Component {
   castShadow = true;
   shadowMapSize = 2048;
 
+  /** Project-relative path to a cookie/projection texture (spot lights only) */
+  cookieTexturePath: string | null = null;
+  /** Runtime cached cookie texture */
+  cookieTexture: THREE.Texture | null = null;
+
   light: THREE.Light | null = null;
 }
 
@@ -245,7 +250,7 @@ export class AnimationComponent implements Component {
 export type ToneMappingMode = 'None' | 'Linear' | 'Reinhard' | 'ACES' | 'AgX';
 export type BackgroundMode = 'color' | 'skybox';
 export type FogMode = 'exponential' | 'linear';
-export type SkyboxMode = 'panorama' | 'cubemap';
+export type SkyboxMode = 'panorama' | 'cubemap' | 'procedural';
 
 /** Face order matches THREE.CubeTextureLoader: +X, -X, +Y, -Y, +Z, -Z */
 export interface CubemapFaces {
@@ -298,6 +303,43 @@ export class EnvironmentComponent implements Component {
   ssaoRadius = 0.5;
   ssaoBias = 0.025;
   ssaoIntensity = 1.0;
+
+  // ── SSR ──
+  ssrEnabled = false;
+  ssrMaxDistance = 50;
+  ssrThickness = 0.5;
+  ssrStride = 0.3;
+  ssrFresnel = 1.0;
+  ssrOpacity = 0.5;
+
+  // ── SSGI ──
+  ssgiEnabled = false;
+  ssgiSliceCount = 2;
+  ssgiStepCount = 8;
+  ssgiRadius = 12;
+  ssgiThickness = 1;
+  ssgiExpFactor = 2;
+  ssgiAoIntensity = 1;
+  ssgiGiIntensity = 10;
+
+  // ── Volumetric Clouds ──
+  cloudsEnabled = false;
+  cloudMinHeight = 200;
+  cloudMaxHeight = 400;
+  cloudCoverage = 0.5;
+  cloudDensity = 0.3;
+  cloudAbsorption = 1.0;
+  cloudScatter = 1.0;
+  cloudColor = new THREE.Color(1, 1, 1);
+  cloudSpeed = 1.0;
+
+  // ── Procedural Sky ──
+  skyTurbidity = 2;
+  skyRayleigh = 1;
+  skyMieCoefficient = 0.005;
+  skyMieDirectionalG = 0.8;
+  sunElevation = 45;
+  sunAzimuth = 180;
 
   // ── Vignette ──
   vignetteEnabled = false;

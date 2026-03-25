@@ -6,7 +6,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Section, PropertyRow, Slider, ColorInput, Checkbox } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
-import { getFileSystem } from '../../../../src/filesystem';
+import { getFileSystem, normalizePath } from '../../../../src/filesystem';
+import { projectManager } from '../../../../src/project/ProjectManager';
 
 interface FluxMatData {
   type?: string;
@@ -250,8 +251,18 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'link'; }}
               onDrop={(e) => {
                 e.preventDefault();
-                const relPath = e.dataTransfer.getData('application/x-fluxion-asset');
-                if (relPath) update({ [key]: relPath });
+                const projRelPath = e.dataTransfer.getData('application/x-fluxion-asset');
+                if (!projRelPath) return;
+                // Convert project-relative texture path to .fluxmat-relative path
+                const matDir = normalizePath(assetPath).substring(0, normalizePath(assetPath).lastIndexOf('/'));
+                const texAbs = normalizePath(projectManager.resolvePath(projRelPath));
+                const matDirParts = matDir.split('/').filter(Boolean);
+                const texParts = texAbs.split('/').filter(Boolean);
+                let common = 0;
+                while (common < matDirParts.length && common < texParts.length && matDirParts[common].toLowerCase() === texParts[common].toLowerCase()) common++;
+                const ups = matDirParts.length - common;
+                const matRelPath = [...Array(ups).fill('..'), ...texParts.slice(common)].join('/');
+                update({ [key]: matRelPath });
               }}
             >
               {data[key] ? (

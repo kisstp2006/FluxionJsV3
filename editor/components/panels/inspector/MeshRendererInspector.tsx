@@ -113,16 +113,26 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
         // Load default materials for all slots
         const materials = engine.engine.getSubsystem('materials') as any;
         if (materials) {
-          const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-            let texAbsPath: string;
-            try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
-            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-            return assets.loadTexture(texUrl);
-          };
           const matPromises = result.slots.map(async (slot: FluxMeshMaterialSlot) => {
             try {
               const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
               if (!matData) return null;
+              const matDir = slot.defaultMaterial.substring(0, slot.defaultMaterial.lastIndexOf('/'));
+              const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+                let texAbsPath: string;
+                if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+                  texAbsPath = relPath;
+                } else {
+                  texAbsPath = `${matDir}/${relPath}`;
+                  try {
+                    const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+                    const projResolved = projectManager.resolvePath(relPath);
+                    if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+                  } catch {}
+                }
+                const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+                return assets.loadTexture(texUrl);
+              };
               return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
             } catch { return null; }
           });
@@ -155,16 +165,26 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           // Load default materials for all slots
           const materials = engine.engine.getSubsystem('materials') as any;
           if (materials) {
-            const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-              let texAbsPath: string;
-              try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
-              const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-              return assets.loadTexture(texUrl);
-            };
             const matPromises = result.slots.map(async (slot: FluxMeshMaterialSlot) => {
               try {
                 const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
                 if (!matData) return null;
+                const matDir = slot.defaultMaterial.substring(0, slot.defaultMaterial.lastIndexOf('/'));
+                const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+                  let texAbsPath: string;
+                  if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+                    texAbsPath = relPath;
+                  } else {
+                    texAbsPath = `${matDir}/${relPath}`;
+                    try {
+                      const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+                      const projResolved = projectManager.resolvePath(relPath);
+                      if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+                    } catch {}
+                  }
+                  const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+                  return assets.loadTexture(texUrl);
+                };
                 return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
               } catch { return null; }
             });
@@ -229,7 +249,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     } else {
       overrides.push({ slotIndex, materialPath: assetPath });
     }
-    mr.materialSlots = overrides;
+    setProperty(undoManager, mr, 'materialSlots', overrides);
 
     // Load and apply the material to the correct sub-meshes
     if (mr.mesh && fluxMeshSlots) {
@@ -241,9 +261,19 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           const matAbsPath = projectManager.resolvePath(assetPath);
           const matData = await assets.loadAsset(matAbsPath, 'material');
           if (matData) {
+            const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
             const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
               let texAbsPath: string;
-              try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
+              if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+                texAbsPath = relPath;
+              } else {
+                texAbsPath = `${matDir}/${relPath}`;
+                try {
+                  const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+                  const projResolved = projectManager.resolvePath(relPath);
+                  if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+                } catch {}
+              }
               const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
               return assets.loadTexture(texUrl);
             };
@@ -264,8 +294,8 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
   /** Clear a slot override back to default */
   const handleClearSlot = async (slotIndex: number) => {
     if (!mr.materialSlots) return;
-    mr.materialSlots = mr.materialSlots.filter(o => o.slotIndex !== slotIndex);
-    if (mr.materialSlots.length === 0) mr.materialSlots = undefined;
+    const filtered = mr.materialSlots.filter(o => o.slotIndex !== slotIndex);
+    setProperty(undoManager, mr, 'materialSlots', filtered.length > 0 ? filtered : undefined);
 
     // Reload default material for this slot
     if (mr.mesh && fluxMeshSlots && fluxMeshSlots[slotIndex]) {
@@ -276,9 +306,19 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
         const slot = fluxMeshSlots[slotIndex];
         const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
         if (matData && materials) {
+          const matDir = slot.defaultMaterial.substring(0, slot.defaultMaterial.lastIndexOf('/'));
           const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
             let texAbsPath: string;
-            try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
+            if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+              texAbsPath = relPath;
+            } else {
+              texAbsPath = `${matDir}/${relPath}`;
+              try {
+                const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+                const projResolved = projectManager.resolvePath(relPath);
+                if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+              } catch {}
+            }
             const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
             return assets.loadTexture(texUrl);
           };

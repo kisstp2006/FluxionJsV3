@@ -340,22 +340,31 @@ export const MaterialSync: React.FC = () => {
         relPath = projectManager.relativePath(changedPath);
       } catch { /* ignore */ }
 
-      const loadTexture = async (texRelPath: string): Promise<THREE.Texture> => {
-        let texAbsPath: string;
-        try {
-          const { projectManager: pm } = await import('../../../src/project/ProjectManager');
-          texAbsPath = pm.resolvePath(texRelPath);
-        } catch { texAbsPath = texRelPath; }
-        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-        return assets.loadTexture(texUrl);
-      };
-
       // Re-load the updated material data from disk
       let matData: any;
       try {
         matData = await assets.loadAsset(changedPath, 'material');
       } catch { return; }
       if (!matData) return;
+
+      // Build a loadTexture that resolves relative to the .fluxmat directory, with project-relative fallback
+      const matDir = changedPath.substring(0, changedPath.lastIndexOf('/'));
+      const loadTexture = async (texRelPath: string): Promise<THREE.Texture> => {
+        let texAbsPath: string;
+        if (/^[A-Z]:/i.test(texRelPath) || texRelPath.startsWith('/') || texRelPath.startsWith('file://')) {
+          texAbsPath = texRelPath;
+        } else {
+          texAbsPath = `${matDir}/${texRelPath}`;
+          try {
+            const { projectManager: pm } = await import('../../../src/project/ProjectManager');
+            const { getFileSystem: getFs } = await import('../../../src/filesystem');
+            const projResolved = pm.resolvePath(texRelPath);
+            if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+          } catch {}
+        }
+        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+        return assets.loadTexture(texUrl);
+      };
 
       // Iterate all MeshRenderers and re-apply where this material is referenced
       const allMR = ecs.getComponentsOfType<any>('MeshRenderer');

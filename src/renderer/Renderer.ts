@@ -16,8 +16,10 @@ import {
   EnvironmentComponent,
   ToneMappingMode,
   CubemapFaces,
+  SkyboxMode,
 } from '../core/Components';
 import { PostProcessingPipeline } from './PostProcessing';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { DebugDraw } from './DebugDraw';
 
 export interface RendererConfig {
@@ -41,6 +43,7 @@ export class FluxionRenderer {
   private entityToObject: Map<EntityId, THREE.Object3D> = new Map();
   private objectToEntity: Map<THREE.Object3D, EntityId> = new Map();
   private config: Required<RendererConfig>;
+  private eventUnsubs: (() => void)[] = [];
 
   constructor(engine: Engine, config: RendererConfig = {}) {
     this.engine = engine;
@@ -93,11 +96,13 @@ export class FluxionRenderer {
       this.activeCamera
     );
 
-    // Hook into engine events
-    engine.events.on(EngineEvents.RENDER, () => this.render());
-    engine.events.on(EngineEvents.RESIZE, (data: { width: number; height: number }) => {
-      this.onResize(data.width, data.height);
-    });
+    // Hook into engine events (store unsubscribers for cleanup)
+    this.eventUnsubs.push(
+      engine.events.on(EngineEvents.RENDER, () => this.render()),
+      engine.events.on(EngineEvents.RESIZE, (data: { width: number; height: number }) => {
+        this.onResize(data.width, data.height);
+      }),
+    );
 
     // Register ECS systems
     engine.ecs.addSystem(new TransformNodeSystem(this));
@@ -115,7 +120,7 @@ export class FluxionRenderer {
   }
 
   render(): void {
-    this.postProcessing.render();
+    this.postProcessing.render(this.engine.time.deltaTime);
     DebugDraw.flush();
     this.postProcessing.renderOverlay(this.gizmoScene, this.activeCamera);
   }
@@ -170,6 +175,9 @@ export class FluxionRenderer {
   }
 
   dispose(): void {
+    for (const unsub of this.eventUnsubs) unsub();
+    this.eventUnsubs.length = 0;
+    DebugDraw.dispose();
     this.postProcessing.dispose();
     this.renderer.dispose();
   }
@@ -404,6 +412,7 @@ class LightSystem implements System {
   priority = 5;
   enabled = true;
   private tracked: Set<EntityId> = new Set();
+  private cookieLoading: Set<EntityId> = new Set();
 
   constructor(private renderer: FluxionRenderer) {}
 
@@ -444,6 +453,36 @@ class LightSystem implements System {
         lightComp.light.angle = THREE.MathUtils.degToRad(lightComp.spotAngle);
         lightComp.light.penumbra = lightComp.spotPenumbra;
         lightComp.light.castShadow = lightComp.castShadow;
+
+        // Cookie / projection texture
+        if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
+          this.cookieLoading.add(entity);
+          const url = `file:///${lightComp.cookieTexturePath.replace(/\\/g, '/')}`;
+          new THREE.TextureLoader().load(
+            url,
+            (tex) => {
+              lightComp.cookieTexture = tex;
+              if (lightComp.light instanceof THREE.SpotLight) {
+                lightComp.light.map = tex;
+              }
+              this.cookieLoading.delete(entity);
+            },
+            undefined,
+            (err) => {
+              console.warn('[LightSystem] Failed to load cookie texture:', url, err);
+              this.cookieLoading.delete(entity);
+            },
+          );
+        }
+        if (lightComp.cookieTexture) {
+          lightComp.light.map = lightComp.cookieTexture;
+        }
+        if (!lightComp.cookieTexturePath && lightComp.cookieTexture) {
+          lightComp.cookieTexture.dispose();
+          lightComp.cookieTexture = null;
+          lightComp.light.map = null;
+          this.cookieLoading.delete(entity);
+        }
       }
       if (lightComp.light instanceof THREE.DirectionalLight) {
         lightComp.light.castShadow = lightComp.castShadow;
@@ -458,6 +497,7 @@ class LightSystem implements System {
         this.renderer.removeObject(entity);
         this.tracked.delete(entity);
         this.lastLightType.delete(entity);
+        this.cookieLoading.delete(entity);
       }
     }
   }
@@ -532,6 +572,11 @@ class EnvironmentSystem implements System {
   private loadedSkyboxKey: string | null = null;
   private skyboxLoading = false;
 
+  // Procedural sky
+  private sky: Sky | null = null;
+  private sunHelper: THREE.Vector3 = new THREE.Vector3();
+  private pmremGenerator: THREE.PMREMGenerator | null = null;
+
   constructor(renderer: FluxionRenderer) {
     this.renderer = renderer;
   }
@@ -559,10 +604,15 @@ class EnvironmentSystem implements System {
     // ── Background ──
     if (env.backgroundMode === 'color') {
       scene.background = env.backgroundColor;
-      // Clear skybox cache so it reloads if user switches back
       this.loadedSkyboxKey = null;
+      this.removeProceduralSky(scene);
     } else if (env.backgroundMode === 'skybox') {
-      this.applySkybox(env, scene);
+      if (env.skyboxMode === 'procedural') {
+        this.applyProceduralSky(env, scene);
+      } else {
+        this.removeProceduralSky(scene);
+        this.applySkybox(env, scene);
+      }
     }
 
     // ── Ambient Light ──
@@ -615,6 +665,48 @@ class EnvironmentSystem implements System {
       intensity: env.ssaoIntensity,
     };
 
+    pp.config.ssr = {
+      enabled: env.ssrEnabled,
+      maxDistance: env.ssrMaxDistance,
+      thickness: env.ssrThickness,
+      stride: env.ssrStride,
+      fresnel: env.ssrFresnel,
+      opacity: env.ssrOpacity,
+    };
+
+    pp.config.ssgi = {
+      enabled: env.ssgiEnabled,
+      sliceCount: env.ssgiSliceCount,
+      stepCount: env.ssgiStepCount,
+      radius: env.ssgiRadius,
+      thickness: env.ssgiThickness,
+      expFactor: env.ssgiExpFactor,
+      aoIntensity: env.ssgiAoIntensity,
+      giIntensity: env.ssgiGiIntensity,
+    };
+
+    // Cloud sun direction derived from sun elevation/azimuth
+    const sunElRad = THREE.MathUtils.degToRad(env.sunElevation);
+    const sunAzRad = THREE.MathUtils.degToRad(env.sunAzimuth);
+    const sunDir = new THREE.Vector3(
+      Math.cos(sunElRad) * Math.sin(sunAzRad),
+      Math.sin(sunElRad),
+      Math.cos(sunElRad) * Math.cos(sunAzRad),
+    ).normalize();
+
+    pp.config.clouds = {
+      enabled: env.cloudsEnabled,
+      minHeight: env.cloudMinHeight,
+      maxHeight: env.cloudMaxHeight,
+      coverage: env.cloudCoverage,
+      density: env.cloudDensity,
+      absorption: env.cloudAbsorption,
+      scatter: env.cloudScatter,
+      color: env.cloudColor,
+      speed: env.cloudSpeed,
+      sunDirection: sunDir,
+    };
+
     pp.config.vignette = {
       enabled: env.vignetteEnabled,
       intensity: env.vignetteIntensity,
@@ -622,6 +714,55 @@ class EnvironmentSystem implements System {
     };
 
     pp.config.exposure = env.exposure;
+  }
+
+  /** Create / update a procedural sky using Three.js Sky addon (Preetham model). */
+  private applyProceduralSky(env: EnvironmentComponent, scene: THREE.Scene): void {
+    if (!this.sky) {
+      this.sky = new Sky();
+      this.sky.scale.setScalar(10000);
+      scene.add(this.sky);
+      this.pmremGenerator = new THREE.PMREMGenerator(this.renderer.renderer);
+      this.pmremGenerator.compileEquirectangularShader();
+    }
+
+    const uniforms = this.sky.material.uniforms;
+    uniforms['turbidity'].value = env.skyTurbidity;
+    uniforms['rayleigh'].value = env.skyRayleigh;
+    uniforms['mieCoefficient'].value = env.skyMieCoefficient;
+    uniforms['mieDirectionalG'].value = env.skyMieDirectionalG;
+
+    // Sun position from elevation + azimuth
+    const phi = THREE.MathUtils.degToRad(90 - env.sunElevation);
+    const theta = THREE.MathUtils.degToRad(env.sunAzimuth);
+    this.sunHelper.setFromSphericalCoords(1, phi, theta);
+    uniforms['sunPosition'].value.copy(this.sunHelper);
+
+    // Generate environment map for PBR reflections
+    const skyKey = `procedural:${env.skyTurbidity}:${env.skyRayleigh}:${env.skyMieCoefficient}:${env.skyMieDirectionalG}:${env.sunElevation}:${env.sunAzimuth}`;
+    if (skyKey !== this.loadedSkyboxKey && this.pmremGenerator) {
+      // Dispose previous environment map to avoid GPU memory leak
+      if (scene.environment) {
+        scene.environment.dispose();
+      }
+      const envMap = this.pmremGenerator.fromScene(this.sky as any).texture;
+      scene.environment = envMap;
+      this.loadedSkyboxKey = skyKey;
+    }
+  }
+
+  /** Remove procedural sky mesh if present. */
+  private removeProceduralSky(scene: THREE.Scene): void {
+    if (this.sky) {
+      scene.remove(this.sky);
+      this.sky.geometry.dispose();
+      (this.sky.material as THREE.ShaderMaterial).dispose();
+      this.sky = null;
+    }
+    if (this.pmremGenerator) {
+      this.pmremGenerator.dispose();
+      this.pmremGenerator = null;
+    }
   }
 
   /** Load and apply a skybox (panorama or 6-face cubemap) to the scene. */
@@ -694,6 +835,7 @@ class EnvironmentSystem implements System {
       this.ambientLight.dispose();
       this.ambientLight = null;
     }
+    this.removeProceduralSky(this.renderer.scene);
     this.loadedSkyboxKey = null;
   }
 

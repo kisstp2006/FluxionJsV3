@@ -95,6 +95,7 @@ export class DebugDraw {
     end: THREE.Vector3,
     color: THREE.Color = _white,
   ): void {
+    if (!this.scene) return;
     this.drawLineColored(start, end, color, color);
   }
 
@@ -143,6 +144,7 @@ export class DebugDraw {
     end: THREE.Vector3,
     color: THREE.Color = _white,
   ): void {
+    if (!this.sceneW) return;
     this.drawLineColoredWorld(start, end, color, color);
   }
 

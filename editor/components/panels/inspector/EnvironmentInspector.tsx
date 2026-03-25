@@ -118,6 +118,7 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
                 options={[
                   { value: 'panorama', label: 'Panorama (1 image)' },
                   { value: 'cubemap', label: 'Cubemap (6 faces)' },
+                  { value: 'procedural', label: 'Procedural Sky' },
                 ]}
               />
             </PropertyRow>
@@ -142,6 +143,28 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
                     }}
                   />
                 ))}
+              </>
+            )}
+            {env.skyboxMode === 'procedural' && (
+              <>
+                <PropertyRow label="Turbidity">
+                  <Slider value={env.skyTurbidity} min={0} max={20} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'skyTurbidity', v); update(); }} />
+                </PropertyRow>
+                <PropertyRow label="Rayleigh">
+                  <Slider value={env.skyRayleigh} min={0} max={4} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'skyRayleigh', v); update(); }} />
+                </PropertyRow>
+                <PropertyRow label="Mie Coefficient">
+                  <Slider value={env.skyMieCoefficient} min={0} max={0.1} step={0.001} onChange={(v) => { setProperty(undoManager, env, 'skyMieCoefficient', v); update(); }} />
+                </PropertyRow>
+                <PropertyRow label="Mie Directional">
+                  <Slider value={env.skyMieDirectionalG} min={0} max={1} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'skyMieDirectionalG', v); update(); }} />
+                </PropertyRow>
+                <PropertyRow label="Sun Elevation">
+                  <Slider value={env.sunElevation} min={-10} max={90} step={0.5} onChange={(v) => { setProperty(undoManager, env, 'sunElevation', v); update(); }} />
+                </PropertyRow>
+                <PropertyRow label="Sun Azimuth">
+                  <Slider value={env.sunAzimuth} min={0} max={360} step={1} onChange={(v) => { setProperty(undoManager, env, 'sunAzimuth', v); update(); }} />
+                </PropertyRow>
               </>
             )}
           </>
@@ -257,6 +280,102 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
             </PropertyRow>
             <PropertyRow label="Intensity">
               <Slider value={env.ssaoIntensity} min={0} max={3} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'ssaoIntensity', v); update(); }} />
+            </PropertyRow>
+          </>
+        )}
+      </Section>
+
+      {/* ── SSR ── */}
+      <Section title="SSR (Screen Space Reflections)" defaultOpen={false}>
+        <PropertyRow label="Enabled">
+          <Checkbox checked={env.ssrEnabled} onChange={(v) => { setProperty(undoManager, env, 'ssrEnabled', v); update(); }} />
+        </PropertyRow>
+        {env.ssrEnabled && (
+          <>
+            <PropertyRow label="Max Distance">
+              <Slider value={env.ssrMaxDistance} min={1} max={200} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssrMaxDistance', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Thickness">
+              <Slider value={env.ssrThickness} min={0.01} max={5} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'ssrThickness', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Stride">
+              <Slider value={env.ssrStride} min={0.05} max={2} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrStride', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Fresnel">
+              <Slider value={env.ssrFresnel} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrFresnel', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Opacity">
+              <Slider value={env.ssrOpacity} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrOpacity', v); update(); }} />
+            </PropertyRow>
+          </>
+        )}
+      </Section>
+
+      {/* ── SSGI ── */}
+      <Section title="SSGI (Global Illumination)" defaultOpen={false}>
+        <PropertyRow label="Enabled">
+          <Checkbox checked={env.ssgiEnabled} onChange={(v) => { setProperty(undoManager, env, 'ssgiEnabled', v); update(); }} />
+        </PropertyRow>
+        {env.ssgiEnabled && (
+          <>
+            <PropertyRow label="Slice Count">
+              <Slider value={env.ssgiSliceCount} min={1} max={4} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssgiSliceCount', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Step Count">
+              <Slider value={env.ssgiStepCount} min={1} max={32} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssgiStepCount', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Radius">
+              <Slider value={env.ssgiRadius} min={1} max={25} step={0.5} onChange={(v) => { setProperty(undoManager, env, 'ssgiRadius', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Thickness">
+              <Slider value={env.ssgiThickness} min={0.01} max={10} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'ssgiThickness', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Exp Factor">
+              <Slider value={env.ssgiExpFactor} min={1} max={3} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'ssgiExpFactor', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="AO Intensity">
+              <Slider value={env.ssgiAoIntensity} min={0} max={4} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'ssgiAoIntensity', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="GI Intensity">
+              <Slider value={env.ssgiGiIntensity} min={0} max={100} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssgiGiIntensity', v); update(); }} />
+            </PropertyRow>
+          </>
+        )}
+      </Section>
+
+      {/* ── Volumetric Clouds ── */}
+      <Section title="Volumetric Clouds" defaultOpen={false}>
+        <PropertyRow label="Enabled">
+          <Checkbox checked={env.cloudsEnabled} onChange={(v) => { setProperty(undoManager, env, 'cloudsEnabled', v); update(); }} />
+        </PropertyRow>
+        {env.cloudsEnabled && (
+          <>
+            <PropertyRow label="Min Height">
+              <NumberInput value={env.cloudMinHeight} step={10} min={0} onChange={(v) => { setProperty(undoManager, env, 'cloudMinHeight', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Max Height">
+              <NumberInput value={env.cloudMaxHeight} step={10} min={0} onChange={(v) => { setProperty(undoManager, env, 'cloudMaxHeight', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Coverage">
+              <Slider value={env.cloudCoverage} min={0} max={1} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'cloudCoverage', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Density">
+              <Slider value={env.cloudDensity} min={0} max={2} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'cloudDensity', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Absorption">
+              <Slider value={env.cloudAbsorption} min={0} max={5} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'cloudAbsorption', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Scatter">
+              <Slider value={env.cloudScatter} min={0} max={5} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'cloudScatter', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Color">
+              <ColorInput
+                value={`#${env.cloudColor.getHexString()}`}
+                onChange={(v) => { setColorProperty(undoManager, env, 'cloudColor', v); update(); }}
+              />
+            </PropertyRow>
+            <PropertyRow label="Speed">
+              <Slider value={env.cloudSpeed} min={0} max={10} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'cloudSpeed', v); update(); }} />
             </PropertyRow>
           </>
         )}

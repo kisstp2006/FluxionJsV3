@@ -8,6 +8,10 @@ interface ResizeHandleProps {
 export const ResizeHandle: React.FC<ResizeHandleProps> = ({ direction, onResize }) => {
   const dragging = useRef(false);
   const lastPos = useRef(0);
+  // Use a ref so the mousemove handler always calls the latest callback,
+  // avoiding stale closures when the parent re-renders during a drag.
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
@@ -20,7 +24,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({ direction, onResize 
       const pos = direction === 'horizontal' ? ev.clientX : ev.clientY;
       const delta = pos - lastPos.current;
       lastPos.current = pos;
-      onResize(delta);
+      onResizeRef.current(delta);
     };
 
     const onMouseUp = () => {
@@ -33,7 +37,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({ direction, onResize 
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [direction, onResize]);
+  }, [direction]);
 
   return (
     <div

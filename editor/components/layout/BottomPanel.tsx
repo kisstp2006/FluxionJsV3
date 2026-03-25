@@ -21,8 +21,7 @@ export const BottomPanel: React.FC = () => {
 
   return (
     <div style={{
-      height: `${state.bottomPanelHeight}px`,
-      flexShrink: 0,
+      height: '100%',
       background: 'var(--bg-panel)',
       borderTop: '1px solid var(--border)',
       display: 'flex',

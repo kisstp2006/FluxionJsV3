@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { ResizeHandle } from '../../ui';
+import { SplitPane } from '../../ui';
 import { Titlebar } from './Titlebar';
 import { Toolbar } from './Toolbar';
 import { BottomPanel } from './BottomPanel';
@@ -239,76 +239,68 @@ export const EditorLayout: React.FC = () => {
         {/* Toolbar */}
         <Toolbar />
 
-        {/* Main content area */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          overflow: 'hidden',
-        }}>
-          {/* Left Panel: Hierarchy */}
-          <div style={{
-            width: `${state.leftPanelWidth}px`,
-            minWidth: '200px',
-            flexShrink: 0,
-            borderRight: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            <HierarchyPanel />
-          </div>
-
-          {/* Resize handle: left */}
-          <ResizeHandle
-            direction="horizontal"
-            onResize={(delta) => dispatch({
-              type: 'SET_LEFT_WIDTH',
-              width: state.leftPanelWidth + delta,
-            })}
-          />
-
-          {/* Center: Viewport */}
-          <Viewport onCanvasReady={(canvas) => {
-            if (!canvasRef.current) {
-              canvasRef.current = canvas;
-              setCanvasReady(true);
-            }
-          }} />
-
-          {/* Resize handle: right */}
-          <ResizeHandle
-            direction="horizontal"
-            onResize={(delta) => dispatch({
-              type: 'SET_RIGHT_WIDTH',
-              width: state.rightPanelWidth - delta,
-            })}
-          />
-
-          {/* Right Panel: Inspector */}
-          <div style={{
-            width: `${state.rightPanelWidth}px`,
-            minWidth: '200px',
-            flexShrink: 0,
-            borderLeft: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            <InspectorPanel />
-          </div>
-        </div>
-
-        {/* Resize handle: bottom */}
-        <ResizeHandle
+        {/* Main resizable area: nested SplitPanes */}
+        <SplitPane
           direction="vertical"
-          onResize={(delta) => dispatch({
-            type: 'SET_BOTTOM_HEIGHT',
-            height: state.bottomPanelHeight - delta,
-          })}
-        />
+          primaryPosition="end"
+          size={state.bottomPanelHeight}
+          minSize={100}
+          maxSize={500}
+          onSizeChange={(h) => dispatch({ type: 'SET_BOTTOM_HEIGHT', height: h })}
+        >
+          {/* Top row: Hierarchy | Viewport | Inspector */}
+          <SplitPane
+            direction="horizontal"
+            primaryPosition="start"
+            size={state.leftPanelWidth}
+            minSize={200}
+            maxSize={500}
+            onSizeChange={(w) => dispatch({ type: 'SET_LEFT_WIDTH', width: w })}
+          >
+            {/* Left Panel: Hierarchy */}
+            <div style={{
+              borderRight: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              height: '100%',
+            }}>
+              <HierarchyPanel />
+            </div>
 
-        {/* Bottom Panel */}
-        <BottomPanel />
+            {/* Center + Right */}
+            <SplitPane
+              direction="horizontal"
+              primaryPosition="end"
+              size={state.rightPanelWidth}
+              minSize={200}
+              maxSize={500}
+              onSizeChange={(w) => dispatch({ type: 'SET_RIGHT_WIDTH', width: w })}
+            >
+              {/* Center: Viewport */}
+              <Viewport onCanvasReady={(canvas) => {
+                if (!canvasRef.current) {
+                  canvasRef.current = canvas;
+                  setCanvasReady(true);
+                }
+              }} />
+
+              {/* Right Panel: Inspector */}
+              <div style={{
+                borderLeft: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                height: '100%',
+              }}>
+                <InspectorPanel />
+              </div>
+            </SplitPane>
+          </SplitPane>
+
+          {/* Bottom Panel: Console / Assets / Profiler */}
+          <BottomPanel />
+        </SplitPane>
       </div>
 
       {/* Invisible logic components */}

@@ -18,6 +18,8 @@ export { PanelHeader } from './layout/PanelHeader';
 export { TabBar } from './layout/TabBar';
 export { SearchInput } from './layout/SearchInput';
 export { ResizeHandle } from './layout/ResizeHandle';
+export { SplitPane } from './layout/SplitPane';
+export type { SplitPaneProps } from './layout/SplitPane';
 
 // Overlays
 export { ContextMenu } from './overlays/ContextMenu';

@@ -97,19 +97,7 @@ input, select, textarea, button {
 
 /* ── Visual Material Editor Handle Styles ── */
 .vme-handle {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.vme-handle:hover {
-  transform: scale(1.5);
-  box-shadow: 0 0 8px currentColor;
   z-index: 10;
-}
-.react-flow__handle.connecting {
-  animation: vme-handle-pulse 0.8s ease-in-out infinite;
-}
-@keyframes vme-handle-pulse {
-  0%, 100% { box-shadow: 0 0 4px rgba(224, 64, 251, 0.4); }
-  50% { box-shadow: 0 0 12px rgba(224, 64, 251, 0.8); }
 }
 
 @keyframes slideIn {

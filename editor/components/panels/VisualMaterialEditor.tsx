@@ -149,7 +149,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         fontFamily: 'var(--font-sans, system-ui)',
         fontSize: '11px',
         boxShadow: selected ? '0 0 12px rgba(124, 58, 237, 0.3)' : '0 2px 8px rgba(0,0,0,0.3)',
-        overflow: 'hidden',
+        overflow: 'visible',
       }}
     >
       {/* Header */}
@@ -161,6 +161,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
           fontWeight: 700,
           fontSize: '11px',
           letterSpacing: '0.3px',
+          borderRadius: '4px 4px 0 0',
         }}
       >
         {definition.label}

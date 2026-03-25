@@ -1105,6 +1105,13 @@ class EnvironmentSystem implements System {
       roundness: env.vignetteRoundness,
     };
 
+    pp.config.dof = {
+      enabled: env.dofEnabled,
+      focusDistance: env.dofFocusDistance,
+      aperture: env.dofAperture,
+      maxBlur: env.dofMaxBlur,
+    };
+
     pp.config.exposure = env.exposure;
 
     // ── CSM (Cascaded Shadow Maps) ──

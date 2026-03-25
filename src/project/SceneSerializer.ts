@@ -391,6 +391,10 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           vignetteEnabled: env.vignetteEnabled,
           vignetteIntensity: env.vignetteIntensity,
           vignetteRoundness: env.vignetteRoundness,
+          dofEnabled: env.dofEnabled,
+          dofFocusDistance: env.dofFocusDistance,
+          dofAperture: env.dofAperture,
+          dofMaxBlur: env.dofMaxBlur,
           shadowCascades: env.shadowCascades,
           shadowDistance: env.shadowDistance,
         },
@@ -771,6 +775,10 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.vignetteEnabled = d.vignetteEnabled ?? false;
           e.vignetteIntensity = d.vignetteIntensity ?? 0.3;
           e.vignetteRoundness = d.vignetteRoundness ?? 0.5;
+          e.dofEnabled = d.dofEnabled ?? false;
+          e.dofFocusDistance = d.dofFocusDistance ?? 10;
+          e.dofAperture = d.dofAperture ?? 0.025;
+          e.dofMaxBlur = d.dofMaxBlur ?? 10;
           e.shadowCascades = d.shadowCascades ?? 4;
           e.shadowDistance = d.shadowDistance ?? 200;
           engine.ecs.addComponent(entityId, e);

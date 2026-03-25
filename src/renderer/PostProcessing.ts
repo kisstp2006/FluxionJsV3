@@ -104,6 +104,91 @@ const BLOOM_UP_FRAG = `
   }
 `;
 
+// ── DoF: Circle of Confusion from depth ──
+const DOF_COC_FRAG = `
+  uniform sampler2D tDepth;
+  uniform float focusDistance;
+  uniform float aperture;
+  uniform float maxBlur;
+  uniform float cameraNear;
+  uniform float cameraFar;
+  varying vec2 vUv;
+
+  float linearizeDepth(float d) {
+    return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+  }
+
+  void main() {
+    float rawDepth = texture2D(tDepth, vUv).r;
+    if (rawDepth >= 1.0) { gl_FragColor = vec4(maxBlur, 0.0, 0.0, 1.0); return; }
+
+    float depth = linearizeDepth(rawDepth);
+    float coc = (depth - focusDistance) * aperture / depth;
+    coc = clamp(coc, -maxBlur, maxBlur);
+    gl_FragColor = vec4(coc * 0.5 + 0.5, 0.0, 0.0, 1.0); // remap [-maxBlur, maxBlur] → [0, 1]
+  }
+`;
+
+// ── DoF: Bokeh disk blur (22-tap poisson, CoC-weighted) ──
+const DOF_BLUR_FRAG = `
+  uniform sampler2D tScene;
+  uniform sampler2D tCoC;
+  uniform vec2 resolution;
+  uniform float maxBlur;
+  varying vec2 vUv;
+
+  // 22-tap Poisson disk
+  const vec2 poissonDisk[22] = vec2[22](
+    vec2(-0.7265, 0.5345), vec2(0.5765, 0.6745),
+    vec2(-0.1785, -0.8945), vec2(0.8465, -0.2185),
+    vec2(-0.9345, -0.1085), vec2(0.1635, 0.3985),
+    vec2(-0.4285, -0.4745), vec2(0.7085, 0.1585),
+    vec2(-0.3685, 0.8215), vec2(-0.0285, -0.3855),
+    vec2(0.4025, -0.5965), vec2(-0.6595, -0.6655),
+    vec2(0.2925, 0.9045), vec2(-0.8785, 0.3385),
+    vec2(0.9635, 0.2265), vec2(-0.2135, 0.1415),
+    vec2(0.0755, -0.7145), vec2(0.5115, -0.8585),
+    vec2(-0.5465, 0.1875), vec2(0.3455, -0.1665),
+    vec2(-0.7895, -0.4325), vec2(0.6285, 0.4255)
+  );
+
+  void main() {
+    float centerCoC = texture2D(tCoC, vUv).r * 2.0 - 1.0; // remap [0,1] → [-1,1]
+    float absCoC = abs(centerCoC) * maxBlur;
+    float blurRadius = absCoC;
+
+    if (blurRadius < 0.5) {
+      gl_FragColor = texture2D(tScene, vUv);
+      return;
+    }
+
+    vec2 texelSize = 1.0 / resolution;
+    vec3 result = vec3(0.0);
+    float totalWeight = 0.0;
+
+    for (int i = 0; i < 22; i++) {
+      vec2 offset = poissonDisk[i] * blurRadius * texelSize;
+      vec2 sampleUV = vUv + offset;
+
+      vec3 sampleColor = texture2D(tScene, sampleUV).rgb;
+      float sampleCoC = (texture2D(tCoC, sampleUV).r * 2.0 - 1.0) * maxBlur;
+
+      // Weight: neighbor contributes if its own blur radius covers this pixel
+      float sampleRadius = abs(sampleCoC);
+      float dist = length(poissonDisk[i]) * blurRadius;
+      float w = smoothstep(0.0, 1.0, sampleRadius / (dist + 0.001));
+
+      // Near-field bleeding: near-blur samples always contribute
+      if (sampleCoC < 0.0) w = 1.0;
+
+      result += sampleColor * w;
+      totalWeight += w;
+    }
+
+    gl_FragColor = vec4(result / max(totalWeight, 0.001), 1.0);
+  }
+`;
+
 const COMPOSITE_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tBloom;
@@ -120,6 +205,10 @@ const COMPOSITE_FRAG = `
   uniform bool ssrEnabled;
   uniform bool ssgiEnabled;
   uniform bool cloudsEnabled;
+  uniform sampler2D tDof;
+  uniform sampler2D tDofCoC;
+  uniform bool dofEnabled;
+  uniform float dofMaxBlur;
   varying vec2 vUv;
 
   vec3 acesFilm(vec3 x) {
@@ -156,6 +245,14 @@ const COMPOSITE_FRAG = `
     if (cloudsEnabled) {
       vec4 clouds = texture2D(tClouds, vUv);
       scene = mix(scene, clouds.rgb, 1.0 - clouds.a);
+    }
+
+    // Depth of Field — mix sharp scene with bokeh blur based on CoC
+    if (dofEnabled) {
+      float coc = texture2D(tDofCoC, vUv).r * 2.0 - 1.0; // [-1, 1]
+      float blurAmount = smoothstep(0.0, 1.0, abs(coc) * dofMaxBlur / max(dofMaxBlur, 0.001));
+      vec3 dofColor = texture2D(tDof, vUv).rgb;
+      scene = mix(scene, dofColor, blurAmount);
     }
 
     // Combine bloom
@@ -941,6 +1038,12 @@ export interface PostProcessConfig {
     intensity?: number;
     roundness?: number;
   };
+  dof?: {
+    enabled?: boolean;
+    focusDistance?: number;
+    aperture?: number;
+    maxBlur?: number;
+  };
   exposure?: number;
 }
 
@@ -960,6 +1063,8 @@ export class PostProcessingPipeline {
   private ssgiBlurRT: THREE.WebGLRenderTarget;
   private ssgiBlurRT2: THREE.WebGLRenderTarget;
   private ssgiUpscaleRT: THREE.WebGLRenderTarget;
+  private dofCocRT: THREE.WebGLRenderTarget;
+  private dofBlurRT: THREE.WebGLRenderTarget;
   private cloudRT: THREE.WebGLRenderTarget;
 
   // Passes
@@ -973,6 +1078,8 @@ export class PostProcessingPipeline {
   private ssgiBlurHPass: FullScreenPass;
   private ssgiBlurVPass: FullScreenPass;
   private ssgiUpscalePass: FullScreenPass;
+  private dofCocPass: FullScreenPass;
+  private dofBlurPass: FullScreenPass;
   private cloudPass: FullScreenPass;
   private compositePass: FullScreenPass;
 
@@ -997,6 +1104,7 @@ export class PostProcessingPipeline {
     ssgi: { enabled: false, sliceCount: 3, stepCount: 12, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
     clouds: { enabled: false, minHeight: 200, maxHeight: 400, coverage: 0.5, density: 0.3, absorption: 1.0, scatter: 1.0, color: new THREE.Color(1, 1, 1), speed: 1.0, sunDirection: new THREE.Vector3(0.5, 1, 0.3).normalize() },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
+    dof: { enabled: false, focusDistance: 10, aperture: 0.025, maxBlur: 10 },
     exposure: 1.0,
   };
 
@@ -1041,6 +1149,8 @@ export class PostProcessingPipeline {
     this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT2 = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiUpscaleRT = new THREE.WebGLRenderTarget(w, h, rtParams);
+    this.dofCocRT = new THREE.WebGLRenderTarget(w, h, rtParams);
+    this.dofBlurRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.cloudRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
 
     // ── Bloom bright pass ──
@@ -1193,6 +1303,32 @@ export class PostProcessingPipeline {
       },
     }));
 
+    // ── DoF CoC pass ──
+    this.dofCocPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: DOF_COC_FRAG,
+      uniforms: {
+        tDepth: { value: null },
+        focusDistance: { value: 10 },
+        aperture: { value: 0.025 },
+        maxBlur: { value: 10 },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
+      },
+    }));
+
+    // ── DoF Blur pass ──
+    this.dofBlurPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: DOF_BLUR_FRAG,
+      uniforms: {
+        tScene: { value: null },
+        tCoC: { value: null },
+        resolution: { value: new THREE.Vector2(w, h) },
+        maxBlur: { value: 10 },
+      },
+    }));
+
     // ── Cloud pass ──
     this.cloudPass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -1240,6 +1376,10 @@ export class PostProcessingPipeline {
         ssrEnabled: { value: false },
         ssgiEnabled: { value: false },
         cloudsEnabled: { value: false },
+        tDof: { value: null },
+        tDofCoC: { value: null },
+        dofEnabled: { value: false },
+        dofMaxBlur: { value: 10 },
       },
     }));
   }
@@ -1296,6 +1436,10 @@ export class PostProcessingPipeline {
       this.ssgiUpscalePass.material.uniforms['cameraNear'].value = near;
       this.ssgiUpscalePass.material.uniforms['cameraFar'].value = far;
 
+      // DoF CoC
+      this.dofCocPass.material.uniforms['cameraNear'].value = near;
+      this.dofCocPass.material.uniforms['cameraFar'].value = far;
+
       // Clouds
       this.cloudPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
       this.cloudPass.material.uniforms['cameraNear'].value = near;
@@ -1310,6 +1454,7 @@ export class PostProcessingPipeline {
     this.ssgiPass.material.uniforms['tScene'].value = this.sceneRT.texture;
     this.ssgiBlurHPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.ssgiBlurVPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
+    this.dofCocPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.cloudPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
 
     this._invViewMatrix.copy(this.camera.matrixWorld);
@@ -1325,6 +1470,7 @@ export class PostProcessingPipeline {
     const ssr = this.config.ssr;
     const ssgi = this.config.ssgi;
     const clouds = this.config.clouds;
+    const dof = this.config.dof;
 
     // Track time for clouds
     this._time += dt ?? 0.016;
@@ -1444,7 +1590,23 @@ export class PostProcessingPipeline {
       this.cloudPass.render(this.renderer, this.cloudRT);
     }
 
-    // 7. Composite final image
+    // 7. Depth of Field
+    const doDof = !!dof?.enabled;
+    if (doDof) {
+      // CoC pass
+      this.dofCocPass.material.uniforms['focusDistance'].value = dof!.focusDistance ?? 10;
+      this.dofCocPass.material.uniforms['aperture'].value = dof!.aperture ?? 0.025;
+      this.dofCocPass.material.uniforms['maxBlur'].value = dof!.maxBlur ?? 10;
+      this.dofCocPass.render(this.renderer, this.dofCocRT);
+
+      // Bokeh blur pass
+      this.dofBlurPass.material.uniforms['tScene'].value = this.sceneRT.texture;
+      this.dofBlurPass.material.uniforms['tCoC'].value = this.dofCocRT.texture;
+      this.dofBlurPass.material.uniforms['maxBlur'].value = dof!.maxBlur ?? 10;
+      this.dofBlurPass.render(this.renderer, this.dofBlurRT);
+    }
+
+    // 8. Composite final image
     const cu = this.compositePass.material.uniforms;
     cu['tScene'].value = this.sceneRT.texture;
     cu['tBloom'].value = bloom?.enabled ? this.bloomChain[0].texture : this.sceneRT.texture;
@@ -1457,6 +1619,10 @@ export class PostProcessingPipeline {
     cu['ssgiEnabled'].value = doSSGI;
     cu['tClouds'].value = this.cloudRT.texture;
     cu['cloudsEnabled'].value = doClouds;
+    cu['tDof'].value = this.dofBlurRT.texture;
+    cu['tDofCoC'].value = this.dofCocRT.texture;
+    cu['dofEnabled'].value = doDof;
+    cu['dofMaxBlur'].value = dof?.maxBlur ?? 10;
     cu['vignetteIntensity'].value = this.config.vignette?.enabled ? (this.config.vignette.intensity ?? 0.3) : 0;
     cu['vignetteRoundness'].value = this.config.vignette?.roundness ?? 0.5;
     cu['exposure'].value = this.config.exposure ?? 1.0;
@@ -1495,6 +1661,8 @@ export class PostProcessingPipeline {
     this.ssgiBlurRT.setSize(halfW, halfH);
     this.ssgiBlurRT2.setSize(halfW, halfH);
     this.ssgiUpscaleRT.setSize(width, height);
+    this.dofCocRT.setSize(width, height);
+    this.dofBlurRT.setSize(width, height);
     this.cloudRT.setSize(halfW, halfH);
 
 
@@ -1506,6 +1674,7 @@ export class PostProcessingPipeline {
     this.ssgiBlurVPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiUpscalePass.material.uniforms['lowResolution'].value.set(halfW, halfH);
     this.ssgiUpscalePass.material.uniforms['hiResolution'].value.set(width, height);
+    this.dofBlurPass.material.uniforms['resolution'].value.set(width, height);
     this.cloudPass.material.uniforms['resolution'].value.set(halfW, halfH);
   }
 
@@ -1519,6 +1688,8 @@ export class PostProcessingPipeline {
     this.ssgiBlurRT.dispose();
     this.ssgiBlurRT2.dispose();
     this.ssgiUpscaleRT.dispose();
+    this.dofCocRT.dispose();
+    this.dofBlurRT.dispose();
     this.cloudRT.dispose();
     this.bloomBrightPass.dispose();
     this.bloomDownPass.dispose();
@@ -1530,6 +1701,8 @@ export class PostProcessingPipeline {
     this.ssgiBlurHPass.dispose();
     this.ssgiBlurVPass.dispose();
     this.ssgiUpscalePass.dispose();
+    this.dofCocPass.dispose();
+    this.dofBlurPass.dispose();
     this.cloudPass.dispose();
     this.compositePass.dispose();
   }

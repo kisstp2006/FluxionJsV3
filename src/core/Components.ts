@@ -373,6 +373,12 @@ export class EnvironmentComponent implements Component {
   cloudColor = new THREE.Color(1, 1, 1);
   cloudSpeed = 1.0;
 
+  // ── Depth of Field ──
+  dofEnabled = false;
+  dofFocusDistance = 10;
+  dofAperture = 0.025;
+  dofMaxBlur = 10;
+
   // ── Procedural Sky ──
   skyTurbidity = 2;
   skyRayleigh = 1;

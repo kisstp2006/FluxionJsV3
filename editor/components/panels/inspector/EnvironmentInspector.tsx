@@ -355,6 +355,26 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
           <NumberInput value={env.shadowDistance} step={10} min={10} onChange={(v) => { setProperty(undoManager, env, 'shadowDistance', v); update(); }} />
         </PropertyRow>
       </Section>
+
+      {/* ── Depth of Field ── */}
+      <Section title="Depth of Field" defaultOpen={false}>
+        <PropertyRow label="Enabled">
+          <Checkbox checked={env.dofEnabled} onChange={(v) => { setProperty(undoManager, env, 'dofEnabled', v); update(); }} />
+        </PropertyRow>
+        {env.dofEnabled && (
+          <>
+            <PropertyRow label="Focus Distance">
+              <NumberInput value={env.dofFocusDistance} step={0.5} min={0.1} onChange={(v) => { setProperty(undoManager, env, 'dofFocusDistance', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Aperture">
+              <Slider value={env.dofAperture} min={0.001} max={0.2} step={0.001} onChange={(v) => { setProperty(undoManager, env, 'dofAperture', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Max Blur">
+              <Slider value={env.dofMaxBlur} min={1} max={30} step={1} onChange={(v) => { setProperty(undoManager, env, 'dofMaxBlur', v); update(); }} />
+            </PropertyRow>
+          </>
+        )}
+      </Section>
     </Section>
   );
 };

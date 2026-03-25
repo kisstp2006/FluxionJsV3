@@ -53,7 +53,7 @@ export class AssetManager {
     // Optional: Draco compression support
     try {
       const dracoLoader = new DRACOLoader();
-      dracoLoader.setDecoderPath('three/examples/jsm/libs/draco/');
+      dracoLoader.setDecoderPath('./draco/');
       this.gltfLoader.setDRACOLoader(dracoLoader);
     } catch {
       // Draco not available, continue without it

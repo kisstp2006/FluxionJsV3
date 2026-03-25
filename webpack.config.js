@@ -69,6 +69,14 @@ const editorRenderer = {
       template: './editor/index.html',
       filename: 'index.html',
     }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: path.resolve(__dirname, 'node_modules/three/examples/jsm/libs/draco'),
+          to: path.resolve(__dirname, 'dist/editor/draco'),
+        },
+      ],
+    }),
     new (require('webpack')).DefinePlugin({
       'global': 'globalThis',
     }),

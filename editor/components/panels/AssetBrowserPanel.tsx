@@ -251,6 +251,92 @@ export const AssetBrowserPanel: React.FC<{
     }
   };
 
+  /** Check if a filename is a 3D model (FBX, GLTF, GLB, OBJ) */
+  const isModelFile = (name: string): boolean => {
+    const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+    return ['.fbx', '.glb', '.gltf', '.obj'].includes(ext);
+  };
+
+  /** Extract all embedded textures from a 3D model file */
+  const extractTexturesFromModel = async (entry: DirEntry) => {
+    log(`Extracting textures from ${entry.name}...`, 'system');
+    try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
+      const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
+      const { getTextureRefsFromMaterial, saveTextureToFile } = await import('../../../src/assets/FluxMeshData');
+      const { createAssetMeta, writeAssetMeta } = await import('../../../src/assets/AssetMeta');
+      const fs = getFileSystem();
+
+      const ext = entry.name.substring(entry.name.lastIndexOf('.')).toLowerCase();
+      const fileUrl = `file:///${entry.path.replace(/\\/g, '/')}`;
+      let root: any;
+
+      if (ext === '.fbx') {
+        root = await new Promise((res, rej) => new FBXLoader().load(fileUrl, res, undefined, rej));
+      } else if (ext === '.obj') {
+        root = await new Promise((res, rej) => new OBJLoader().load(fileUrl, res, undefined, rej));
+      } else {
+        const gltf = await new Promise<any>((res, rej) => new GLTFLoader().load(fileUrl, res, undefined, rej));
+        root = gltf.scene;
+      }
+
+      // Collect unique materials
+      const materials = new Set<any>();
+      root.traverse((child: any) => {
+        if (child.isMesh) {
+          const mats: any[] = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m: any) => materials.add(m));
+        }
+      });
+
+      const dir = entry.path.substring(0, entry.path.lastIndexOf('/'));
+      const baseName = entry.name.replace(/\.[^.]+$/, '');
+      const texturesDir = `${dir}/${baseName}_textures`;
+      let dirCreated = false;
+      const saved = new Set<any>();
+      let count = 0;
+
+      for (const mat of materials) {
+        const texRefs = getTextureRefsFromMaterial(mat);
+        for (const texRef of texRefs) {
+          if (saved.has(texRef.texture)) continue;
+
+          if (!dirCreated) {
+            try { await fs.mkdir(texturesDir); } catch { /* may exist */ }
+            dirCreated = true;
+          }
+
+          const matName = (mat.name || 'material').replace(/[^a-zA-Z0-9_-]/g, '_');
+          const texFileName = `${baseName}_${matName}_${texRef.label}.png`;
+          const texSavePath = `${texturesDir}/${texFileName}`;
+
+          const ok = await saveTextureToFile(
+            texRef.texture,
+            texSavePath,
+            (path, data) => fs.writeBinary(path, data),
+          );
+
+          if (ok) {
+            saved.add(texRef.texture);
+            const texMeta = createAssetMeta('texture', texSavePath, '', '', 0);
+            await writeAssetMeta(fs, texSavePath, texMeta);
+            count++;
+          }
+        }
+      }
+
+      if (count > 0) {
+        log(`Extracted ${count} texture(s) to ${baseName}_textures/`, 'system');
+      } else {
+        log(`No embedded textures found in ${entry.name}`, 'info');
+      }
+      refresh();
+    } catch (err: any) {
+      log(`Failed to extract textures: ${err.message}`, 'error');
+    }
+  };
+
   const showInExplorer = (entryPath: string) => {
     const api = getFluxionAPI();
     if (api?.showItemInFolder) {
@@ -341,6 +427,11 @@ export const AssetBrowserPanel: React.FC<{
 
     if (!entry.isDirectory) {
       items.push({ label: 'Duplicate', icon: Icons.copy, onClick: () => duplicateEntry(entry) });
+    }
+
+    // Model-specific: extract embedded textures
+    if (!entry.isDirectory && isModelFile(entry.name)) {
+      items.push({ label: 'Extract Textures', icon: Icons.image, onClick: () => extractTexturesFromModel(entry) });
     }
 
     items.push({ label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => deleteEntry(entry) });

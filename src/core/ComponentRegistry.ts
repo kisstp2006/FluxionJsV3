@@ -15,6 +15,7 @@ import {
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
+  EnvironmentComponent,
 } from './Components';
 
 // ── Property Descriptor ──────────────────────────────────────
@@ -252,4 +253,14 @@ ComponentRegistry.register({
     { key: 'sortingOrder', type: 'number', label: 'Sorting Order', step: 1 },
   ],
   create: () => new SpriteComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'Environment',
+  displayName: 'Environment',
+  icon: '🌍',
+  // Only one per scene — users add it manually via Add Component
+  addable: true,
+  properties: [],  // Custom inspector handles the UI
+  create: () => new EnvironmentComponent(),
 });

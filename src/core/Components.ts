@@ -239,3 +239,53 @@ export class AnimationComponent implements Component {
   mixer: THREE.AnimationMixer | null = null;
   currentAction: THREE.AnimationAction | null = null;
 }
+
+// ── Environment (Godot WorldEnvironment-style per-scene overrides) ──
+
+export type ToneMappingMode = 'None' | 'Linear' | 'Reinhard' | 'ACES' | 'AgX';
+export type BackgroundMode = 'color' | 'skybox';
+export type FogMode = 'exponential' | 'linear';
+
+export class EnvironmentComponent implements Component {
+  readonly type = 'Environment';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  // ── Background ──
+  backgroundMode: BackgroundMode = 'color';
+  backgroundColor = new THREE.Color(0x0a0e17);
+  skyboxPath: string | null = null;
+
+  // ── Ambient Light ──
+  ambientColor = new THREE.Color(0.27, 0.27, 0.35);
+  ambientIntensity = 0.5;
+
+  // ── Fog ──
+  fogEnabled = true;
+  fogColor = new THREE.Color(0.1, 0.1, 0.15);
+  fogMode: FogMode = 'exponential';
+  fogDensity = 0.008;
+  fogNear = 10;
+  fogFar = 100;
+
+  // ── Tone Mapping ──
+  toneMapping: ToneMappingMode = 'ACES';
+  exposure = 1.2;
+
+  // ── Bloom ──
+  bloomEnabled = true;
+  bloomThreshold = 0.8;
+  bloomStrength = 0.5;
+  bloomRadius = 0.4;
+
+  // ── SSAO ──
+  ssaoEnabled = false;
+  ssaoRadius = 0.5;
+  ssaoBias = 0.025;
+  ssaoIntensity = 1.0;
+
+  // ── Vignette ──
+  vignetteEnabled = false;
+  vignetteIntensity = 0.3;
+  vignetteRoundness = 0.5;
+}

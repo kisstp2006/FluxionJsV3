@@ -13,6 +13,8 @@ import {
   MeshRendererComponent,
   CameraComponent,
   LightComponent,
+  EnvironmentComponent,
+  ToneMappingMode,
 } from '../core/Components';
 import { PostProcessingPipeline } from './PostProcessing';
 import { DebugDraw } from './DebugDraw';
@@ -102,6 +104,7 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new MeshRendererSystem(this));
     engine.ecs.addSystem(new CameraSystem(this));
     engine.ecs.addSystem(new LightSystem(this));
+    engine.ecs.addSystem(new EnvironmentSystem(this));
 
     // Debug drawing: overlay (gizmoScene) + world (main scene for depth test)
     DebugDraw.init(this.gizmoScene, this.scene);
@@ -499,5 +502,131 @@ class LightSystem implements System {
         break;
     }
     return light;
+  }
+}
+
+// ── Environment System ──
+// Reads the EnvironmentComponent (first one found) and applies settings to the
+// Three.js scene (background, fog, ambient light) and PostProcessing pipeline.
+// Overrides project-level defaults when present.
+
+const TONE_MAP_LUT: Record<ToneMappingMode, THREE.ToneMapping> = {
+  None: THREE.NoToneMapping,
+  Linear: THREE.LinearToneMapping,
+  Reinhard: THREE.ReinhardToneMapping,
+  ACES: THREE.ACESFilmicToneMapping,
+  AgX: THREE.AgXToneMapping,
+};
+
+class EnvironmentSystem implements System {
+  readonly name = 'Environment';
+  readonly requiredComponents = ['Environment'];
+  priority = -150; // Before mesh/light systems, after transform
+  enabled = true;
+
+  private renderer: FluxionRenderer;
+  private ambientLight: THREE.AmbientLight | null = null;
+  private currentSkyboxPath: string | null = null;
+
+  constructor(renderer: FluxionRenderer) {
+    this.renderer = renderer;
+  }
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    // Use the first enabled EnvironmentComponent found
+    let env: EnvironmentComponent | null = null;
+    for (const entity of entities) {
+      const comp = ecs.getComponent<EnvironmentComponent>(entity, 'Environment');
+      if (comp?.enabled) {
+        env = comp;
+        break;
+      }
+    }
+
+    if (!env) {
+      this.cleanup();
+      return;
+    }
+
+    const scene = this.renderer.scene;
+    const glRenderer = this.renderer.renderer;
+    const pp = this.renderer.postProcessing;
+
+    // ── Background ──
+    if (env.backgroundMode === 'color') {
+      scene.background = env.backgroundColor;
+    }
+    // skybox is loaded asynchronously via the inspector / asset system;
+    // if a CubeTexture is needed, it's set externally on scene.background.
+
+    // ── Ambient Light ──
+    if (!this.ambientLight) {
+      this.ambientLight = new THREE.AmbientLight(env.ambientColor, env.ambientIntensity);
+      scene.add(this.ambientLight);
+    }
+    this.ambientLight.color.copy(env.ambientColor);
+    this.ambientLight.intensity = env.ambientIntensity;
+
+    // ── Fog ──
+    if (env.fogEnabled) {
+      if (env.fogMode === 'exponential') {
+        if (!(scene.fog instanceof THREE.FogExp2)) {
+          scene.fog = new THREE.FogExp2(env.fogColor.getHex(), env.fogDensity);
+        }
+        const fog = scene.fog as THREE.FogExp2;
+        fog.color.copy(env.fogColor);
+        fog.density = env.fogDensity;
+      } else {
+        if (!(scene.fog instanceof THREE.Fog)) {
+          scene.fog = new THREE.Fog(env.fogColor.getHex(), env.fogNear, env.fogFar);
+        }
+        const fog = scene.fog as THREE.Fog;
+        fog.color.copy(env.fogColor);
+        fog.near = env.fogNear;
+        fog.far = env.fogFar;
+      }
+    } else {
+      scene.fog = null;
+    }
+
+    // ── Tone Mapping ──
+    glRenderer.toneMapping = TONE_MAP_LUT[env.toneMapping] ?? THREE.ACESFilmicToneMapping;
+    glRenderer.toneMappingExposure = env.exposure;
+
+    // ── Post Processing ──
+    pp.config.bloom = {
+      enabled: env.bloomEnabled,
+      threshold: env.bloomThreshold,
+      strength: env.bloomStrength,
+      radius: env.bloomRadius,
+      softKnee: pp.config.bloom?.softKnee ?? 0.6,
+    };
+
+    pp.config.ssao = {
+      enabled: env.ssaoEnabled,
+      radius: env.ssaoRadius,
+      bias: env.ssaoBias,
+      intensity: env.ssaoIntensity,
+    };
+
+    pp.config.vignette = {
+      enabled: env.vignetteEnabled,
+      intensity: env.vignetteIntensity,
+      roundness: env.vignetteRoundness,
+    };
+
+    pp.config.exposure = env.exposure;
+  }
+
+  private cleanup(): void {
+    if (this.ambientLight) {
+      this.renderer.scene.remove(this.ambientLight);
+      this.ambientLight.dispose();
+      this.ambientLight = null;
+    }
+  }
+
+  destroy(): void {
+    this.cleanup();
   }
 }

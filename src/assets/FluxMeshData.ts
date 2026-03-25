@@ -211,19 +211,18 @@ const TEXTURE_MAP_KEYS: { threeProp: string; fluxmatKey: string; label: string }
 /**
  * Extract texture references from a THREE material.
  * Returns an array of { fluxmatKey, texture, label } for each texture found.
- * Deduplicates by fluxmatKey (first match wins).
+ * Does NOT deduplicate — e.g. both normalMap and bumpMap (Phong) are returned
+ * even though they share the same fluxmatKey. Callers handle dedup as needed.
  */
 export function getTextureRefsFromMaterial(
   mat: THREE.Material,
 ): Array<{ fluxmatKey: string; texture: THREE.Texture; label: string }> {
   const refs: Array<{ fluxmatKey: string; texture: THREE.Texture; label: string }> = [];
-  const seen = new Set<string>();
 
   for (const entry of TEXTURE_MAP_KEYS) {
     const tex = (mat as any)[entry.threeProp] as THREE.Texture | null | undefined;
-    if (tex && !seen.has(entry.fluxmatKey)) {
+    if (tex) {
       refs.push({ fluxmatKey: entry.fluxmatKey, texture: tex, label: entry.label });
-      seen.add(entry.fluxmatKey);
     }
   }
 

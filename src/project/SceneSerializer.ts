@@ -17,6 +17,7 @@ import {
   ScriptComponent,
   ParticleEmitterComponent,
   AudioSourceComponent,
+  EnvironmentComponent,
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
@@ -271,6 +272,39 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           clip: audio.clip, volume: audio.volume, pitch: audio.pitch,
           loop: audio.loop, playOnStart: audio.playOnStart, spatial: audio.spatial,
           minDistance: audio.minDistance, maxDistance: audio.maxDistance,
+        },
+      });
+    }
+
+    const env = engine.ecs.getComponent<EnvironmentComponent>(entityId, 'Environment');
+    if (env) {
+      components.push({
+        type: 'Environment',
+        data: {
+          backgroundMode: env.backgroundMode,
+          backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
+          skyboxPath: env.skyboxPath,
+          ambientColor: [env.ambientColor.r, env.ambientColor.g, env.ambientColor.b],
+          ambientIntensity: env.ambientIntensity,
+          fogEnabled: env.fogEnabled,
+          fogColor: [env.fogColor.r, env.fogColor.g, env.fogColor.b],
+          fogMode: env.fogMode,
+          fogDensity: env.fogDensity,
+          fogNear: env.fogNear,
+          fogFar: env.fogFar,
+          toneMapping: env.toneMapping,
+          exposure: env.exposure,
+          bloomEnabled: env.bloomEnabled,
+          bloomThreshold: env.bloomThreshold,
+          bloomStrength: env.bloomStrength,
+          bloomRadius: env.bloomRadius,
+          ssaoEnabled: env.ssaoEnabled,
+          ssaoRadius: env.ssaoRadius,
+          ssaoBias: env.ssaoBias,
+          ssaoIntensity: env.ssaoIntensity,
+          vignetteEnabled: env.vignetteEnabled,
+          vignetteIntensity: env.vignetteIntensity,
+          vignetteRoundness: env.vignetteRoundness,
         },
       });
     }
@@ -538,6 +572,37 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           a.minDistance = d.minDistance ?? 1;
           a.maxDistance = d.maxDistance ?? 50;
           engine.ecs.addComponent(entityId, a);
+          break;
+        }
+
+        case 'Environment': {
+          const e = new EnvironmentComponent();
+          const d = comp.data;
+          e.backgroundMode = d.backgroundMode ?? 'color';
+          if (d.backgroundColor) e.backgroundColor = new THREE.Color(d.backgroundColor[0], d.backgroundColor[1], d.backgroundColor[2]);
+          e.skyboxPath = d.skyboxPath ?? null;
+          if (d.ambientColor) e.ambientColor = new THREE.Color(d.ambientColor[0], d.ambientColor[1], d.ambientColor[2]);
+          e.ambientIntensity = d.ambientIntensity ?? 0.5;
+          e.fogEnabled = d.fogEnabled ?? true;
+          if (d.fogColor) e.fogColor = new THREE.Color(d.fogColor[0], d.fogColor[1], d.fogColor[2]);
+          e.fogMode = d.fogMode ?? 'exponential';
+          e.fogDensity = d.fogDensity ?? 0.008;
+          e.fogNear = d.fogNear ?? 10;
+          e.fogFar = d.fogFar ?? 100;
+          e.toneMapping = d.toneMapping ?? 'ACES';
+          e.exposure = d.exposure ?? 1.2;
+          e.bloomEnabled = d.bloomEnabled ?? true;
+          e.bloomThreshold = d.bloomThreshold ?? 0.8;
+          e.bloomStrength = d.bloomStrength ?? 0.5;
+          e.bloomRadius = d.bloomRadius ?? 0.4;
+          e.ssaoEnabled = d.ssaoEnabled ?? false;
+          e.ssaoRadius = d.ssaoRadius ?? 0.5;
+          e.ssaoBias = d.ssaoBias ?? 0.025;
+          e.ssaoIntensity = d.ssaoIntensity ?? 1.0;
+          e.vignetteEnabled = d.vignetteEnabled ?? false;
+          e.vignetteIntensity = d.vignetteIntensity ?? 0.3;
+          e.vignetteRoundness = d.vignetteRoundness ?? 0.5;
+          engine.ecs.addComponent(entityId, e);
           break;
         }
       }

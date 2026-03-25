@@ -18,6 +18,7 @@ import {
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
+  EnvironmentComponent,
 } from '../core/Components';
 import { AssetManager } from '../assets/AssetManager';
 
@@ -458,6 +459,39 @@ export class Scene {
           data: {
             scriptName: script.scriptName,
             properties: script.properties,
+          },
+        });
+      }
+
+      const env = this.engine.ecs.getComponent<EnvironmentComponent>(entityId, 'Environment');
+      if (env) {
+        components.push({
+          type: 'Environment',
+          data: {
+            backgroundMode: env.backgroundMode,
+            backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
+            skyboxPath: env.skyboxPath,
+            ambientColor: [env.ambientColor.r, env.ambientColor.g, env.ambientColor.b],
+            ambientIntensity: env.ambientIntensity,
+            fogEnabled: env.fogEnabled,
+            fogColor: [env.fogColor.r, env.fogColor.g, env.fogColor.b],
+            fogMode: env.fogMode,
+            fogDensity: env.fogDensity,
+            fogNear: env.fogNear,
+            fogFar: env.fogFar,
+            toneMapping: env.toneMapping,
+            exposure: env.exposure,
+            bloomEnabled: env.bloomEnabled,
+            bloomThreshold: env.bloomThreshold,
+            bloomStrength: env.bloomStrength,
+            bloomRadius: env.bloomRadius,
+            ssaoEnabled: env.ssaoEnabled,
+            ssaoRadius: env.ssaoRadius,
+            ssaoBias: env.ssaoBias,
+            ssaoIntensity: env.ssaoIntensity,
+            vignetteEnabled: env.vignetteEnabled,
+            vignetteIntensity: env.vignetteIntensity,
+            vignetteRoundness: env.vignetteRoundness,
           },
         });
       }

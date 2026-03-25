@@ -25,6 +25,7 @@ import { VisualMaterialInspector } from './inspector/VisualMaterialInspector';
 import { EnvironmentInspector } from './inspector/EnvironmentInspector';
 import { TextRendererInspector } from './inspector/TextRendererInspector';
 import { SpriteRendererInspector } from './inspector/SpriteRendererInspector';
+import { LightInspector } from './inspector/LightInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);
@@ -38,6 +39,7 @@ AssetInspectorRegistry.register('visual_material', VisualMaterialInspector);
 const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: () => void }>> = {
   Transform: ({ entity }) => <TransformInspector entity={entity} />,
   MeshRenderer: MeshRendererInspector,
+  Light: LightInspector,
   Environment: EnvironmentInspector,
   TextRenderer: TextRendererInspector,
   Sprite: SpriteRendererInspector,

@@ -364,7 +364,9 @@ const SSR_FRAG = `
   }
 `;
 
-// ── SSGI Shader — Screen-Space Global Illumination (GTAO-based horizon tracing) ──
+// ── SSGI Shader — Screen-Space Global Illumination (WickedEngine-inspired) ──
+// Uses golden angle spiral sampling with cosine-weighted normal falloff,
+// depth rejection, and distance-based attenuation for smooth indirect lighting.
 const SSGI_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tDepth;
@@ -381,12 +383,10 @@ const SSGI_FRAG = `
   uniform int sliceCountI;
   uniform int stepCountI;
   uniform float backfaceLighting;
-  uniform bool useLinearThickness;
-  uniform bool screenSpaceSampling;
   varying vec2 vUv;
 
   #define PI 3.14159265359
-  #define HALF_PI 1.5707963268
+  #define GOLDEN_ANGLE 2.399963
 
   vec3 getViewPos(vec2 uv) {
     float d = texture2D(tDepth, uv).r;
@@ -411,10 +411,7 @@ const SSGI_FRAG = `
     return normalize(cross(dx, dy));
   }
 
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-
+  // Spatially coherent noise — produces structured dither that bilateral blur handles well
   float interleavedGradientNoise(vec2 coord) {
     return fract(52.9829189 * fract(0.06711056 * coord.x + 0.00583715 * coord.y));
   }
@@ -423,106 +420,161 @@ const SSGI_FRAG = `
     float depth = texture2D(tDepth, vUv).r;
     if (depth >= 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
 
-    vec3 viewPos = getViewPos(vUv);
-    vec3 viewNormal = getNormal(vUv);
-    vec3 viewDir = normalize(-viewPos);
+    vec3 P = getViewPos(vUv);
+    vec3 N = getNormal(vUv);
 
     vec2 pixelCoord = vUv * resolution;
-    float noiseDir = interleavedGradientNoise(pixelCoord);
-    float noiseOffset = hash(pixelCoord * 0.123);
+    float noise = interleavedGradientNoise(pixelCoord);
+
+    // Total sample count = sliceCount * stepCount
+    int totalSamples = int(sliceCountI) * int(stepCountI);
+
+    // Screen-space sampling radius from world-space radius
+    float fov = atan(1.0 / projMatrix[1][1]);
+    float halfProjScale = resolution.y / (2.0 * tan(fov));
+    float screenRadius = giRadius * halfProjScale / max(abs(P.z), 0.1);
+    screenRadius = clamp(screenRadius, 4.0, resolution.y * 0.5);
 
     float totalAO = 0.0;
     vec3 totalGI = vec3(0.0);
-    float halfProjScale = resolution.y / (2.0 * tan(atan(1.0 / projMatrix[1][1])));
+    float totalWeight = 0.0;
 
-    int sliceCount = int(sliceCountI);
-    int stepCount = int(stepCountI);
+    for (int i = 0; i < 128; i++) {
+      if (i >= totalSamples) break;
 
-    for (int s = 0; s < 4; s++) {
-      if (s >= sliceCount) break;
+      float fi = float(i);
+      // Golden angle spiral with per-pixel angular jitter (coherent noise)
+      float angle = fi * GOLDEN_ANGLE + noise * PI * 2.0;
+      // Clean uniform-disk radius — no radial jitter
+      float r = sqrt((fi + 0.5) / float(totalSamples)) * screenRadius;
 
-      float rotAngle = (float(s) + noiseDir) * PI / float(sliceCount);
-      vec2 sliceDir = vec2(cos(rotAngle), sin(rotAngle));
-      vec2 texelStep = sliceDir / resolution;
+      // Minimum 1 pixel step to avoid self-sampling
+      if (r < 1.0) continue;
 
-      // Tangent-based projected normal for this slice
-      vec3 sliceNormal = normalize(cross(vec3(sliceDir, 0.0), viewDir));
-      vec3 tangent = cross(viewDir, sliceNormal);
-      vec3 projNorm = viewNormal - sliceNormal * dot(viewNormal, sliceNormal);
-      float cosN = clamp(dot(normalize(projNorm), viewDir), -1.0, 1.0);
-      float n = -sign(dot(projNorm, tangent)) * acos(cosN);
+      vec2 sampleUV = vUv + vec2(cos(angle), sin(angle)) * r / resolution;
 
-      float maxStepRadius = max(giRadius * halfProjScale / abs(viewPos.z), float(stepCount));
-      float stepRadius = maxStepRadius / (float(stepCount) + 1.0);
+      // Bounds check
+      if (sampleUV.x <= 0.0 || sampleUV.x >= 1.0 || sampleUV.y <= 0.0 || sampleUV.y >= 1.0) continue;
 
-      float occBits = 0.0;
-      int occCount = 0;
+      vec3 sampleP = getViewPos(sampleUV);
+      vec3 toSample = sampleP - P;
+      float dist = length(toSample);
 
-      // March both directions (+/-)
-      for (int dir = 0; dir < 2; dir++) {
-        float dirSign = dir == 0 ? 1.0 : -1.0;
+      if (dist < 0.001) continue;
 
-        for (int t = 0; t < 32; t++) {
-          if (t >= stepCount) break;
+      vec3 toSampleDir = toSample / dist;
 
-          float rawOffset = stepRadius * (float(t) + noiseOffset);
-          float offset = screenSpaceSampling
-            ? max(rawOffset, float(t) + 1.0)
-            : pow(abs(rawOffset / maxStepRadius), giExpFactor) * maxStepRadius;
-          if (!screenSpaceSampling) offset = max(offset, float(t) + 1.0);
-          vec2 sampleUV = vUv + texelStep * offset * dirSign;
+      // Cosine-weighted normal falloff (hemisphere test)
+      float NdotS = dot(N, toSampleDir);
+      if (NdotS <= 0.0) continue; // sample is behind our surface plane
 
-          // Bounds check
-          if (sampleUV.x <= 0.0 || sampleUV.x >= 1.0 || sampleUV.y <= 0.0 || sampleUV.y >= 1.0) break;
+      // Depth rejection — reject samples too far behind in view-space
+      // Compare view-space depth difference relative to radius
+      float depthDiff = abs(sampleP.z - P.z);
+      float depthReject = 1.0 - smoothstep(giRadius * giThickness, giRadius * giThickness * 2.0, depthDiff);
+      if (depthReject <= 0.0) continue;
 
-          vec3 sampleViewPos = getViewPos(sampleUV);
-          vec3 toSample = sampleViewPos - viewPos;
-          float dist = length(toSample);
-          if (dist < 0.001) continue;
-          vec3 toSampleDir = toSample / dist;
+      // Distance attenuation (smooth falloff based on world-space radius)
+      float distWeight = 1.0 - smoothstep(0.0, giRadius, dist);
+      distWeight = pow(distWeight, giExpFactor);
 
-          // Horizon angle test
-          float horizonAngle = dot(toSampleDir, viewDir);
-          float thicknessMul = useLinearThickness ? dist / giRadius : 1.0;
-          float backHorizon = dot(normalize(sampleViewPos - viewDir * giThickness * thicknessMul - viewPos), viewDir);
+      float weight = NdotS * depthReject * distWeight;
 
-          float frontH = clamp((-dirSign * acos(clamp(horizonAngle, -1.0, 1.0)) - n + HALF_PI) / PI, 0.0, 1.0);
-          float backH = clamp((-dirSign * acos(clamp(backHorizon, -1.0, 1.0)) - n + HALF_PI) / PI, 0.0, 1.0);
-          float minH = min(frontH, backH);
-          float maxH = max(frontH, backH);
+      // AO accumulation — count how much of the hemisphere is occluded
+      totalAO += NdotS * depthReject;
+      totalWeight += 1.0;
 
-          float visibility = maxH - minH;
-          if (visibility > 0.01) {
-            occCount++;
+      // GI: pick up indirect color from scene buffer at sample location
+      vec3 sampleColor = texture2D(tScene, sampleUV).rgb;
 
-            // GI: read beauty at sample, weight by normal dot
-            float NdotL = clamp(dot(viewNormal, toSampleDir), 0.0, 1.0);
-            if (NdotL > 0.001) {
-              vec3 sampleColor = texture2D(tScene, sampleUV).rgb;
-              vec3 sampleNormal = getNormal(sampleUV);
-              float lightNdotL = clamp(dot(sampleNormal, -toSampleDir), 0.0, 1.0);
-              float backfaceWeight = mix(lightNdotL, 1.0, backfaceLighting);
-              totalGI += sampleColor * NdotL * backfaceWeight * visibility;
-            }
-          }
-        }
+      // Backface attenuation — reduce contribution from samples facing away
+      if (backfaceLighting < 0.99) {
+        vec3 sampleN = getNormal(sampleUV);
+        float backW = mix(max(dot(sampleN, -toSampleDir), 0.0), 1.0, backfaceLighting);
+        sampleColor *= backW;
       }
 
-      totalAO += float(occCount) / (2.0 * float(stepCount));
+      totalGI += sampleColor * weight;
     }
 
-    totalAO /= float(sliceCount);
-    float ao = clamp(pow(1.0 - totalAO, aoIntensity), 0.0, 1.0);
+    float ao = 1.0;
+    if (totalWeight > 0.0) {
+      // Normalize AO: ratio of occluded hemisphere
+      float avgAO = totalAO / totalWeight;
+      ao = clamp(pow(1.0 - avgAO, aoIntensity), 0.0, 1.0);
+      totalGI /= totalWeight;
+    }
 
-    totalGI /= float(sliceCount);
+    // Scale GI by intensity
     totalGI *= giIntensity;
 
-    // Clamp GI luminance to prevent fireflies
+    // Firefly clamp to prevent single-pixel highlights
     float lum = dot(totalGI, vec3(0.2126, 0.7152, 0.0722));
-    float maxLum = 7.0;
+    float maxLum = 5.0;
     if (lum > maxLum) totalGI *= maxLum / lum;
 
     gl_FragColor = vec4(totalGI, ao);
+  }
+`;
+
+// ── SSGI Bilateral Blur — 2-pass separable depth-aware smoothing (9-tap per axis) ──
+const SSGI_BLUR_FRAG = `
+  uniform sampler2D tInput;
+  uniform sampler2D tDepth;
+  uniform vec2 resolution;
+  uniform vec2 direction;   // (1,0) for horizontal, (0,1) for vertical
+  uniform float cameraNear;
+  uniform float cameraFar;
+  varying vec2 vUv;
+
+  float linearizeDepth(float d) {
+    return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+  }
+
+  void main() {
+    vec4 center = texture2D(tInput, vUv);
+    float centerRawDepth = texture2D(tDepth, vUv).r;
+
+    if (centerRawDepth >= 1.0) { gl_FragColor = center; return; }
+
+    float centerDepth = linearizeDepth(centerRawDepth);
+    float depthThreshold = centerDepth * 0.05;
+    float invDepthSigma2 = 1.0 / (2.0 * depthThreshold * depthThreshold + 0.0001);
+
+    // Gaussian weights for 13-tap kernel (sigma ~4.0)
+    // Offsets: -6 .. +6
+    float weights[13];
+    weights[0] = 0.0044; weights[1] = 0.0175; weights[2] = 0.0540;
+    weights[3] = 0.1218; weights[4] = 0.1872; weights[5] = 0.2100;
+    weights[6] = 0.2100;
+    weights[7] = 0.2100; weights[8] = 0.1872; weights[9] = 0.1218;
+    weights[10] = 0.0540; weights[11] = 0.0175; weights[12] = 0.0044;
+
+    vec2 texelStep = direction / resolution;
+
+    vec4 result = vec4(0.0);
+    float totalWeight = 0.0;
+
+    for (int i = 0; i < 13; i++) {
+      float offset = float(i - 6);
+      vec2 sampleUV = vUv + texelStep * offset;
+
+      vec4 sampleVal = texture2D(tInput, sampleUV);
+      float sampleRawDepth = texture2D(tDepth, sampleUV).r;
+      float sampleDepth = linearizeDepth(sampleRawDepth);
+
+      float spatialW = weights[i];
+
+      // Bilateral depth weight
+      float depthDiff = centerDepth - sampleDepth;
+      float depthW = exp(-depthDiff * depthDiff * invDepthSigma2);
+
+      float w = spatialW * depthW;
+      result += sampleVal * w;
+      totalWeight += w;
+    }
+
+    gl_FragColor = result / totalWeight;
   }
 `;
 
@@ -753,6 +805,8 @@ export class PostProcessingPipeline {
   private ssaoRT: THREE.WebGLRenderTarget;
   private ssrRT: THREE.WebGLRenderTarget;
   private ssgiRT: THREE.WebGLRenderTarget;
+  private ssgiBlurRT: THREE.WebGLRenderTarget;
+  private ssgiBlurRT2: THREE.WebGLRenderTarget;
   private cloudRT: THREE.WebGLRenderTarget;
 
   // Passes
@@ -762,12 +816,17 @@ export class PostProcessingPipeline {
   private ssaoPass: FullScreenPass;
   private ssrPass: FullScreenPass;
   private ssgiPass: FullScreenPass;
+  private ssgiBlurHPass: FullScreenPass;
+  private ssgiBlurVPass: FullScreenPass;
   private cloudPass: FullScreenPass;
   private compositePass: FullScreenPass;
 
   // Reusable matrices
   private _invProjMatrix = new THREE.Matrix4();
   private _invViewMatrix = new THREE.Matrix4();
+  private _lastProjHash = -1;
+  private _lastNear = -1;
+  private _lastFar = -1;
 
   // Time tracking for clouds
   private _time = 0;
@@ -780,7 +839,7 @@ export class PostProcessingPipeline {
     bloom: { enabled: true, threshold: 0.8, strength: 0.5, radius: 0.4, softKnee: 0.6 },
     ssao: { enabled: false, radius: 0.5, bias: 0.025, intensity: 1.0 },
     ssr: { enabled: false, maxDistance: 50, thickness: 0.5, stride: 0.3, fresnel: 1.0, opacity: 0.5, resolutionScale: 0.5 },
-    ssgi: { enabled: false, sliceCount: 2, stepCount: 8, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
+    ssgi: { enabled: false, sliceCount: 3, stepCount: 12, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
     clouds: { enabled: false, minHeight: 200, maxHeight: 400, coverage: 0.5, density: 0.3, absorption: 1.0, scatter: 1.0, color: new THREE.Color(1, 1, 1), speed: 1.0, sunDirection: new THREE.Vector3(0.5, 1, 0.3).normalize() },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
     exposure: 1.0,
@@ -819,6 +878,8 @@ export class PostProcessingPipeline {
     this.ssaoRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.ssrRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    this.ssgiBlurRT2 = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.cloudRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
 
     // ── Bloom bright pass ──
@@ -910,8 +971,33 @@ export class PostProcessingPipeline {
         sliceCountI: { value: 2 },
         stepCountI: { value: 8 },
         backfaceLighting: { value: 0 },
-        useLinearThickness: { value: false },
-        screenSpaceSampling: { value: true },
+      },
+    }));
+
+    // ── SSGI Blur pass (2-pass separable bilateral) ──
+    this.ssgiBlurHPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: SSGI_BLUR_FRAG,
+      uniforms: {
+        tInput: { value: null },
+        tDepth: { value: null },
+        direction: { value: new THREE.Vector2(1, 0) },
+        resolution: { value: new THREE.Vector2(halfW, halfH) },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
+      },
+    }));
+
+    this.ssgiBlurVPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: SSGI_BLUR_FRAG,
+      uniforms: {
+        tInput: { value: null },
+        tDepth: { value: null },
+        direction: { value: new THREE.Vector2(0, 1) },
+        resolution: { value: new THREE.Vector2(halfW, halfH) },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
       },
     }));
 
@@ -972,39 +1058,61 @@ export class PostProcessingPipeline {
 
   /** Update camera matrices for all passes that need them */
   private updateCameraUniforms(): void {
-    this._invProjMatrix.copy((this.camera as THREE.PerspectiveCamera).projectionMatrix).invert();
-    this._invViewMatrix.copy(this.camera.matrixWorld);
-
+    const projMat = (this.camera as THREE.PerspectiveCamera).projectionMatrix;
     const near = (this.camera as any).near ?? 0.1;
     const far = (this.camera as any).far ?? 1000;
-    const projMat = (this.camera as THREE.PerspectiveCamera).projectionMatrix;
 
-    // SSAO
+    // Quick hash of projection matrix diagonal — changes on FOV / aspect / near / far
+    const projHash = projMat.elements[0] + projMat.elements[5] + projMat.elements[10] + projMat.elements[14];
+    const projChanged = projHash !== this._lastProjHash || near !== this._lastNear || far !== this._lastFar;
+
+    if (projChanged) {
+      this._lastProjHash = projHash;
+      this._lastNear = near;
+      this._lastFar = far;
+      this._invProjMatrix.copy(projMat).invert();
+
+      // SSAO
+      this.ssaoPass.material.uniforms['projMatrix'].value.copy(projMat);
+      this.ssaoPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+      this.ssaoPass.material.uniforms['cameraNear'].value = near;
+      this.ssaoPass.material.uniforms['cameraFar'].value = far;
+
+      // SSR
+      this.ssrPass.material.uniforms['projMatrix'].value.copy(projMat);
+      this.ssrPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+      this.ssrPass.material.uniforms['cameraNear'].value = near;
+      this.ssrPass.material.uniforms['cameraFar'].value = far;
+
+      // SSGI
+      this.ssgiPass.material.uniforms['projMatrix'].value.copy(projMat);
+      this.ssgiPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+      this.ssgiPass.material.uniforms['cameraNear'].value = near;
+      this.ssgiPass.material.uniforms['cameraFar'].value = far;
+
+      // SSGI Blur
+      this.ssgiBlurHPass.material.uniforms['cameraNear'].value = near;
+      this.ssgiBlurHPass.material.uniforms['cameraFar'].value = far;
+      this.ssgiBlurVPass.material.uniforms['cameraNear'].value = near;
+      this.ssgiBlurVPass.material.uniforms['cameraFar'].value = far;
+
+      // Clouds
+      this.cloudPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+      this.cloudPass.material.uniforms['cameraNear'].value = near;
+      this.cloudPass.material.uniforms['cameraFar'].value = far;
+    }
+
+    // Per-frame: texture bindings + view matrix (changes every frame with camera movement)
     this.ssaoPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
-    this.ssaoPass.material.uniforms['projMatrix'].value.copy(projMat);
-    this.ssaoPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
-    this.ssaoPass.material.uniforms['cameraNear'].value = near;
-    this.ssaoPass.material.uniforms['cameraFar'].value = far;
-
-    // SSR
     this.ssrPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.ssrPass.material.uniforms['tScene'].value = this.sceneRT.texture;
-    this.ssrPass.material.uniforms['projMatrix'].value.copy(projMat);
-    this.ssrPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
-    this.ssrPass.material.uniforms['cameraNear'].value = near;
-    this.ssrPass.material.uniforms['cameraFar'].value = far;
-
-    // SSGI
     this.ssgiPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.ssgiPass.material.uniforms['tScene'].value = this.sceneRT.texture;
-    this.ssgiPass.material.uniforms['projMatrix'].value.copy(projMat);
-    this.ssgiPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
-    this.ssgiPass.material.uniforms['cameraNear'].value = near;
-    this.ssgiPass.material.uniforms['cameraFar'].value = far;
-
-    // Clouds
+    this.ssgiBlurHPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
+    this.ssgiBlurVPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.cloudPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
-    this.cloudPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+
+    this._invViewMatrix.copy(this.camera.matrixWorld);
     this.cloudPass.material.uniforms['invViewMatrix'].value.copy(this._invViewMatrix);
     this.cloudPass.material.uniforms['cameraPos'].value.copy(this.camera.position);
     this.cloudPass.material.uniforms['cameraNear'].value = near;
@@ -1059,9 +1167,14 @@ export class PostProcessingPipeline {
       this.ssgiPass.material.uniforms['sliceCountI'].value = Math.round(ssgi!.sliceCount ?? 2);
       this.ssgiPass.material.uniforms['stepCountI'].value = Math.round(ssgi!.stepCount ?? 8);
       this.ssgiPass.material.uniforms['backfaceLighting'].value = ssgi!.backfaceLighting ?? 0;
-      this.ssgiPass.material.uniforms['useLinearThickness'].value = ssgi!.useLinearThickness ?? false;
-      this.ssgiPass.material.uniforms['screenSpaceSampling'].value = ssgi!.screenSpaceSampling ?? true;
       this.ssgiPass.render(this.renderer, this.ssgiRT);
+
+      // 2-pass separable bilateral blur
+      this.ssgiBlurHPass.material.uniforms['tInput'].value = this.ssgiRT.texture;
+      this.ssgiBlurHPass.render(this.renderer, this.ssgiBlurRT);
+
+      this.ssgiBlurVPass.material.uniforms['tInput'].value = this.ssgiBlurRT.texture;
+      this.ssgiBlurVPass.render(this.renderer, this.ssgiBlurRT2);
     }
 
     // 4. SSR
@@ -1114,7 +1227,7 @@ export class PostProcessingPipeline {
     cu['ssaoEnabled'].value = doSSAO;
     cu['tSSR'].value = this.ssrRT.texture;
     cu['ssrEnabled'].value = doSSR;
-    cu['tSSGI'].value = this.ssgiRT.texture;
+    cu['tSSGI'].value = this.ssgiBlurRT2.texture;
     cu['ssgiEnabled'].value = doSSGI;
     cu['tClouds'].value = this.cloudRT.texture;
     cu['cloudsEnabled'].value = doClouds;
@@ -1152,6 +1265,8 @@ export class PostProcessingPipeline {
     this.ssaoRT.setSize(width, height);
     this.ssrRT.setSize(halfW, halfH);
     this.ssgiRT.setSize(halfW, halfH);
+    this.ssgiBlurRT.setSize(halfW, halfH);
+    this.ssgiBlurRT2.setSize(halfW, halfH);
     this.cloudRT.setSize(halfW, halfH);
 
     this.bloomBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
@@ -1159,6 +1274,8 @@ export class PostProcessingPipeline {
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
     this.ssrPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.ssgiBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.ssgiBlurVPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.cloudPass.material.uniforms['resolution'].value.set(halfW, halfH);
   }
 
@@ -1170,6 +1287,8 @@ export class PostProcessingPipeline {
     this.ssaoRT.dispose();
     this.ssrRT.dispose();
     this.ssgiRT.dispose();
+    this.ssgiBlurRT.dispose();
+    this.ssgiBlurRT2.dispose();
     this.cloudRT.dispose();
     this.bloomBrightPass.dispose();
     this.bloomBlurHPass.dispose();
@@ -1177,6 +1296,8 @@ export class PostProcessingPipeline {
     this.ssaoPass.dispose();
     this.ssrPass.dispose();
     this.ssgiPass.dispose();
+    this.ssgiBlurHPass.dispose();
+    this.ssgiBlurVPass.dispose();
     this.cloudPass.dispose();
     this.compositePass.dispose();
   }

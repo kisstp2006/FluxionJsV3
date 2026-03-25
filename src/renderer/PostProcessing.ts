@@ -285,6 +285,52 @@ const SSAO_FRAG = `
   }
 `;
 
+// ── SSAO Bilateral Blur — depth-aware 4×4 kernel (single pass) ──
+const SSAO_BLUR_FRAG = `
+  uniform sampler2D tSSAO;
+  uniform sampler2D tDepth;
+  uniform vec2 resolution;
+  uniform float cameraNear;
+  uniform float cameraFar;
+  varying vec2 vUv;
+
+  float linearizeDepth(float d) {
+    return cameraNear * cameraFar / (cameraFar - d * (cameraFar - cameraNear));
+  }
+
+  void main() {
+    float centerAO = texture2D(tSSAO, vUv).r;
+    float centerDepth = linearizeDepth(texture2D(tDepth, vUv).r);
+
+    if (texture2D(tDepth, vUv).r >= 1.0) { gl_FragColor = vec4(1.0); return; }
+
+    float depthSigma = centerDepth * 0.05;
+    float invDepthSigma2 = 1.0 / (2.0 * depthSigma * depthSigma + 0.0001);
+
+    vec2 texel = 1.0 / resolution;
+    float totalAO = 0.0;
+    float totalWeight = 0.0;
+
+    for (int x = -2; x <= 1; x++) {
+      for (int y = -2; y <= 1; y++) {
+        vec2 offset = vec2(float(x) + 0.5, float(y) + 0.5) * texel;
+        vec2 sampleUV = vUv + offset;
+
+        float sampleAO = texture2D(tSSAO, sampleUV).r;
+        float sampleDepth = linearizeDepth(texture2D(tDepth, sampleUV).r);
+
+        float depthDiff = centerDepth - sampleDepth;
+        float w = exp(-depthDiff * depthDiff * invDepthSigma2);
+
+        totalAO += sampleAO * w;
+        totalWeight += w;
+      }
+    }
+
+    gl_FragColor = vec4(vec3(totalAO / totalWeight), 1.0);
+  }
+`;
+
 // ── SSR Shader — Screen-Space Reflections via ray marching on depth buffer ──
 const SSR_FRAG = `
   uniform sampler2D tScene;
@@ -840,6 +886,7 @@ export class PostProcessingPipeline {
   private bloomChain: THREE.WebGLRenderTarget[] = [];
   private static readonly BLOOM_LEVELS = 5;
   private ssaoRT: THREE.WebGLRenderTarget;
+  private ssaoBlurRT: THREE.WebGLRenderTarget;
   private ssrRT: THREE.WebGLRenderTarget;
   private ssgiRT: THREE.WebGLRenderTarget;
   private ssgiBlurRT: THREE.WebGLRenderTarget;
@@ -851,6 +898,7 @@ export class PostProcessingPipeline {
   private bloomDownPass: FullScreenPass;
   private bloomUpPass: FullScreenPass;
   private ssaoPass: FullScreenPass;
+  private ssaoBlurPass: FullScreenPass;
   private ssrPass: FullScreenPass;
   private ssgiPass: FullScreenPass;
   private ssgiBlurHPass: FullScreenPass;
@@ -917,6 +965,7 @@ export class PostProcessingPipeline {
       this.bloomChain.push(new THREE.WebGLRenderTarget(bw, bh, rtParams));
     }
     this.ssaoRT = new THREE.WebGLRenderTarget(w, h, rtParams);
+    this.ssaoBlurRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.ssrRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
@@ -971,6 +1020,19 @@ export class PostProcessingPipeline {
         intensity: { value: 1.0 },
         projMatrix: { value: new THREE.Matrix4() },
         invProjMatrix: { value: new THREE.Matrix4() },
+        cameraNear: { value: 0.1 },
+        cameraFar: { value: 1000 },
+      },
+    }));
+
+    // ── SSAO Blur pass ──
+    this.ssaoBlurPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: SSAO_BLUR_FRAG,
+      uniforms: {
+        tSSAO: { value: null },
+        tDepth: { value: null },
+        resolution: { value: new THREE.Vector2(w, h) },
         cameraNear: { value: 0.1 },
         cameraFar: { value: 1000 },
       },
@@ -1123,6 +1185,10 @@ export class PostProcessingPipeline {
       this.ssaoPass.material.uniforms['cameraNear'].value = near;
       this.ssaoPass.material.uniforms['cameraFar'].value = far;
 
+      // SSAO Blur
+      this.ssaoBlurPass.material.uniforms['cameraNear'].value = near;
+      this.ssaoBlurPass.material.uniforms['cameraFar'].value = far;
+
       // SSR
       this.ssrPass.material.uniforms['projMatrix'].value.copy(projMat);
       this.ssrPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
@@ -1199,6 +1265,11 @@ export class PostProcessingPipeline {
       this.ssaoPass.material.uniforms['bias'].value = ssao!.bias ?? 0.025;
       this.ssaoPass.material.uniforms['intensity'].value = ssao!.intensity ?? 1.0;
       this.ssaoPass.render(this.renderer, this.ssaoRT);
+
+      // Bilateral blur
+      this.ssaoBlurPass.material.uniforms['tSSAO'].value = this.ssaoRT.texture;
+      this.ssaoBlurPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
+      this.ssaoBlurPass.render(this.renderer, this.ssaoBlurRT);
     }
 
     // 3. SSGI
@@ -1284,7 +1355,7 @@ export class PostProcessingPipeline {
     cu['tScene'].value = this.sceneRT.texture;
     cu['tBloom'].value = bloom?.enabled ? this.bloomChain[0].texture : this.sceneRT.texture;
     cu['bloomStrength'].value = bloom?.enabled ? (bloom.strength ?? 0.5) : 0;
-    cu['tSSAO'].value = this.ssaoRT.texture;
+    cu['tSSAO'].value = this.ssaoBlurRT.texture;
     cu['ssaoEnabled'].value = doSSAO;
     cu['tSSR'].value = this.ssrRT.texture;
     cu['ssrEnabled'].value = doSSR;
@@ -1324,6 +1395,7 @@ export class PostProcessingPipeline {
       this.bloomChain[i].setSize(halfW >> i, halfH >> i);
     }
     this.ssaoRT.setSize(width, height);
+    this.ssaoBlurRT.setSize(width, height);
     this.ssrRT.setSize(halfW, halfH);
     this.ssgiRT.setSize(halfW, halfH);
     this.ssgiBlurRT.setSize(halfW, halfH);
@@ -1332,6 +1404,7 @@ export class PostProcessingPipeline {
 
 
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
+    this.ssaoBlurPass.material.uniforms['resolution'].value.set(width, height);
     this.ssrPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
@@ -1343,6 +1416,7 @@ export class PostProcessingPipeline {
     this.sceneRT.dispose();
     for (const rt of this.bloomChain) rt.dispose();
     this.ssaoRT.dispose();
+    this.ssaoBlurRT.dispose();
     this.ssrRT.dispose();
     this.ssgiRT.dispose();
     this.ssgiBlurRT.dispose();
@@ -1352,6 +1426,7 @@ export class PostProcessingPipeline {
     this.bloomDownPass.dispose();
     this.bloomUpPass.dispose();
     this.ssaoPass.dispose();
+    this.ssaoBlurPass.dispose();
     this.ssrPass.dispose();
     this.ssgiPass.dispose();
     this.ssgiBlurHPass.dispose();

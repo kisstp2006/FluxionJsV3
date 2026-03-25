@@ -166,6 +166,8 @@ export const AssetBrowserPanel: React.FC<{
       setSelectedFolder(entry.path);
     } else if (entry.name.endsWith('.fluxscene')) {
       window.dispatchEvent(new CustomEvent('fluxion:open-scene', { detail: entry.path }));
+    } else if (entry.name.endsWith('.fluxvismat')) {
+      window.dispatchEvent(new CustomEvent('fluxion:open-visual-material-editor', { detail: { path: entry.path } }));
     } else {
       log(`Opening ${entry.name}...`, 'info');
     }

@@ -190,6 +190,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
       components.push({
         type: 'Camera',
         data: {
+          enabled: cam.enabled,
           fov: cam.fov, near: cam.near, far: cam.far,
           isOrthographic: cam.isOrthographic, orthoSize: cam.orthoSize, priority: cam.priority,
           isMain: cam.isMain,
@@ -202,6 +203,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
       components.push({
         type: 'Light',
         data: {
+          enabled: light.enabled,
           lightType: light.lightType,
           color: [light.color.r, light.color.g, light.color.b],
           intensity: light.intensity,
@@ -282,6 +284,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
       components.push({
         type: 'Environment',
         data: {
+          enabled: env.enabled,
           backgroundMode: env.backgroundMode,
           backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
           skyboxMode: env.skyboxMode,
@@ -513,6 +516,7 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
         case 'Camera': {
           const c = new CameraComponent();
           const d = comp.data;
+          c.enabled = d.enabled ?? true;
           c.fov = d.fov ?? 60;
           c.near = d.near ?? 0.1;
           c.far = d.far ?? 1000;
@@ -527,6 +531,7 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
         case 'Light': {
           const l = new LightComponent();
           const d = comp.data;
+          l.enabled = d.enabled ?? true;
           l.lightType = d.lightType || 'point';
           if (d.color) l.color = new THREE.Color(d.color[0], d.color[1], d.color[2]);
           l.intensity = d.intensity ?? 1;
@@ -611,6 +616,7 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
         case 'Environment': {
           const e = new EnvironmentComponent();
           const d = comp.data;
+          e.enabled = d.enabled ?? true;
           e.backgroundMode = d.backgroundMode ?? 'color';
           if (d.backgroundColor) e.backgroundColor = new THREE.Color(d.backgroundColor[0], d.backgroundColor[1], d.backgroundColor[2]);
           e.skyboxMode = d.skyboxMode ?? 'panorama';

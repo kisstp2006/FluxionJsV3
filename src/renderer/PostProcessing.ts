@@ -66,6 +66,44 @@ const BLUR_FRAG = `
   }
 `;
 
+// ── Dual Kawase Bloom: Downsample (half-res each step) ──
+const BLOOM_DOWN_FRAG = `
+  uniform sampler2D tDiffuse;
+  uniform vec2 texelSize;
+  varying vec2 vUv;
+  void main() {
+    vec2 hs = texelSize * 0.5;
+    vec4 sum = texture2D(tDiffuse, vUv) * 4.0;
+    sum += texture2D(tDiffuse, vUv + vec2(-hs.x, -hs.y));
+    sum += texture2D(tDiffuse, vUv + vec2( hs.x, -hs.y));
+    sum += texture2D(tDiffuse, vUv + vec2(-hs.x,  hs.y));
+    sum += texture2D(tDiffuse, vUv + vec2( hs.x,  hs.y));
+    gl_FragColor = sum / 8.0;
+  }
+`;
+
+// ── Dual Kawase Bloom: Upsample (double-res each step, additive via GPU blending) ──
+const BLOOM_UP_FRAG = `
+  uniform sampler2D tDiffuse;
+  uniform vec2 texelSize;
+  uniform float radius;
+  uniform float intensity;
+  varying vec2 vUv;
+  void main() {
+    vec2 hs = texelSize * radius;
+    vec4 sum = vec4(0.0);
+    sum += texture2D(tDiffuse, vUv + vec2(-hs.x * 2.0, 0.0));
+    sum += texture2D(tDiffuse, vUv + vec2(-hs.x,  hs.y)) * 2.0;
+    sum += texture2D(tDiffuse, vUv + vec2( 0.0,  hs.y * 2.0));
+    sum += texture2D(tDiffuse, vUv + vec2( hs.x,  hs.y)) * 2.0;
+    sum += texture2D(tDiffuse, vUv + vec2( hs.x * 2.0, 0.0));
+    sum += texture2D(tDiffuse, vUv + vec2( hs.x, -hs.y)) * 2.0;
+    sum += texture2D(tDiffuse, vUv + vec2( 0.0, -hs.y * 2.0));
+    sum += texture2D(tDiffuse, vUv + vec2(-hs.x, -hs.y)) * 2.0;
+    gl_FragColor = sum / 12.0 * intensity;
+  }
+`;
+
 const COMPOSITE_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tBloom;
@@ -799,9 +837,8 @@ export class PostProcessingPipeline {
 
   // Render targets
   private sceneRT: THREE.WebGLRenderTarget;
-  private bloomBrightRT: THREE.WebGLRenderTarget;
-  private bloomBlurHRT: THREE.WebGLRenderTarget;
-  private bloomBlurVRT: THREE.WebGLRenderTarget;
+  private bloomChain: THREE.WebGLRenderTarget[] = [];
+  private static readonly BLOOM_LEVELS = 5;
   private ssaoRT: THREE.WebGLRenderTarget;
   private ssrRT: THREE.WebGLRenderTarget;
   private ssgiRT: THREE.WebGLRenderTarget;
@@ -811,8 +848,8 @@ export class PostProcessingPipeline {
 
   // Passes
   private bloomBrightPass: FullScreenPass;
-  private bloomBlurHPass: FullScreenPass;
-  private bloomBlurVPass: FullScreenPass;
+  private bloomDownPass: FullScreenPass;
+  private bloomUpPass: FullScreenPass;
   private ssaoPass: FullScreenPass;
   private ssrPass: FullScreenPass;
   private ssgiPass: FullScreenPass;
@@ -872,9 +909,13 @@ export class PostProcessingPipeline {
     this.sceneRT.depthTexture.format = THREE.DepthFormat;
     this.sceneRT.depthTexture.type = THREE.UnsignedIntType;
 
-    this.bloomBrightRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
-    this.bloomBlurHRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
-    this.bloomBlurVRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    // Bloom chain: progressive half-res RTs (level 0 = halfW×halfH, level 4 = halfW/16 × halfH/16)
+    this.bloomChain = [];
+    for (let i = 0; i < PostProcessingPipeline.BLOOM_LEVELS; i++) {
+      const bw = Math.max(1, Math.floor(halfW / (1 << i)));
+      const bh = Math.max(1, Math.floor(halfH / (1 << i)));
+      this.bloomChain.push(new THREE.WebGLRenderTarget(bw, bh, rtParams));
+    }
     this.ssaoRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.ssrRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
@@ -893,25 +934,29 @@ export class PostProcessingPipeline {
       },
     }));
 
-    // ── Bloom blur passes (gaussian, 2-pass separable) ──
-    this.bloomBlurHPass = new FullScreenPass(new THREE.ShaderMaterial({
+    // ── Bloom dual-kawase downsample pass ──
+    this.bloomDownPass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
-      fragmentShader: BLUR_FRAG,
+      fragmentShader: BLOOM_DOWN_FRAG,
       uniforms: {
         tDiffuse: { value: null },
-        direction: { value: new THREE.Vector2(1, 0) },
-        resolution: { value: new THREE.Vector2(halfW, halfH) },
+        texelSize: { value: new THREE.Vector2() },
       },
     }));
 
-    this.bloomBlurVPass = new FullScreenPass(new THREE.ShaderMaterial({
+    // ── Bloom dual-kawase upsample pass (additive GPU blending) ──
+    this.bloomUpPass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
-      fragmentShader: BLUR_FRAG,
+      fragmentShader: BLOOM_UP_FRAG,
       uniforms: {
         tDiffuse: { value: null },
-        direction: { value: new THREE.Vector2(0, 1) },
-        resolution: { value: new THREE.Vector2(halfW, halfH) },
+        texelSize: { value: new THREE.Vector2() },
+        radius: { value: 0.4 },
+        intensity: { value: 0.25 },
       },
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
     }));
 
     // ── SSAO pass ──
@@ -1193,13 +1238,29 @@ export class PostProcessingPipeline {
       this.bloomBrightPass.material.uniforms['tDiffuse'].value = this.sceneRT.texture;
       this.bloomBrightPass.material.uniforms['threshold'].value = bloom.threshold ?? 0.8;
       this.bloomBrightPass.material.uniforms['softKnee'].value = bloom.softKnee ?? 0.6;
-      this.bloomBrightPass.render(this.renderer, this.bloomBrightRT);
+      this.bloomBrightPass.render(this.renderer, this.bloomChain[0]);
 
-      this.bloomBlurHPass.material.uniforms['tDiffuse'].value = this.bloomBrightRT.texture;
-      this.bloomBlurHPass.render(this.renderer, this.bloomBlurHRT);
+      // Downsample chain
+      const du = this.bloomDownPass.material.uniforms;
+      for (let i = 1; i < PostProcessingPipeline.BLOOM_LEVELS; i++) {
+        const src = this.bloomChain[i - 1];
+        du['tDiffuse'].value = src.texture;
+        du['texelSize'].value.set(1.0 / src.width, 1.0 / src.height);
+        this.bloomDownPass.render(this.renderer, this.bloomChain[i]);
+      }
 
-      this.bloomBlurVPass.material.uniforms['tDiffuse'].value = this.bloomBlurHRT.texture;
-      this.bloomBlurVPass.render(this.renderer, this.bloomBlurVRT);
+      // Upsample chain (additive via GPU blending — avoids read-write conflict)
+      const uu = this.bloomUpPass.material.uniforms;
+      uu['radius'].value = bloom.radius ?? 0.4;
+      const savedAutoClear = this.renderer.autoClear;
+      this.renderer.autoClear = false;
+      for (let i = PostProcessingPipeline.BLOOM_LEVELS - 2; i >= 0; i--) {
+        const dst = this.bloomChain[i];
+        uu['tDiffuse'].value = this.bloomChain[i + 1].texture;
+        uu['texelSize'].value.set(1.0 / dst.width, 1.0 / dst.height);
+        this.bloomUpPass.render(this.renderer, dst);
+      }
+      this.renderer.autoClear = savedAutoClear;
     }
 
     // 6. Volumetric Clouds
@@ -1221,7 +1282,7 @@ export class PostProcessingPipeline {
     // 7. Composite final image
     const cu = this.compositePass.material.uniforms;
     cu['tScene'].value = this.sceneRT.texture;
-    cu['tBloom'].value = bloom?.enabled ? this.bloomBlurVRT.texture : this.sceneRT.texture;
+    cu['tBloom'].value = bloom?.enabled ? this.bloomChain[0].texture : this.sceneRT.texture;
     cu['bloomStrength'].value = bloom?.enabled ? (bloom.strength ?? 0.5) : 0;
     cu['tSSAO'].value = this.ssaoRT.texture;
     cu['ssaoEnabled'].value = doSSAO;
@@ -1259,9 +1320,9 @@ export class PostProcessingPipeline {
       this.sceneRT.depthTexture.image = { width, height };
       this.sceneRT.depthTexture.needsUpdate = true;
     }
-    this.bloomBrightRT.setSize(halfW, halfH);
-    this.bloomBlurHRT.setSize(halfW, halfH);
-    this.bloomBlurVRT.setSize(halfW, halfH);
+    for (let i = 0; i < PostProcessingPipeline.BLOOM_LEVELS; i++) {
+      this.bloomChain[i].setSize(halfW >> i, halfH >> i);
+    }
     this.ssaoRT.setSize(width, height);
     this.ssrRT.setSize(halfW, halfH);
     this.ssgiRT.setSize(halfW, halfH);
@@ -1269,8 +1330,7 @@ export class PostProcessingPipeline {
     this.ssgiBlurRT2.setSize(halfW, halfH);
     this.cloudRT.setSize(halfW, halfH);
 
-    this.bloomBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
-    this.bloomBlurVPass.material.uniforms['resolution'].value.set(halfW, halfH);
+
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
     this.ssrPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiPass.material.uniforms['resolution'].value.set(halfW, halfH);
@@ -1281,9 +1341,7 @@ export class PostProcessingPipeline {
 
   dispose(): void {
     this.sceneRT.dispose();
-    this.bloomBrightRT.dispose();
-    this.bloomBlurHRT.dispose();
-    this.bloomBlurVRT.dispose();
+    for (const rt of this.bloomChain) rt.dispose();
     this.ssaoRT.dispose();
     this.ssrRT.dispose();
     this.ssgiRT.dispose();
@@ -1291,8 +1349,8 @@ export class PostProcessingPipeline {
     this.ssgiBlurRT2.dispose();
     this.cloudRT.dispose();
     this.bloomBrightPass.dispose();
-    this.bloomBlurHPass.dispose();
-    this.bloomBlurVPass.dispose();
+    this.bloomDownPass.dispose();
+    this.bloomUpPass.dispose();
     this.ssaoPass.dispose();
     this.ssrPass.dispose();
     this.ssgiPass.dispose();

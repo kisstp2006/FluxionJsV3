@@ -2,10 +2,12 @@
 // FluxionJS V3 — Asset Browser Panel Component
 // Folder tree + grid view — registry-driven file types & icons.
 // Supports asset import (dialog + drag-and-drop) with .fluxmeta.
+// Per-item context menu: rename, delete, duplicate, open in
+// file explorer, copy path / absolute path.
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Icons, ContextMenu } from '../../ui';
+import { Icons, ContextMenu, ContextMenuItem } from '../../ui';
 import { resolveIcon } from '../../ui/Icons';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager } from '../../../src/project/ProjectManager';
@@ -30,6 +32,16 @@ function getTypeIcon(type: string): React.ReactNode {
   const def = AssetTypeRegistry.getByType(type);
   if (def?.icon) return resolveIcon(def.icon);
   return Icons.file;
+}
+
+/** Access the fluxionAPI bridge for shell utilities. */
+function getFluxionAPI(): any {
+  return (window as any).fluxionAPI;
+}
+
+/** Get the .fluxmeta sidecar path for a given asset path. */
+function metaPath(assetPath: string): string {
+  return assetPath + '.fluxmeta';
 }
 
 // ── Folder Tree Item ──
@@ -113,11 +125,22 @@ export const AssetBrowserPanel: React.FC<{
   const [selectedFolder, setSelectedFolder] = useState('');
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [inputDialog, setInputDialog] = useState<{ label: string; defaultValue: string; onSubmit: (value: string) => void } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{
+    label: string;
+    defaultValue: string;
+    submitLabel?: string;
+    onSubmit: (value: string) => void;
+  } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [importProgress, setImportProgress] = useState<{ percent: number; file: string } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [renamingEntry, setRenamingEntry] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
 
@@ -148,9 +171,186 @@ export const AssetBrowserPanel: React.FC<{
     }
   };
 
-  const handleContextMenu = (e: React.MouseEvent) => {
+  // ── File Operations ──
+
+  const deleteEntry = (entry: DirEntry) => {
+    const label = entry.isDirectory ? `folder "${entry.name}" and all its contents` : `"${entry.name}"`;
+    setConfirmDialog({
+      message: `Delete ${label}? This cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          const fs = getFileSystem();
+          await fs.delete(entry.path);
+          // Also remove .fluxmeta sidecar if present
+          if (!entry.isDirectory) {
+            const meta = metaPath(entry.path);
+            if (await fs.exists(meta)) await fs.delete(meta);
+          }
+          log(`Deleted ${entry.name}`, 'system');
+          refresh();
+        } catch (err: any) {
+          log(`Failed to delete ${entry.name}: ${err.message}`, 'error');
+        }
+      },
+    });
+  };
+
+  const renameEntry = (entry: DirEntry) => {
+    setRenamingEntry(entry.path);
+    // Focus is handled by the useEffect below
+  };
+
+  const commitRename = async (entry: DirEntry, newName: string) => {
+    setRenamingEntry(null);
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === entry.name) return;
+    const parentDir = entry.path.substring(0, entry.path.lastIndexOf('/'));
+    const newPath = `${parentDir}/${trimmed}`;
+    try {
+      const fs = getFileSystem();
+      if (await fs.exists(newPath)) {
+        log(`Cannot rename: "${trimmed}" already exists`, 'error');
+        return;
+      }
+      await fs.rename(entry.path, newPath);
+      // Also rename .fluxmeta sidecar if present
+      if (!entry.isDirectory) {
+        const oldMeta = metaPath(entry.path);
+        if (await fs.exists(oldMeta)) {
+          await fs.rename(oldMeta, metaPath(newPath));
+        }
+      }
+      log(`Renamed to ${trimmed}`, 'system');
+      refresh();
+    } catch (err: any) {
+      log(`Failed to rename: ${err.message}`, 'error');
+    }
+  };
+
+  const duplicateEntry = async (entry: DirEntry) => {
+    if (entry.isDirectory) return;
+    const dot = entry.name.lastIndexOf('.');
+    const baseName = dot > 0 ? entry.name.substring(0, dot) : entry.name;
+    const ext = dot > 0 ? entry.name.substring(dot) : '';
+    const parentDir = entry.path.substring(0, entry.path.lastIndexOf('/'));
+    const fs = getFileSystem();
+    // Find a unique name
+    let suffix = 1;
+    let newPath = `${parentDir}/${baseName}_copy${ext}`;
+    while (await fs.exists(newPath)) {
+      suffix++;
+      newPath = `${parentDir}/${baseName}_copy${suffix}${ext}`;
+    }
+    try {
+      await fs.copy(entry.path, newPath);
+      // Don't copy .fluxmeta — the duplicate is a new asset, it will get its own meta on next import/use
+      log(`Duplicated as ${newPath.substring(newPath.lastIndexOf('/') + 1)}`, 'system');
+      refresh();
+    } catch (err: any) {
+      log(`Failed to duplicate: ${err.message}`, 'error');
+    }
+  };
+
+  const showInExplorer = (entryPath: string) => {
+    const api = getFluxionAPI();
+    if (api?.showItemInFolder) {
+      // Convert forward slashes to OS path for Electron shell
+      api.showItemInFolder(entryPath.replace(/\//g, '\\'));
+    }
+  };
+
+  const copyRelativePath = (entryPath: string) => {
+    const rel = projectManager.projectDir
+      ? entryPath.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
+      : entryPath;
+    navigator.clipboard.writeText(rel);
+    log(`Copied path: ${rel}`, 'info');
+  };
+
+  const copyAbsolutePath = (entryPath: string) => {
+    navigator.clipboard.writeText(entryPath);
+    log(`Copied absolute path`, 'info');
+  };
+
+  // ── Context Menus ──
+
+  /** Context menu for the empty grid area (background) */
+  const handleBackgroundContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY });
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        ...AssetTypeRegistry.getCreatable().map((def) => ({
+          label: `New ${def.displayName}`,
+          icon: resolveIcon(def.icon),
+          onClick: () => {
+            setInputDialog({
+              label: `${def.displayName} name`,
+              defaultValue: `New${def.displayName}`,
+              onSubmit: async (name) => {
+                if (!selectedFolder || !name.trim() || !def.createDefault) return;
+                try {
+                  const fs = getFileSystem();
+                  await def.createDefault(fs, selectedFolder, name.trim());
+                  log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
+                  refresh();
+                } catch (err: any) {
+                  log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
+                }
+              },
+            });
+          },
+        })),
+        { label: 'New Folder', icon: Icons.folder, onClick: createNewFolder },
+        { label: '', icon: undefined, onClick: () => {}, separator: true },
+        { label: 'Import Assets...', icon: Icons.download, onClick: handleImport },
+        { label: 'Refresh', icon: Icons.refresh, onClick: refresh },
+        { label: '', icon: undefined, onClick: () => {}, separator: true },
+        ...(selectedFolder ? [
+          { label: 'Open in File Explorer', icon: Icons.externalLink, onClick: () => showInExplorer(selectedFolder) },
+          { label: 'Copy Path', icon: Icons.copy, onClick: () => copyRelativePath(selectedFolder) },
+        ] : []),
+      ],
+    });
+  };
+
+  /** Context menu for a specific file or folder entry */
+  const handleItemContextMenu = (e: React.MouseEvent, entry: DirEntry) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
+    if (!entry.isDirectory) {
+      dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
+    }
+
+    const items: ContextMenuItem[] = [];
+
+    if (entry.isDirectory) {
+      items.push({ label: 'Open', icon: Icons.folderOpen, onClick: () => setSelectedFolder(entry.path) });
+    } else if (entry.name.endsWith('.fluxscene')) {
+      items.push({
+        label: 'Open Scene',
+        icon: Icons.scene,
+        onClick: () => window.dispatchEvent(new CustomEvent('fluxion:open-scene', { detail: entry.path })),
+      });
+    }
+
+    items.push({ label: 'Rename', icon: Icons.pencil, shortcut: 'F2', onClick: () => renameEntry(entry) });
+
+    if (!entry.isDirectory) {
+      items.push({ label: 'Duplicate', icon: Icons.copy, onClick: () => duplicateEntry(entry) });
+    }
+
+    items.push({ label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => deleteEntry(entry) });
+
+    items.push({ label: '', icon: undefined, onClick: () => {}, separator: true });
+    items.push({ label: 'Show in File Explorer', icon: Icons.externalLink, onClick: () => showInExplorer(entry.path) });
+    items.push({ label: 'Copy Path', icon: Icons.clipboard, onClick: () => copyRelativePath(entry.path) });
+    items.push({ label: 'Copy Absolute Path', icon: Icons.clipboard, onClick: () => copyAbsolutePath(entry.path) });
+
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
   };
 
   const createNewScene = async () => {
@@ -306,10 +506,18 @@ export const AssetBrowserPanel: React.FC<{
       {/* Asset Grid */}
       <div
         ref={gridRef}
-        onContextMenu={handleContextMenu}
+        onContextMenu={handleBackgroundContextMenu}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onKeyDown={(e) => {
+          // Keyboard shortcuts when grid is focused
+          const selected = entries.find(en => en.path === state.selectedAsset?.path);
+          if (!selected) return;
+          if (e.key === 'Delete') { e.preventDefault(); deleteEntry(selected); }
+          if (e.key === 'F2') { e.preventDefault(); renameEntry(selected); }
+        }}
+        tabIndex={0}
         style={{
         flex: 1,
         display: 'grid',
@@ -319,23 +527,28 @@ export const AssetBrowserPanel: React.FC<{
         overflowY: 'auto',
         alignContent: 'start',
         position: 'relative',
+        outline: 'none',
         border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
         transition: 'border 150ms ease',
       }}>
         {entries.map((entry) => {
           const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
+          const isRenaming = renamingEntry === entry.path;
           return (
             <div
               key={entry.path}
-              draggable={!entry.isDirectory}
+              draggable={!entry.isDirectory && !isRenaming}
               onDragStart={(e) => {
                 if (entry.isDirectory) return;
-                // Store project-relative path for drop targets
                 const relPath = projectManager.projectDir
                   ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
                   : entry.name;
                 e.dataTransfer.setData('application/x-fluxion-asset', relPath);
                 e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
+                const typeDef = AssetTypeRegistry.resolveFile(entry.name);
+                if (typeDef) {
+                  e.dataTransfer.setData('application/x-fluxion-asset-type', typeDef.type);
+                }
                 e.dataTransfer.effectAllowed = 'copyLink';
               }}
               onClick={() => {
@@ -344,6 +557,7 @@ export const AssetBrowserPanel: React.FC<{
                 }
               }}
               onDoubleClick={() => handleDoubleClick(entry)}
+              onContextMenu={(e) => handleItemContextMenu(e, entry)}
               style={{
                 display: 'flex',
                 border: state.selectedAsset?.path === entry.path ? '1px solid var(--accent)' : '1px solid transparent',
@@ -359,53 +573,58 @@ export const AssetBrowserPanel: React.FC<{
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             >
               <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
-              <span style={{
-                fontSize: '10px',
-                color: 'var(--text-secondary)',
-                textAlign: 'center',
-                wordBreak: 'break-all',
-                maxWidth: '72px',
-              }}>
-                {entry.name}
-              </span>
+              {isRenaming ? (
+                <input
+                  ref={renameInputRef}
+                  autoFocus
+                  defaultValue={entry.name}
+                  onBlur={(e) => commitRename(entry, e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename(entry, e.currentTarget.value); }
+                    if (e.key === 'Escape') { e.stopPropagation(); setRenamingEntry(null); }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: '10px',
+                    color: 'var(--text-primary)',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: '3px',
+                    padding: '2px 4px',
+                    textAlign: 'center',
+                    maxWidth: '72px',
+                    width: '72px',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              ) : (
+                <span style={{
+                  fontSize: '10px',
+                  color: 'var(--text-secondary)',
+                  textAlign: 'center',
+                  wordBreak: 'break-all',
+                  maxWidth: '72px',
+                }}>
+                  {entry.name}
+                </span>
+              )}
             </div>
           );
         })}
       </div>
 
+      {/* Context Menu */}
       {ctxMenu && (
         <ContextMenu
           position={ctxMenu}
           onClose={() => setCtxMenu(null)}
-          items={[
-            ...AssetTypeRegistry.getCreatable().map((def) => ({
-              label: `New ${def.displayName}`,
-              icon: resolveIcon(def.icon),
-              onClick: () => {
-                setInputDialog({
-                  label: `${def.displayName} name`,
-                  defaultValue: `New${def.displayName}`,
-                  onSubmit: async (name) => {
-                    if (!selectedFolder || !name.trim() || !def.createDefault) return;
-                    try {
-                      const fs = getFileSystem();
-                      await def.createDefault(fs, selectedFolder, name.trim());
-                      log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
-                      refresh();
-                    } catch (err: any) {
-                      log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
-                    }
-                  },
-                });
-              },
-            })),
-            { label: 'New Folder', icon: Icons.folder, onClick: createNewFolder },
-            { label: 'Import Assets...', icon: Icons.download, onClick: handleImport },
-            { label: 'Refresh', icon: Icons.refresh, onClick: refresh },
-          ]}
+          items={ctxMenu.items}
         />
       )}
 
+      {/* Input Dialog (Create / etc.) */}
       {inputDialog && (
         <div style={{
           position: 'fixed',
@@ -470,9 +689,56 @@ export const AssetBrowserPanel: React.FC<{
                     padding: '4px 12px', fontSize: '11px', background: 'var(--accent)',
                     border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer',
                   }}
-                >Create</button>
+                >{inputDialog.submitLabel ?? 'Create'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog (Delete etc.) */}
+      {confirmDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }} onClick={() => setConfirmDialog(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              padding: '16px',
+              minWidth: '300px',
+              maxWidth: '400px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            }}
+          >
+            <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginBottom: '14px', lineHeight: 1.5 }}>
+              {confirmDialog.message}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={() => setConfirmDialog(null)}
+                style={{
+                  padding: '4px 12px', fontSize: '11px', background: 'var(--bg-hover)',
+                  border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+              >Cancel</button>
+              <button
+                autoFocus
+                onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+                style={{
+                  padding: '4px 12px', fontSize: '11px', background: '#d73a49',
+                  border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer',
+                }}
+              >Delete</button>
+            </div>
           </div>
         </div>
       )}

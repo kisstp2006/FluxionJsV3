@@ -47,6 +47,9 @@ interface FluxionNativeAPI {
   offWatchEvent: () => void;
   // Paths
   getAppDataPath: () => Promise<string>;
+  // Shell
+  showItemInFolder: (path: string) => Promise<boolean>;
+  openPath: (path: string) => Promise<boolean>;
   // Window
   minimize: () => void;
   maximize: () => void;

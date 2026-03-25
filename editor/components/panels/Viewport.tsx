@@ -9,7 +9,8 @@ import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
 import { CameraComponent } from '../../../src/core/Components';
-import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
+import { ViewportDropService } from '../../core/ViewportDropService';
+import type { DropHitInfo } from '../../core/ViewportDropService';
 
 export interface ViewportProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
@@ -341,8 +342,39 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     setVpContextMenu({ pos: { x: e.clientX, y: e.clientY }, worldPos });
   }, [engine]);
 
-  // ── Model asset drag-and-drop from Asset Browser ──
+  // ── Unified asset drag-and-drop from Asset Browser ──
   const [isAssetDragOver, setIsAssetDragOver] = useState(false);
+  const [dropLabel, setDropLabel] = useState<string | null>(null);
+
+  /** Raycast from mouse position — returns world hit point, entity under cursor, and hit object */
+  const raycastFromEvent = useCallback((e: React.DragEvent | React.MouseEvent): DropHitInfo => {
+    const result: DropHitInfo = { worldPos: new THREE.Vector3(0, 0, 0), entityUnderCursor: null, hitObject: null };
+    if (!engine || !canvasRef.current) return result;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, engine.editorCamera);
+    const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
+
+    for (const hit of intersects) {
+      if (hit.object.type === 'LineSegments') continue;
+      result.worldPos = hit.point.clone();
+      result.hitObject = hit.object;
+      // Resolve entity from the hit object or its parent
+      const entity = engine.renderer.getEntity(hit.object) ??
+        (hit.object.parent ? engine.renderer.getEntity(hit.object.parent) : undefined);
+      if (entity !== undefined) {
+        result.entityUnderCursor = entity;
+      }
+      break;
+    }
+
+    return result;
+  }, [engine]);
 
   const handleAssetDragOver = useCallback((e: React.DragEvent) => {
     if (isGameView) return;
@@ -350,61 +382,49 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setIsAssetDragOver(true);
+      // Show what action will happen (read path from type data if available)
+      // We cannot read the actual data during dragOver (browser security), so use a stored ref
     }
   }, [isGameView]);
 
   const handleAssetDragLeave = useCallback(() => {
     setIsAssetDragOver(false);
+    setDropLabel(null);
   }, []);
 
   const handleAssetDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsAssetDragOver(false);
+    setDropLabel(null);
     if (!engine || isGameView) return;
 
     const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
     const absPath = e.dataTransfer.getData('application/x-fluxion-asset-abs');
     if (!assetPath) return;
 
-    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
-    if (!typeDef || typeDef.type !== 'model') return;
-
-    // Raycast to find drop position
-    const rect = canvasRef.current?.getBoundingClientRect();
-    let worldPos = new THREE.Vector3(0, 0, 0);
-    if (rect && canvasRef.current) {
-      const mouse = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, engine.editorCamera);
-      const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
-      for (const hit of intersects) {
-        if (hit.object.type === 'LineSegments') continue;
-        worldPos = hit.point.clone();
-        break;
-      }
+    // Check if the drop service can handle this type
+    if (!ViewportDropService.canHandle(assetPath)) {
+      log(`Unsupported asset type for viewport drop`, 'warn');
+      return;
     }
 
-    // Extract filename without extension for entity name
-    const fileName = assetPath.replace(/\\/g, '/').split('/').pop() || 'Model';
-    const entityName = fileName.replace(/\.[^.]+$/, '');
+    const hit = raycastFromEvent(e);
+    const label = ViewportDropService.getDropLabel(assetPath);
 
-    try {
-      const entityId = await engine.scene.createModelEntity(entityName, assetPath, absPath || undefined);
-      // Set position at drop point
-      const t = engine.engine.ecs.getComponent<any>(entityId, 'Transform');
-      if (t) t.position.copy(worldPos);
-      // Wait a frame for MeshRendererSystem to pick up the loaded mesh
+    const result = await ViewportDropService.handleDrop(assetPath, absPath, hit, engine, log);
+    if (!result) return;
+
+    if (result.sceneModified) {
+      dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+    }
+
+    if (result.selectEntity !== undefined) {
+      // Wait a frame for systems to register the new mesh
       requestAnimationFrame(() => {
-        dispatch({ type: 'SELECT_ENTITY', entity: entityId });
+        dispatch({ type: 'SELECT_ENTITY', entity: result.selectEntity! });
       });
-      log(`Added model: ${entityName}`, 'info');
-    } catch (err: any) {
-      log(`Failed to load model: ${err.message}`, 'error');
     }
-  }, [engine, isGameView, dispatch, log]);
+  }, [engine, isGameView, dispatch, log, raycastFromEvent]);
 
   return (
     <div
@@ -512,6 +532,27 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           zIndex: 10,
         }}>
           {dragDelta}
+        </div>
+      )}
+
+      {/* Drop action indicator */}
+      {!isGameView && isAssetDragOver && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(13,17,23,0.85)',
+          border: '1px solid var(--accent)',
+          borderRadius: '6px',
+          padding: '8px 16px',
+          fontSize: '12px',
+          color: 'var(--accent)',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}>
+          Drop asset to add to scene
         </div>
       )}
 

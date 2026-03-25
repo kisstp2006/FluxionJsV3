@@ -619,9 +619,15 @@ async function loadDeferredFluxMesh(
         const matData = await assets.loadAsset(absMatPath, 'material') as FluxMatData | null;
         if (!matData || !materials) return null;
 
+        // Resolve texture paths relative to the .fluxmat's directory
+        const matDir = absMatPath.substring(0, absMatPath.lastIndexOf('/'));
         const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
           let texAbsPath: string;
-          try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = relPath; }
+          if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+            texAbsPath = relPath;
+          } else {
+            texAbsPath = `${matDir}/${relPath}`;
+          }
           const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
           return assets.loadTexture(texUrl);
         };
@@ -692,13 +698,14 @@ async function loadDeferredMaterial(
     const materials = engine.getSubsystem('materials') as MaterialSystem;
     if (!materials) return;
 
-    // Texture loader: resolve relative paths to file:// URLs
+    // Resolve texture paths relative to the .fluxmat's directory
+    const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
     const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
       let texAbsPath: string;
-      try {
-        texAbsPath = projectManager.resolvePath(relPath);
-      } catch {
+      if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
         texAbsPath = relPath;
+      } else {
+        texAbsPath = `${matDir}/${relPath}`;
       }
       const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
       return assets.loadTexture(texUrl);

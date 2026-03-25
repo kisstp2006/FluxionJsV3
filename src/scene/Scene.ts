@@ -256,18 +256,23 @@ export class Scene {
         // Load and apply default materials
         const materials = this.engine.getSubsystem('materials') as any;
         if (materials) {
-          const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-            const { projectManager: pm } = await import('../project/ProjectManager');
-            let texAbsPath: string;
-            try { texAbsPath = pm.resolvePath(relPath); } catch { texAbsPath = relPath; }
-            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-            return assets.loadTexture(texUrl);
-          };
           const matPromises = result.slots.map(async (slot) => {
             try {
               const matData = await assets.loadAsset(slot.defaultMaterial, 'material');
               if (!matData) return null;
-              return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
+              // Resolve texture paths relative to the .fluxmat's directory
+              const matDir = slot.defaultMaterial.substring(0, slot.defaultMaterial.lastIndexOf('/'));
+              const slotLoadTexture = async (relPath: string): Promise<THREE.Texture> => {
+                let texAbsPath: string;
+                if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+                  texAbsPath = relPath;
+                } else {
+                  texAbsPath = `${matDir}/${relPath}`;
+                }
+                const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+                return assets.loadTexture(texUrl);
+              };
+              return materials.createFromFluxMat(matData, slotLoadTexture, slot.defaultMaterial);
             } catch { return null; }
           });
           const loadedMats = await Promise.all(matPromises);

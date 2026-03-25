@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   // App paths
   getAppDataPath: () => ipcRenderer.invoke('app:getAppDataPath'),
 
+  // Shell
+  showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
+  openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
+
   // Window controls
   minimize: () => ipcRenderer.invoke('window:minimize'),
   maximize: () => ipcRenderer.invoke('window:maximize'),

@@ -6,7 +6,7 @@
 
 import type { IFileSystem } from '../filesystem/FileSystem';
 import type { AssetMeta } from './AssetMeta';
-import type { FluxMeshData, FluxMeshMaterialSlot } from './FluxMeshData';
+import type { FluxMeshData, FluxMeshMaterialSlot, FluxMeshSubMeshRef } from './FluxMeshData';
 
 // ── Types ──
 
@@ -133,13 +133,17 @@ AssetTypeRegistry.register({
     const format = ext === '.glb' ? 'glb' : ext === '.gltf' ? 'gltf' : ext === '.fbx' ? 'fbx' : 'obj';
     meta.importSettings = { ...meta.importSettings, format };
 
-    // --- Generate .fluxmesh + default .fluxmat files ---
+    // --- Generate .fluxmesh + default .fluxmat files (with full material & texture extraction) ---
     try {
       const THREEModule = await import('three');
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
       const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
-      const { extractFluxMatFromMaterial } = await import('./FluxMeshData');
+      const {
+        extractFluxMatFromMaterial,
+        getTextureRefsFromMaterial,
+        saveTextureToFile,
+      } = await import('./FluxMeshData');
       const { createAssetMeta, writeAssetMeta } = await import('./AssetMeta');
 
       // Load the model to inspect sub-meshes
@@ -160,37 +164,107 @@ AssetTypeRegistry.register({
         if (child.isMesh) meshes.push(child);
       });
 
-      // Group by unique material reference
-      const matToIndices = new Map<any, number[]>();
+      // Collect ALL unique materials across all meshes, including multi-material arrays.
+      // Each unique THREE.Material reference becomes its own slot.
+      interface MatRef { meshIndex: number; materialIndex: number; }
+      const matToRefs = new Map<any, MatRef[]>();
       for (let i = 0; i < meshes.length; i++) {
         const rawMat = meshes[i].material;
-        const m = Array.isArray(rawMat) ? rawMat[0] as any : rawMat;
-        if (!matToIndices.has(m)) matToIndices.set(m, []);
-        matToIndices.get(m)!.push(i);
+        const mats: any[] = Array.isArray(rawMat) ? rawMat : [rawMat];
+        for (let j = 0; j < mats.length; j++) {
+          const m = mats[j];
+          if (!matToRefs.has(m)) matToRefs.set(m, []);
+          matToRefs.get(m)!.push({ meshIndex: i, materialIndex: j });
+        }
       }
 
       // Derive paths
       const dir = importedPath.substring(0, importedPath.lastIndexOf('/'));
       const baseName = importedPath.substring(importedPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
 
+      // Textures subdirectory (created lazily only if textures are found)
+      const texturesDir = `${dir}/${baseName}_textures`;
+      let texturesDirCreated = false;
+
+      // Track already-saved textures to avoid saving the same texture twice
+      const savedTextureCache = new Map<InstanceType<typeof THREEModule.Texture>, string>();
+
       const slots: FluxMeshMaterialSlot[] = [];
+      const usedFileNames = new Set<string>();
       let slotIdx = 0;
-      for (const [mat, indices] of matToIndices) {
+
+      for (const [mat, refs] of matToRefs) {
         const slotName = mat.name || `Material_${slotIdx}`;
-        const safeName = slotName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        // Build a unique safe filename (append index if name collides)
+        let safeName = slotName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const candidateFileName = `${baseName}_${safeName}.fluxmat`;
+        if (usedFileNames.has(candidateFileName)) {
+          safeName = `${safeName}_${slotIdx}`;
+        }
+        usedFileNames.add(`${baseName}_${safeName}.fluxmat`);
+
         const fluxmatPath = `${dir}/${baseName}_${safeName}.fluxmat`;
 
-        // Write default .fluxmat
+        // Extract PBR properties from the THREE material
         const matJson = extractFluxMatFromMaterial(mat);
+
+        // --- Extract and save textures from the material ---
+        const texRefs = getTextureRefsFromMaterial(mat);
+        for (const texRef of texRefs) {
+          // Check if this texture was already saved (shared across materials)
+          const cachedPath = savedTextureCache.get(texRef.texture);
+          if (cachedPath) {
+            matJson[texRef.fluxmatKey] = cachedPath;
+            continue;
+          }
+
+          // Ensure textures directory exists
+          if (!texturesDirCreated) {
+            try { await _fs.mkdir(texturesDir); } catch { /* may already exist */ }
+            texturesDirCreated = true;
+          }
+
+          const texFileName = `${baseName}_${safeName}_${texRef.label}.png`;
+          const texSavePath = `${texturesDir}/${texFileName}`;
+
+          const saved = await saveTextureToFile(
+            texRef.texture,
+            texSavePath,
+            (path, data) => _fs.writeBinary(path, data),
+          );
+
+          if (saved) {
+            // Store relative path from .fluxmat location to the texture
+            const relTexPath = `${baseName}_textures/${texFileName}`;
+            matJson[texRef.fluxmatKey] = relTexPath;
+            savedTextureCache.set(texRef.texture, relTexPath);
+
+            // Write .fluxmeta for the extracted texture
+            const texMeta = createAssetMeta('texture', texSavePath, '', '', 0);
+            await writeAssetMeta(_fs, texSavePath, texMeta);
+          }
+        }
+
+        // Write the .fluxmat file
         await _fs.writeFile(fluxmatPath, JSON.stringify(matJson, null, 2));
 
         // Write .fluxmeta for the .fluxmat
         const matMeta = createAssetMeta('material', fluxmatPath, '', '', 0);
         await writeAssetMeta(_fs, fluxmatPath, matMeta);
 
-        // Store just the filename (resolved relative to .fluxmesh dir when loading)
+        // Build slot with both legacy indices and precise mappings
+        const subMeshIndices = [...new Set(refs.map(r => r.meshIndex))];
+        const subMeshMappings: FluxMeshSubMeshRef[] = refs.map(r => ({
+          meshIndex: r.meshIndex,
+          materialIndex: r.materialIndex,
+        }));
         const fluxmatFileName = `${baseName}_${safeName}.fluxmat`;
-        slots.push({ name: slotName, subMeshIndices: indices, defaultMaterial: fluxmatFileName });
+        slots.push({
+          name: slotName,
+          subMeshIndices,
+          subMeshMappings,
+          defaultMaterial: fluxmatFileName,
+        });
         slotIdx++;
       }
 
@@ -205,7 +279,6 @@ AssetTypeRegistry.register({
 
       // Write .fluxmesh
       const fluxmeshPath = `${dir}/${baseName}.fluxmesh`;
-      // sourceModel = filename of the imported model (relative to the same dir)
       const modelFileName = importedPath.substring(importedPath.lastIndexOf('/') + 1);
       const fluxmeshData: FluxMeshData = { version: 1, sourceModel: modelFileName, materialSlots: slots };
       await _fs.writeFile(fluxmeshPath, JSON.stringify(fluxmeshData, null, 2));
@@ -216,6 +289,8 @@ AssetTypeRegistry.register({
 
       // Store .fluxmesh path in the model's meta
       meta.importSettings.fluxmeshPath = fluxmeshPath;
+
+      console.log(`[AssetTypeRegistry] Generated .fluxmesh with ${slots.length} material slot(s), ${savedTextureCache.size} texture(s) extracted`);
     } catch (err) {
       console.warn('[AssetTypeRegistry] .fluxmesh generation failed, model imported without mesh data:', err);
     }

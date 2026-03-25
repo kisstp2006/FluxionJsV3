@@ -2,7 +2,7 @@
 // FluxionJS V2 — Electron Main Process
 // ============================================================
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -246,5 +246,17 @@ ipcMain.handle('fs:unwatch', async (_, watchId: string) => {
     watcher.close();
     activeWatchers.delete(watchId);
   }
+  return true;
+});
+
+// ── Shell Utilities ──
+
+ipcMain.handle('shell:showItemInFolder', async (_, itemPath: string) => {
+  shell.showItemInFolder(itemPath);
+  return true;
+});
+
+ipcMain.handle('shell:openPath', async (_, targetPath: string) => {
+  await shell.openPath(targetPath);
   return true;
 });

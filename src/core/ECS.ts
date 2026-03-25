@@ -44,6 +44,8 @@ export interface System {
   update(entities: Set<EntityId>, ecs: ECSManager, dt: number): void;
   fixedUpdate?(entities: Set<EntityId>, ecs: ECSManager, dt: number): void;
   destroy?(): void;
+  /** Called when the scene is cleared, before entities are destroyed. Systems should reset tracked state. */
+  onSceneClear?(): void;
 }
 
 export class ECSManager {
@@ -292,6 +294,10 @@ export class ECSManager {
   }
 
   clear(): void {
+    // Notify systems before destroying entities so they can reset tracked state
+    for (const system of this.systems) {
+      system.onSceneClear?.();
+    }
     for (const entity of [...this.entities]) {
       this.destroyEntity(entity);
     }

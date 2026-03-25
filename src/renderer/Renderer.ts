@@ -104,6 +104,7 @@ export class FluxionRenderer {
       engine.events.on(EngineEvents.RESIZE, (data: { width: number; height: number }) => {
         this.onResize(data.width, data.height);
       }),
+      engine.events.on(EngineEvents.SCENE_UNLOADED, () => this.clearSceneObjects()),
     );
 
     // Register ECS systems
@@ -159,6 +160,15 @@ export class FluxionRenderer {
     }
   }
 
+  /** Remove all tracked objects from the Three.js scene. Called on scene switch. */
+  clearSceneObjects(): void {
+    for (const [, obj] of this.entityToObject) {
+      this.scene.remove(obj);
+    }
+    this.entityToObject.clear();
+    this.objectToEntity.clear();
+  }
+
   getObject(entity: EntityId): THREE.Object3D | undefined {
     return this.entityToObject.get(entity);
   }
@@ -197,6 +207,10 @@ class TransformNodeSystem implements System {
   private tracked: Set<EntityId> = new Set();
 
   constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.tracked.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     // Ensure every Transform entity has a scene node
@@ -257,6 +271,11 @@ class MeshRendererSystem implements System {
   private trackedMesh: Map<EntityId, THREE.Mesh | THREE.Group | THREE.Object3D> = new Map();
 
   constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.tracked.clear();
+    this.trackedMesh.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     // Add new meshes / detect mesh swaps
@@ -340,6 +359,12 @@ class SpriteRendererSystem implements System {
   private loadingTextures: Set<EntityId> = new Set();
 
   constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.tracked.clear();
+    this.trackedMesh.clear();
+    this.loadingTextures.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     for (const entity of entities) {
@@ -446,6 +471,11 @@ class TextRendererSystem implements System {
   private loadingFonts: Set<string> = new Set();
 
   constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.tracked.clear();
+    this.trackedMesh.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     for (const entity of entities) {
@@ -639,6 +669,10 @@ class CameraSystem implements System {
 
   constructor(private renderer: FluxionRenderer) {}
 
+  onSceneClear(): void {
+    this.lastOrthographic.clear();
+  }
+
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     let bestPriority = -Infinity;
     let bestCamera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null;
@@ -721,6 +755,12 @@ class LightSystem implements System {
   constructor(private renderer: FluxionRenderer) {}
 
   private lastLightType: Map<EntityId, string> = new Map();
+
+  onSceneClear(): void {
+    this.tracked.clear();
+    this.cookieLoading.clear();
+    this.lastLightType.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     for (const entity of entities) {
@@ -904,6 +944,12 @@ class EnvironmentSystem implements System {
     this.renderer = renderer;
   }
 
+  onSceneClear(): void {
+    this.cleanup();
+    this.loadedSkyboxKey = null;
+    this.skyboxLoading = false;
+  }
+
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     // Use the first enabled EnvironmentComponent found
     let env: EnvironmentComponent | null = null;
@@ -1013,6 +1059,9 @@ class EnvironmentSystem implements System {
       expFactor: env.ssgiExpFactor,
       aoIntensity: env.ssgiAoIntensity,
       giIntensity: env.ssgiGiIntensity,
+      backfaceLighting: env.ssgiBackfaceLighting,
+      useLinearThickness: env.ssgiUseLinearThickness,
+      screenSpaceSampling: env.ssgiScreenSpaceSampling,
     };
 
     // Cloud sun direction derived from sun elevation/azimuth

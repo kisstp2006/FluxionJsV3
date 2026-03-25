@@ -278,6 +278,15 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
             <PropertyRow label="GI Intensity">
               <Slider value={env.ssgiGiIntensity} min={0} max={100} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssgiGiIntensity', v); update(); }} />
             </PropertyRow>
+            <PropertyRow label="Backface Lighting">
+              <Slider value={env.ssgiBackfaceLighting} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssgiBackfaceLighting', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Use Linear Thickness">
+              <Checkbox checked={env.ssgiUseLinearThickness} onChange={(v) => { setProperty(undoManager, env, 'ssgiUseLinearThickness', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Screen-Space Sampling">
+              <Checkbox checked={env.ssgiScreenSpaceSampling} onChange={(v) => { setProperty(undoManager, env, 'ssgiScreenSpaceSampling', v); update(); }} />
+            </PropertyRow>
           </>
         )}
       </Section>

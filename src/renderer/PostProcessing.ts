@@ -380,6 +380,9 @@ const SSGI_FRAG = `
   uniform float giIntensity;
   uniform int sliceCountI;
   uniform int stepCountI;
+  uniform float backfaceLighting;
+  uniform bool useLinearThickness;
+  uniform bool screenSpaceSampling;
   varying vec2 vUv;
 
   #define PI 3.14159265359
@@ -462,8 +465,12 @@ const SSGI_FRAG = `
         for (int t = 0; t < 32; t++) {
           if (t >= stepCount) break;
 
-          float offset = pow(abs(stepRadius * (float(t) + noiseOffset) / maxStepRadius), giExpFactor) * maxStepRadius;
-          vec2 sampleUV = vUv + texelStep * max(offset, float(t) + 1.0) * dirSign;
+          float rawOffset = stepRadius * (float(t) + noiseOffset);
+          float offset = screenSpaceSampling
+            ? max(rawOffset, float(t) + 1.0)
+            : pow(abs(rawOffset / maxStepRadius), giExpFactor) * maxStepRadius;
+          if (!screenSpaceSampling) offset = max(offset, float(t) + 1.0);
+          vec2 sampleUV = vUv + texelStep * offset * dirSign;
 
           // Bounds check
           if (sampleUV.x <= 0.0 || sampleUV.x >= 1.0 || sampleUV.y <= 0.0 || sampleUV.y >= 1.0) break;
@@ -476,7 +483,8 @@ const SSGI_FRAG = `
 
           // Horizon angle test
           float horizonAngle = dot(toSampleDir, viewDir);
-          float backHorizon = dot(normalize(sampleViewPos - viewDir * giThickness - viewPos), viewDir);
+          float thicknessMul = useLinearThickness ? dist / giRadius : 1.0;
+          float backHorizon = dot(normalize(sampleViewPos - viewDir * giThickness * thicknessMul - viewPos), viewDir);
 
           float frontH = clamp((-dirSign * acos(clamp(horizonAngle, -1.0, 1.0)) - n + HALF_PI) / PI, 0.0, 1.0);
           float backH = clamp((-dirSign * acos(clamp(backHorizon, -1.0, 1.0)) - n + HALF_PI) / PI, 0.0, 1.0);
@@ -493,7 +501,8 @@ const SSGI_FRAG = `
               vec3 sampleColor = texture2D(tScene, sampleUV).rgb;
               vec3 sampleNormal = getNormal(sampleUV);
               float lightNdotL = clamp(dot(sampleNormal, -toSampleDir), 0.0, 1.0);
-              totalGI += sampleColor * NdotL * lightNdotL * visibility;
+              float backfaceWeight = mix(lightNdotL, 1.0, backfaceLighting);
+              totalGI += sampleColor * NdotL * backfaceWeight * visibility;
             }
           }
         }
@@ -707,6 +716,9 @@ export interface PostProcessConfig {
     expFactor?: number;
     aoIntensity?: number;
     giIntensity?: number;
+    backfaceLighting?: number;
+    useLinearThickness?: boolean;
+    screenSpaceSampling?: boolean;
   };
   clouds?: {
     enabled?: boolean;
@@ -768,7 +780,7 @@ export class PostProcessingPipeline {
     bloom: { enabled: true, threshold: 0.8, strength: 0.5, radius: 0.4, softKnee: 0.6 },
     ssao: { enabled: false, radius: 0.5, bias: 0.025, intensity: 1.0 },
     ssr: { enabled: false, maxDistance: 50, thickness: 0.5, stride: 0.3, fresnel: 1.0, opacity: 0.5, resolutionScale: 0.5 },
-    ssgi: { enabled: false, sliceCount: 2, stepCount: 8, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10 },
+    ssgi: { enabled: false, sliceCount: 2, stepCount: 8, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
     clouds: { enabled: false, minHeight: 200, maxHeight: 400, coverage: 0.5, density: 0.3, absorption: 1.0, scatter: 1.0, color: new THREE.Color(1, 1, 1), speed: 1.0, sunDirection: new THREE.Vector3(0.5, 1, 0.3).normalize() },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
     exposure: 1.0,
@@ -897,6 +909,9 @@ export class PostProcessingPipeline {
         giIntensity: { value: 10 },
         sliceCountI: { value: 2 },
         stepCountI: { value: 8 },
+        backfaceLighting: { value: 0 },
+        useLinearThickness: { value: false },
+        screenSpaceSampling: { value: true },
       },
     }));
 
@@ -1043,6 +1058,9 @@ export class PostProcessingPipeline {
       this.ssgiPass.material.uniforms['giIntensity'].value = ssgi!.giIntensity ?? 10;
       this.ssgiPass.material.uniforms['sliceCountI'].value = Math.round(ssgi!.sliceCount ?? 2);
       this.ssgiPass.material.uniforms['stepCountI'].value = Math.round(ssgi!.stepCount ?? 8);
+      this.ssgiPass.material.uniforms['backfaceLighting'].value = ssgi!.backfaceLighting ?? 0;
+      this.ssgiPass.material.uniforms['useLinearThickness'].value = ssgi!.useLinearThickness ?? false;
+      this.ssgiPass.material.uniforms['screenSpaceSampling'].value = ssgi!.screenSpaceSampling ?? true;
       this.ssgiPass.render(this.renderer, this.ssgiRT);
     }
 

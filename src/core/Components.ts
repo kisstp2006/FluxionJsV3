@@ -358,6 +358,9 @@ export class EnvironmentComponent implements Component {
   ssgiExpFactor = 2;
   ssgiAoIntensity = 1;
   ssgiGiIntensity = 10;
+  ssgiBackfaceLighting = 0;
+  ssgiUseLinearThickness = false;
+  ssgiScreenSpaceSampling = true;
 
   // ── Volumetric Clouds ──
   cloudsEnabled = false;

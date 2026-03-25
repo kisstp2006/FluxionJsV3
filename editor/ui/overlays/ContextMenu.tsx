@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
 
 export interface ContextMenuItem {
   label: string;
@@ -15,8 +15,27 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
+const MARGIN = 4;
+
 export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const [adjusted, setAdjusted] = useState<{ x: number; y: number } | null>(null);
+
+  // Clamp position so the menu stays fully inside the window
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = position.x;
+    let y = position.y;
+    if (x + rect.width > vw - MARGIN) x = vw - rect.width - MARGIN;
+    if (y + rect.height > vh - MARGIN) y = vh - rect.height - MARGIN;
+    if (x < MARGIN) x = MARGIN;
+    if (y < MARGIN) y = MARGIN;
+    setAdjusted({ x, y });
+  }, [position]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -28,13 +47,15 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
+  const pos = adjusted ?? position;
+
   return (
     <div
       ref={ref}
       style={{
         position: 'fixed',
-        left: position.x,
-        top: position.y,
+        left: pos.x,
+        top: pos.y,
         zIndex: 10000,
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border)',

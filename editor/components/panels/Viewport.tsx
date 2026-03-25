@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
-import { CameraComponent } from '../../../src/core/Components';
+import { CameraComponent, TransformComponent } from '../../../src/core/Components';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
 
@@ -38,6 +38,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const rightDraggedRef = useRef(false);
   const leftDownRef = useRef<{ x: number; y: number } | null>(null);
   const wasDraggingRef = useRef(false);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRTRef = useRef<THREE.WebGLRenderTarget | null>(null);
 
   const isGameView = state.viewportTab === 'Game';
 
@@ -95,6 +97,71 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       onCanvasReady(node);
     }
   }, [onCanvasReady]);
+
+  // ── Camera Preview: detect if selected entity has a Camera component ──
+  const selectedCamInfo = React.useMemo<{ cam: CameraComponent; name: string } | null>(() => {
+    if (!engine || state.selectedEntity === null || isGameView) return null;
+    const cam = engine.engine.ecs.getComponent<CameraComponent>(state.selectedEntity, 'Camera');
+    if (!cam || !cam.enabled || !cam.camera) return null;
+    const name = engine.engine.ecs.getEntityName(state.selectedEntity);
+    return { cam, name };
+  }, [engine, state.selectedEntity, isGameView]);
+
+  // ── Camera Preview: render selected camera's view onto preview canvas ──
+  useEffect(() => {
+    if (!engine || !selectedCamInfo) return;
+
+    const PREVIEW_W = 240;
+    const PREVIEW_H = 135;
+
+    // Create (or reuse) render target
+    if (!previewRTRef.current) {
+      previewRTRef.current = new THREE.WebGLRenderTarget(PREVIEW_W, PREVIEW_H, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+      });
+    }
+    const rt = previewRTRef.current;
+    const glRenderer = engine.renderer.renderer;
+    const scene3 = engine.renderer.scene;
+    const buf = new Uint8Array(PREVIEW_W * PREVIEW_H * 4);
+
+    const onUpdate = () => {
+      const cam3 = selectedCamInfo.cam.camera;
+      if (!cam3 || !previewCanvasRef.current) return;
+
+      // Sync aspect
+      if (cam3 instanceof THREE.PerspectiveCamera) {
+        cam3.aspect = PREVIEW_W / PREVIEW_H;
+        cam3.updateProjectionMatrix();
+      }
+
+      // Render scene from this camera into the RT
+      const prevRT = glRenderer.getRenderTarget();
+      glRenderer.setRenderTarget(rt);
+      glRenderer.render(scene3, cam3);
+      glRenderer.setRenderTarget(prevRT);
+
+      // Read pixels into canvas
+      glRenderer.readRenderTargetPixels(rt, 0, 0, PREVIEW_W, PREVIEW_H, buf);
+      const ctx = previewCanvasRef.current.getContext('2d');
+      if (!ctx) return;
+      const imgData = ctx.createImageData(PREVIEW_W, PREVIEW_H);
+      // WebGL readPixels is bottom-up, flip vertically
+      for (let y = 0; y < PREVIEW_H; y++) {
+        const srcRow = (PREVIEW_H - 1 - y) * PREVIEW_W * 4;
+        const dstRow = y * PREVIEW_W * 4;
+        imgData.data.set(buf.subarray(srcRow, srcRow + PREVIEW_W * 4), dstRow);
+      }
+      ctx.putImageData(imgData, 0, 0);
+    };
+
+    engine.engine.events.on('engine:update', onUpdate);
+    return () => {
+      engine.engine.events.off('engine:update', onUpdate);
+    };
+  }, [engine, selectedCamInfo]);
 
   // Raycaster pick
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -520,6 +587,41 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           <span style={{ fontSize: '11px', color: 'var(--text-disabled)' }}>
             Add a Camera component and mark it as Main
           </span>
+        </div>
+      )}
+
+      {/* Camera Preview (when a camera entity is selected, Scene view only) */}
+      {!isGameView && selectedCamInfo && (
+        <div style={{
+          position: 'absolute',
+          bottom: '48px',
+          right: '8px',
+          zIndex: 8,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            fontSize: '11px',
+            color: 'var(--text)',
+            fontWeight: 600,
+            marginBottom: '3px',
+            textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+          }}>
+            {selectedCamInfo.name}
+          </div>
+          <div style={{
+            border: '1.5px solid rgba(255,255,255,0.25)',
+            borderRadius: '3px',
+            overflow: 'hidden',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+            background: '#000',
+          }}>
+            <canvas
+              ref={previewCanvasRef}
+              width={240}
+              height={135}
+              style={{ display: 'block', width: '240px', height: '135px' }}
+            />
+          </div>
         </div>
       )}
 

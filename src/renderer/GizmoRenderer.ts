@@ -148,12 +148,12 @@ export class GizmoRenderer {
   }
 
   // ── Camera Frustum Visualization ──
-  // Inspired by Stride/ezEngine camera gizmos: shows FOV, near/far planes, view direction
+  // Clean frustum inspired by Unity / Godot gizmos
 
   private static readonly _camColor = new THREE.Color(0.85, 0.65, 0.2);     // warm amber
-  private static readonly _camColorDim = new THREE.Color(0.5, 0.4, 0.15);   // dimmer for far edges
+  private static readonly _camColorDim = new THREE.Color(0.5, 0.4, 0.15);   // dimmer unselected
   private static readonly _camNearColor = new THREE.Color(0.3, 0.8, 0.4);   // green near plane
-  private static readonly _camFarColor = new THREE.Color(0.8, 0.3, 0.3);    // red far plane
+  private static readonly _camFarColor = new THREE.Color(1.0, 1.0, 1.0);    // white far plane
 
   // Reusable vectors for frustum corners
   private static readonly _fc: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
@@ -163,15 +163,7 @@ export class GizmoRenderer {
 
   /**
    * Draw a camera frustum gizmo showing FOV, near/far planes and direction.
-   * @param pos     Camera world position
-   * @param quat    Camera world rotation
-   * @param fov     Vertical FOV in degrees (perspective) 
-   * @param near    Near clip plane distance
-   * @param far     Far clip plane (clamped for visibility)
-   * @param aspect  Aspect ratio (width/height)
-   * @param isOrtho Whether orthographic
-   * @param orthoSize Orthographic half-size
-   * @param isSelected Whether the entity is currently selected (brighter)
+   * Fixed-size visualization with constant frustum depth for clarity.
    */
   static drawCameraFrustum(
     pos: THREE.Vector3,
@@ -183,9 +175,14 @@ export class GizmoRenderer {
     isOrtho: boolean,
     orthoSize: number,
     isSelected: boolean,
+    editorCam?: THREE.PerspectiveCamera,
   ): void {
-    // Clamp far for visual clarity (don't draw 1000-unit-long frustum)
-    const visFar = Math.min(far, 15);
+    // Constant-size frustum depth for visual clarity (like Unity/Godot)
+    const frustumDepth = editorCam
+      ? pos.distanceTo(editorCam.position) * 0.12
+      : 2.0;
+    const visNear = frustumDepth * 0.05;
+    const visFar = frustumDepth;
 
     // Compute local axes
     this._fwd.set(0, 0, -1).applyQuaternion(quat);
@@ -195,11 +192,10 @@ export class GizmoRenderer {
     const fc = this._fc;
 
     if (isOrtho) {
-      const hw = orthoSize * aspect;
-      const hh = orthoSize;
-      // Near plane corners (0-3), Far plane corners (4-7)
+      const hw = orthoSize * aspect * (visFar / Math.max(far, 1));
+      const hh = orthoSize * (visFar / Math.max(far, 1));
       for (let i = 0; i < 2; i++) {
-        const dist = i === 0 ? near : visFar;
+        const dist = i === 0 ? visNear : visFar;
         const base = i * 4;
         const center = _p0.copy(pos).addScaledVector(this._fwd, dist);
         fc[base + 0].copy(center).addScaledVector(this._rt, -hw).addScaledVector(this._up2, hh);
@@ -209,13 +205,13 @@ export class GizmoRenderer {
       }
     } else {
       const fovRad = THREE.MathUtils.degToRad(fov);
-      const nearH = Math.tan(fovRad * 0.5) * near;
+      const nearH = Math.tan(fovRad * 0.5) * visNear;
       const nearW = nearH * aspect;
       const farH = Math.tan(fovRad * 0.5) * visFar;
       const farW = farH * aspect;
 
       // Near plane corners
-      const nc = _p0.copy(pos).addScaledVector(this._fwd, near);
+      const nc = _p0.copy(pos).addScaledVector(this._fwd, visNear);
       fc[0].copy(nc).addScaledVector(this._rt, -nearW).addScaledVector(this._up2, nearH);
       fc[1].copy(nc).addScaledVector(this._rt, nearW).addScaledVector(this._up2, nearH);
       fc[2].copy(nc).addScaledVector(this._rt, nearW).addScaledVector(this._up2, -nearH);
@@ -233,40 +229,29 @@ export class GizmoRenderer {
     const nearC = isSelected ? this._camNearColor : this._camColorDim;
     const farC = isSelected ? this._camFarColor : this._camColorDim;
 
-    // Near plane (green when selected)
+    // Near plane
     DebugDraw.drawLineWorld(fc[0], fc[1], nearC);
     DebugDraw.drawLineWorld(fc[1], fc[2], nearC);
     DebugDraw.drawLineWorld(fc[2], fc[3], nearC);
     DebugDraw.drawLineWorld(fc[3], fc[0], nearC);
 
-    // Far plane (red when selected)
+    // Far plane
     DebugDraw.drawLineWorld(fc[4], fc[5], farC);
     DebugDraw.drawLineWorld(fc[5], fc[6], farC);
     DebugDraw.drawLineWorld(fc[6], fc[7], farC);
     DebugDraw.drawLineWorld(fc[7], fc[4], farC);
 
-    // Side edges (connecting near → far)
+    // Side edges (connecting near → far corners)
     DebugDraw.drawLineWorld(fc[0], fc[4], lineColor);
     DebugDraw.drawLineWorld(fc[1], fc[5], lineColor);
     DebugDraw.drawLineWorld(fc[2], fc[6], lineColor);
     DebugDraw.drawLineWorld(fc[3], fc[7], lineColor);
 
-    // Direction arrow from camera position
-    const arrowLen = visFar * 0.3;
-    const arrowTip = _o.copy(pos).addScaledVector(this._fwd, arrowLen);
-    DebugDraw.drawLineWorld(pos, arrowTip, lineColor);
-
-    // Up indicator (small line showing camera up)
-    const upLen = visFar * 0.12;
-    const upMid = _t.copy(fc[0]).add(fc[1]).multiplyScalar(0.5); // top edge midpoint of near plane
+    // Up indicator triangle at top edge midpoint of far plane
+    const upLen = visFar * 0.15;
+    const upMid = _t.copy(fc[4]).add(fc[5]).multiplyScalar(0.5);
     const upEnd = _p0.copy(upMid).addScaledVector(this._up2, upLen);
-    DebugDraw.drawLineWorld(upMid, upEnd, lineColor);
-    // Small triangle at top of up indicator
-    const triW = upLen * 0.3;
-    const triLeft = _p1.copy(upEnd).addScaledVector(this._rt, -triW).addScaledVector(this._up2, -triW);
-    DebugDraw.drawLineWorld(upEnd, triLeft, lineColor);
-    const triRight = _p0.copy(upEnd).addScaledVector(this._rt, triW).addScaledVector(this._up2, -triW);
-    DebugDraw.drawLineWorld(upEnd, triRight, lineColor);
-    DebugDraw.drawLineWorld(triLeft, triRight, lineColor);
+    DebugDraw.drawLineWorld(fc[4], upEnd, lineColor);
+    DebugDraw.drawLineWorld(fc[5], upEnd, lineColor);
   }
 }

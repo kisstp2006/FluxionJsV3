@@ -304,6 +304,7 @@ export const CameraGizmoSync: React.FC = () => {
           cam.isOrthographic,
           cam.orthoSize,
           isSelected,
+          engine.editorCamera,
         );
       }
     };

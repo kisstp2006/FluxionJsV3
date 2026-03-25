@@ -36,16 +36,19 @@ function applyAll(sys: EngineSubsystems): void {
   r.shadowMap.enabled = proj<boolean>('project.rendering.shadows');
 
   // ── Post Processing (from Project Settings) ──
+  // Only apply if no EnvironmentComponent is overriding
   const pp = sys.renderer.postProcessing;
-  pp.config.bloom = {
-    ...pp.config.bloom,
-    enabled: proj<boolean>('project.rendering.bloom'),
-    strength: proj<number>('project.rendering.bloomIntensity'),
-  };
-  pp.config.vignette = {
-    ...pp.config.vignette,
-    enabled: proj<boolean>('project.rendering.vignette'),
-  };
+  if (!pp.environmentOverride) {
+    pp.config.bloom = {
+      ...pp.config.bloom,
+      enabled: proj<boolean>('project.rendering.bloom'),
+      strength: proj<number>('project.rendering.bloomIntensity'),
+    };
+    pp.config.vignette = {
+      ...pp.config.vignette,
+      enabled: proj<boolean>('project.rendering.vignette'),
+    };
+  }
 
   // ── Viewport (from Editor Settings) ──
   const cam = sys.editorCamera;
@@ -159,15 +162,15 @@ function applyProjectSetting(sys: EngineSubsystems, key: string, value: unknown)
       r.shadowMap.needsUpdate = true;
       break;
 
-    // ── Post Processing ──
+    // ── Post Processing ── (skip if EnvironmentComponent overrides)
     case 'project.rendering.bloom':
-      pp.config.bloom = { ...pp.config.bloom, enabled: value as boolean };
+      if (!pp.environmentOverride) pp.config.bloom = { ...pp.config.bloom, enabled: value as boolean };
       break;
     case 'project.rendering.bloomIntensity':
-      pp.config.bloom = { ...pp.config.bloom, strength: value as number };
+      if (!pp.environmentOverride) pp.config.bloom = { ...pp.config.bloom, strength: value as number };
       break;
     case 'project.rendering.vignette':
-      pp.config.vignette = { ...pp.config.vignette, enabled: value as boolean };
+      if (!pp.environmentOverride) pp.config.vignette = { ...pp.config.vignette, enabled: value as boolean };
       break;
 
     // ── Physics ──

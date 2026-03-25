@@ -166,10 +166,19 @@ const SSAO_FRAG = `
   }
 
   vec3 getNormal(vec2 uv) {
-    vec3 p  = getViewPos(uv);
-    vec3 px = getViewPos(uv + vec2(1.0 / resolution.x, 0.0));
-    vec3 py = getViewPos(uv + vec2(0.0, 1.0 / resolution.y));
-    return normalize(cross(px - p, py - p));
+    vec2 texel = 1.0 / resolution;
+    vec3 c = getViewPos(uv);
+    vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
+    vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
+    vec3 d = getViewPos(uv - vec2(0.0, texel.y));
+    vec3 u = getViewPos(uv + vec2(0.0, texel.y));
+    vec3 dr = r - c;
+    vec3 dl = c - l;
+    vec3 du = u - c;
+    vec3 dd = c - d;
+    vec3 dx = abs(dr.z) < abs(dl.z) ? dr : dl;
+    vec3 dy = abs(du.z) < abs(dd.z) ? du : dd;
+    return normalize(cross(dx, dy));
   }
 
   // Simple hash for noise
@@ -184,21 +193,52 @@ const SSAO_FRAG = `
     vec3 viewPos = getViewPos(vUv);
     vec3 normal = getNormal(vUv);
 
+    // Per-pixel random rotation for kernel jitter
+    float noiseAngle = hash(vUv * resolution) * 6.283185307;
+    float cosA = cos(noiseAngle);
+    float sinA = sin(noiseAngle);
+
+    // Build TBN from reconstructed view-space normal
+    vec3 up = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(up, normal));
+    vec3 bitangent = cross(normal, tangent);
+
     float occlusion = 0.0;
     const int SAMPLES = 16;
-    float angleStep = 6.283185307 / float(SAMPLES);
-    float noiseAngle = hash(vUv * resolution) * 6.283185307;
 
     for (int i = 0; i < SAMPLES; i++) {
-      float angle = float(i) * angleStep + noiseAngle;
-      float r = radius * (0.5 + 0.5 * hash(vUv * resolution + float(i)));
-      vec2 offset = vec2(cos(angle), sin(angle)) * r / resolution;
-      vec3 samplePos = getViewPos(vUv + offset);
-      vec3 diff = samplePos - viewPos;
-      float dist = length(diff);
-      float ndotv = max(dot(normal, diff / (dist + 0.0001)), 0.0);
-      float rangeCheck = smoothstep(0.0, 1.0, radius / (abs(viewPos.z - samplePos.z) + 0.0001));
-      occlusion += ndotv * rangeCheck * step(bias, dist);
+      float fi = float(i);
+
+      // Golden-angle hemisphere distribution
+      float angle = fi * 2.39996323;
+      float r = sqrt((fi + 0.5) / float(SAMPLES));
+      float z = sqrt(1.0 - r * r);
+      vec3 hemi = vec3(r * cos(angle), r * sin(angle), z);
+
+      // Rotate xy by random per-pixel angle
+      float rx = hemi.x * cosA - hemi.y * sinA;
+      float ry = hemi.x * sinA + hemi.y * cosA;
+      hemi = vec3(rx, ry, hemi.z);
+
+      // Transform hemisphere sample to view space via TBN
+      vec3 sampleOffset = tangent * hemi.x + bitangent * hemi.y + normal * hemi.z;
+
+      // Scale: distribute samples closer to center for inner detail
+      float scale = 0.1 + 0.9 * (fi + 1.0) / float(SAMPLES);
+      vec3 samplePoint = viewPos + sampleOffset * radius * scale;
+
+      // Project sample back to screen UV
+      vec4 proj = projMatrix * vec4(samplePoint, 1.0);
+      vec2 sampleUV = (proj.xy / proj.w) * 0.5 + 0.5;
+
+      // Read actual geometry depth at projected position
+      float sampleDepth = getViewPos(sampleUV).z;
+
+      // Range check: ignore large depth gaps (different surfaces)
+      float rangeCheck = smoothstep(0.0, 1.0, radius / (abs(viewPos.z - sampleDepth) + 0.001));
+
+      // Occluded if real geometry is closer to camera than sample point
+      occlusion += step(samplePoint.z + bias, sampleDepth) * rangeCheck;
     }
 
     float ao = 1.0 - (occlusion / float(SAMPLES)) * intensity;
@@ -231,10 +271,19 @@ const SSR_FRAG = `
   }
 
   vec3 getNormal(vec2 uv) {
-    vec3 p  = getViewPos(uv);
-    vec3 px = getViewPos(uv + vec2(1.0 / resolution.x, 0.0));
-    vec3 py = getViewPos(uv + vec2(0.0, 1.0 / resolution.y));
-    return normalize(cross(px - p, py - p));
+    vec2 texel = 1.0 / resolution;
+    vec3 c = getViewPos(uv);
+    vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
+    vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
+    vec3 d = getViewPos(uv - vec2(0.0, texel.y));
+    vec3 u = getViewPos(uv + vec2(0.0, texel.y));
+    vec3 dr = r - c;
+    vec3 dl = c - l;
+    vec3 du = u - c;
+    vec3 dd = c - d;
+    vec3 dx = abs(dr.z) < abs(dl.z) ? dr : dl;
+    vec3 dy = abs(du.z) < abs(dd.z) ? du : dd;
+    return normalize(cross(dx, dy));
   }
 
   vec2 viewToScreen(vec3 viewPos) {
@@ -344,10 +393,19 @@ const SSGI_FRAG = `
   }
 
   vec3 getNormal(vec2 uv) {
-    vec3 p  = getViewPos(uv);
-    vec3 px = getViewPos(uv + vec2(1.0 / resolution.x, 0.0));
-    vec3 py = getViewPos(uv + vec2(0.0, 1.0 / resolution.y));
-    return normalize(cross(px - p, py - p));
+    vec2 texel = 1.0 / resolution;
+    vec3 c = getViewPos(uv);
+    vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
+    vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
+    vec3 d = getViewPos(uv - vec2(0.0, texel.y));
+    vec3 u = getViewPos(uv + vec2(0.0, texel.y));
+    vec3 dr = r - c;
+    vec3 dl = c - l;
+    vec3 du = u - c;
+    vec3 dd = c - d;
+    vec3 dx = abs(dr.z) < abs(dl.z) ? dr : dl;
+    vec3 dy = abs(du.z) < abs(dd.z) ? du : dd;
+    return normalize(cross(dx, dy));
   }
 
   float hash(vec2 p) {
@@ -374,8 +432,8 @@ const SSGI_FRAG = `
     vec3 totalGI = vec3(0.0);
     float halfProjScale = resolution.y / (2.0 * tan(atan(1.0 / projMatrix[1][1])));
 
-    int sliceCount = sliceCountI;
-    int stepCount = stepCountI;
+    int sliceCount = int(sliceCountI);
+    int stepCount = int(stepCountI);
 
     for (int s = 0; s < 4; s++) {
       if (s >= sliceCount) break;
@@ -702,6 +760,9 @@ export class PostProcessingPipeline {
   // Time tracking for clouds
   private _time = 0;
 
+  /** When true, an EnvironmentComponent is active and overrides project/editor PP settings */
+  environmentOverride = false;
+
   // Configuration
   config: PostProcessConfig = {
     bloom: { enabled: true, threshold: 0.8, strength: 0.5, radius: 0.4, softKnee: 0.6 },
@@ -980,8 +1041,8 @@ export class PostProcessingPipeline {
       this.ssgiPass.material.uniforms['giExpFactor'].value = ssgi!.expFactor ?? 2;
       this.ssgiPass.material.uniforms['aoIntensity'].value = ssgi!.aoIntensity ?? 1;
       this.ssgiPass.material.uniforms['giIntensity'].value = ssgi!.giIntensity ?? 10;
-      this.ssgiPass.material.uniforms['sliceCountI'].value = ssgi!.sliceCount ?? 2;
-      this.ssgiPass.material.uniforms['stepCountI'].value = ssgi!.stepCount ?? 8;
+      this.ssgiPass.material.uniforms['sliceCountI'].value = Math.round(ssgi!.sliceCount ?? 2);
+      this.ssgiPass.material.uniforms['stepCountI'].value = Math.round(ssgi!.stepCount ?? 8);
       this.ssgiPass.render(this.renderer, this.ssgiRT);
     }
 

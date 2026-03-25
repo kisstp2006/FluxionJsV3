@@ -916,6 +916,7 @@ class EnvironmentSystem implements System {
     }
 
     if (!env) {
+      this.renderer.postProcessing.environmentOverride = false;
       this.cleanup();
       return;
     }
@@ -923,6 +924,7 @@ class EnvironmentSystem implements System {
     const scene = this.renderer.scene;
     const glRenderer = this.renderer.renderer;
     const pp = this.renderer.postProcessing;
+    pp.environmentOverride = true;
 
     // ── Background ──
     if (env.backgroundMode === 'color') {

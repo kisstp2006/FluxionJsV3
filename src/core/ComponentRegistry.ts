@@ -16,6 +16,7 @@ import {
   AudioSourceComponent,
   SpriteComponent,
   EnvironmentComponent,
+  TextRendererComponent,
 } from './Components';
 
 // ── Property Descriptor ──────────────────────────────────────
@@ -243,7 +244,6 @@ ComponentRegistry.register({
   displayName: 'Sprite',
   icon: '🖼',
   properties: [
-    { key: 'texture', type: 'string', label: 'Texture' },
     { key: 'color', type: 'color', label: 'Color' },
     { key: 'opacity', type: 'slider', label: 'Opacity', min: 0, max: 1, step: 0.01 },
     { key: 'flipX', type: 'boolean', label: 'Flip X' },
@@ -253,6 +253,14 @@ ComponentRegistry.register({
     { key: 'sortingOrder', type: 'number', label: 'Sorting Order', step: 1 },
   ],
   create: () => new SpriteComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'TextRenderer',
+  displayName: 'Text Renderer',
+  icon: '𝐓',
+  properties: [],  // Custom inspector handles the UI
+  create: () => new TextRendererComponent(),
 });
 
 ComponentRegistry.register({

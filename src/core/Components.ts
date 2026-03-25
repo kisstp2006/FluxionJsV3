@@ -216,7 +216,8 @@ export class SpriteComponent implements Component {
   entityId: EntityId = 0;
   enabled = true;
 
-  texture = '';
+  /** Project-relative path to sprite texture image */
+  texturePath: string | null = null;
   color = new THREE.Color(1, 1, 1);
   opacity = 1;
   flipX = false;
@@ -225,7 +226,37 @@ export class SpriteComponent implements Component {
   sortingLayer = 0;
   sortingOrder = 0;
 
+  /** Runtime sprite mesh (billboard quad) */
   spriteMesh: THREE.Mesh | null = null;
+  /** Runtime loaded texture */
+  spriteTexture: THREE.Texture | null = null;
+}
+
+// ── 3D Text Renderer Component ──
+
+export type TextAlignment = 'left' | 'center' | 'right';
+
+export class TextRendererComponent implements Component {
+  readonly type = 'TextRenderer';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  text = 'Hello World';
+  /** Project-relative path to a font file (.ttf, .otf, .woff, .woff2) */
+  fontPath: string | null = null;
+  fontSize = 1;
+  color = new THREE.Color(1, 1, 1);
+  opacity = 1;
+  alignment: TextAlignment = 'center';
+  maxWidth = 0;
+  billboard = false;
+
+  /** Runtime mesh for the rendered text */
+  textMesh: THREE.Mesh | null = null;
+  /** Runtime canvas texture */
+  textTexture: THREE.CanvasTexture | null = null;
+  /** Cache key to detect when rebuild is needed */
+  _cacheKey = '';
 }
 
 // ── Animation Component (skeletal animation like Nuake) ──

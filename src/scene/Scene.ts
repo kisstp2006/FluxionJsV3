@@ -19,6 +19,7 @@ import {
   AudioSourceComponent,
   SpriteComponent,
   EnvironmentComponent,
+  TextRendererComponent,
 } from '../core/Components';
 import { AssetManager } from '../assets/AssetManager';
 
@@ -191,6 +192,36 @@ export class Scene {
       ecs.addComponent(clone, colComp);
     }
 
+    // Copy Sprite
+    const spr = ecs.getComponent<SpriteComponent>(entityId, 'Sprite');
+    if (spr) {
+      const sprComp = new SpriteComponent();
+      sprComp.texturePath = spr.texturePath;
+      sprComp.color.copy(spr.color);
+      sprComp.opacity = spr.opacity;
+      sprComp.flipX = spr.flipX;
+      sprComp.flipY = spr.flipY;
+      sprComp.pixelsPerUnit = spr.pixelsPerUnit;
+      sprComp.sortingLayer = spr.sortingLayer;
+      sprComp.sortingOrder = spr.sortingOrder;
+      ecs.addComponent(clone, sprComp);
+    }
+
+    // Copy TextRenderer
+    const txt = ecs.getComponent<TextRendererComponent>(entityId, 'TextRenderer');
+    if (txt) {
+      const txtComp = new TextRendererComponent();
+      txtComp.text = txt.text;
+      txtComp.fontPath = txt.fontPath;
+      txtComp.fontSize = txt.fontSize;
+      txtComp.color.copy(txt.color);
+      txtComp.opacity = txt.opacity;
+      txtComp.alignment = txt.alignment;
+      txtComp.maxWidth = txt.maxWidth;
+      txtComp.billboard = txt.billboard;
+      ecs.addComponent(clone, txtComp);
+    }
+
     // Copy parent
     const parent = ecs.getParent(entityId);
     if (parent !== undefined) ecs.setParent(clone, parent);
@@ -317,6 +348,24 @@ export class Scene {
     camComp.near = near;
     camComp.far = far;
     this.engine.ecs.addComponent(entity, camComp);
+    return entity;
+  }
+
+  /** Create a 3D text entity */
+  createText(name: string, text = 'Hello World'): EntityId {
+    const entity = this.createEmpty(name);
+    const tc = new TextRendererComponent();
+    tc.text = text;
+    this.engine.ecs.addComponent(entity, tc);
+    return entity;
+  }
+
+  /** Create a sprite entity (billboard quad) */
+  createSprite(name: string, texturePath?: string): EntityId {
+    const entity = this.createEmpty(name);
+    const sc = new SpriteComponent();
+    if (texturePath) sc.texturePath = texturePath;
+    this.engine.ecs.addComponent(entity, sc);
     return entity;
   }
 
@@ -476,6 +525,7 @@ export class Scene {
         components.push({
           type: 'Environment',
           data: {
+            enabled: env.enabled,
             backgroundMode: env.backgroundMode,
             backgroundColor: [env.backgroundColor.r, env.backgroundColor.g, env.backgroundColor.b],
             skyboxMode: env.skyboxMode,
@@ -499,6 +549,35 @@ export class Scene {
             ssaoRadius: env.ssaoRadius,
             ssaoBias: env.ssaoBias,
             ssaoIntensity: env.ssaoIntensity,
+            ssrEnabled: env.ssrEnabled,
+            ssrMaxDistance: env.ssrMaxDistance,
+            ssrThickness: env.ssrThickness,
+            ssrStride: env.ssrStride,
+            ssrFresnel: env.ssrFresnel,
+            ssrOpacity: env.ssrOpacity,
+            ssgiEnabled: env.ssgiEnabled,
+            ssgiSliceCount: env.ssgiSliceCount,
+            ssgiStepCount: env.ssgiStepCount,
+            ssgiRadius: env.ssgiRadius,
+            ssgiThickness: env.ssgiThickness,
+            ssgiExpFactor: env.ssgiExpFactor,
+            ssgiAoIntensity: env.ssgiAoIntensity,
+            ssgiGiIntensity: env.ssgiGiIntensity,
+            cloudsEnabled: env.cloudsEnabled,
+            cloudMinHeight: env.cloudMinHeight,
+            cloudMaxHeight: env.cloudMaxHeight,
+            cloudCoverage: env.cloudCoverage,
+            cloudDensity: env.cloudDensity,
+            cloudAbsorption: env.cloudAbsorption,
+            cloudScatter: env.cloudScatter,
+            cloudColor: [env.cloudColor.r, env.cloudColor.g, env.cloudColor.b],
+            cloudSpeed: env.cloudSpeed,
+            skyTurbidity: env.skyTurbidity,
+            skyRayleigh: env.skyRayleigh,
+            skyMieCoefficient: env.skyMieCoefficient,
+            skyMieDirectionalG: env.skyMieDirectionalG,
+            sunElevation: env.sunElevation,
+            sunAzimuth: env.sunAzimuth,
             vignetteEnabled: env.vignetteEnabled,
             vignetteIntensity: env.vignetteIntensity,
             vignetteRoundness: env.vignetteRoundness,

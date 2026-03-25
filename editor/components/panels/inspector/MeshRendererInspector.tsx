@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider, Button, Icons } from '../../../ui';
+import { Section, PropertyRow, Checkbox, NumberInput, Button, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
-import { setProperty, setMaterialProperty, setMaterialColor } from '../../../core/ComponentService';
+import { setProperty } from '../../../core/ComponentService';
 import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshMaterialSlot } from '../../../../src/assets/FluxMeshData';
 import { applyMaterialsToModel } from '../../../../src/assets/FluxMeshData';
@@ -56,25 +56,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     return () => { cancelled = true; };
   }, [mr.modelPath]);
 
-  // Get the material for editing (support Mesh and Group) — primitives only
-  const getMaterial = (): THREE.MeshStandardMaterial | null => {
-    if (!mr.mesh) return null;
-    if (mr.mesh instanceof THREE.Mesh && mr.mesh.material instanceof THREE.MeshStandardMaterial) {
-      return mr.mesh.material;
-    }
-    if (mr.mesh instanceof THREE.Group) {
-      let mat: THREE.MeshStandardMaterial | null = null;
-      mr.mesh.traverse((child) => {
-        if (!mat && child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
-          mat = child.material;
-        }
-      });
-      return mat;
-    }
-    return null;
-  };
 
-  const material = !isFluxMesh ? getMaterial() : null;
 
   /** Extract filename from a path */
   const getFileName = (path: string) => {
@@ -224,6 +206,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     mr.mesh = null;
     mr.primitiveType = 'cube';
     mr.materialSlots = undefined;
+    mr.materialPath = undefined;
     const geom = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.1 });
     mr.mesh = new THREE.Mesh(geom, mat);
@@ -326,6 +309,74 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           applyMaterialsToModel(mr.mesh, [slot], [mat]);
         }
       } catch {}
+    }
+    update();
+  };
+
+  /** Handle dropping a .fluxmat onto a primitive's material slot */
+  const handlePrimitiveMaterialDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
+    if (!assetPath) return;
+    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
+    if (!typeDef || typeDef.type !== 'material') return;
+
+    setProperty(undoManager, mr, 'materialPath', assetPath);
+
+    try {
+      const { projectManager } = await import('../../../../src/project/ProjectManager');
+      const assets = engine.engine.getSubsystem('assets') as any;
+      const materials = engine.engine.getSubsystem('materials') as any;
+      if (assets && materials) {
+        const matAbsPath = projectManager.resolvePath(assetPath);
+        const matData = await assets.loadAsset(matAbsPath, 'material');
+        if (matData) {
+          const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
+          const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+            let texAbsPath: string;
+            if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+              texAbsPath = relPath;
+            } else {
+              texAbsPath = `${matDir}/${relPath}`;
+              try {
+                const { getFileSystem: getFs } = await import('../../../../src/filesystem');
+                const projResolved = projectManager.resolvePath(relPath);
+                if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+              } catch {}
+            }
+            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+            return assets.loadTexture(texUrl);
+          };
+          const mat = await materials.createFromFluxMat(matData, loadTexture, assetPath);
+          if (mr.mesh instanceof THREE.Mesh) {
+            mr.mesh.material = mat;
+          } else if (mr.mesh instanceof THREE.Group) {
+            mr.mesh.traverse((child: THREE.Object3D) => {
+              if (child instanceof THREE.Mesh) {
+                child.material = mat;
+              }
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[MeshRendererInspector] Failed to apply material:', err);
+    }
+    update();
+  };
+
+  /** Clear a primitive's material override and revert to default */
+  const handleClearPrimitiveMaterial = () => {
+    setProperty(undoManager, mr, 'materialPath', undefined);
+    const defaultMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.1 });
+    if (mr.mesh instanceof THREE.Mesh) {
+      mr.mesh.material = defaultMat;
+    } else if (mr.mesh instanceof THREE.Group) {
+      mr.mesh.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) {
+          child.material = defaultMat;
+        }
+      });
     }
     update();
   };
@@ -523,25 +574,69 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
         </div>
       )}
 
-      {/* Inline material controls — only for primitives (non-.fluxmesh) */}
-      {!isFluxMesh && material && (
-        <>
-          <PropertyRow label="Color">
-            <ColorInput
-              value={`#${material.color.getHexString()}`}
-              onChange={(v) => { setMaterialColor(undoManager, material, v); update(); }}
-            />
-          </PropertyRow>
-          <PropertyRow label="Roughness">
-            <Slider value={material.roughness} min={0} max={1} step={0.01} onChange={(v) => { setMaterialProperty(undoManager, material, 'roughness', v); update(); }} />
-          </PropertyRow>
-          <PropertyRow label="Metalness">
-            <Slider value={material.metalness} min={0} max={1} step={0.01} onChange={(v) => { setMaterialProperty(undoManager, material, 'metalness', v); update(); }} />
-          </PropertyRow>
-          <PropertyRow label="Wireframe">
-            <Checkbox checked={material.wireframe} onChange={(v) => { setMaterialProperty(undoManager, material, 'wireframe', v); update(); }} />
-          </PropertyRow>
-        </>
+      {/* Material drop zone for primitives — same workflow as .fluxmesh */}
+      {!isFluxMesh && (
+        <div style={{ marginTop: '4px' }}>
+          <div style={{
+            fontSize: '11px',
+            color: 'var(--text)',
+            fontWeight: 600,
+            marginBottom: '4px',
+          }}>
+            Material
+          </div>
+          <div
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes('application/x-fluxion-asset')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'link';
+              }
+            }}
+            onDrop={handlePrimitiveMaterialDrop}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              border: '1px solid var(--border)',
+              borderRadius: '3px',
+              padding: '3px 6px',
+              minHeight: '22px',
+              background: mr.materialPath ? 'rgba(255,255,255,0.03)' : 'transparent',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                color: mr.materialPath ? 'var(--accent)' : 'var(--text-muted)',
+                fontSize: '10px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}
+              title={mr.materialPath || ''}
+            >
+              {mr.materialPath ? getFileName(mr.materialPath) : 'Drop .fluxmat'}
+            </span>
+            {mr.materialPath && (
+              <button
+                onClick={handleClearPrimitiveMaterial}
+                title="Clear material"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '1px',
+                  fontSize: '10px',
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </Section>
   );

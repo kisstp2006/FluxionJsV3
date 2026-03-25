@@ -18,6 +18,8 @@ import {
   ParticleEmitterComponent,
   AudioSourceComponent,
   EnvironmentComponent,
+  SpriteComponent,
+  TextRendererComponent,
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
@@ -275,6 +277,42 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           clip: audio.clip, volume: audio.volume, pitch: audio.pitch,
           loop: audio.loop, playOnStart: audio.playOnStart, spatial: audio.spatial,
           minDistance: audio.minDistance, maxDistance: audio.maxDistance,
+        },
+      });
+    }
+
+    const sprite = engine.ecs.getComponent<SpriteComponent>(entityId, 'Sprite');
+    if (sprite) {
+      components.push({
+        type: 'Sprite',
+        data: {
+          enabled: sprite.enabled,
+          texturePath: sprite.texturePath,
+          color: [sprite.color.r, sprite.color.g, sprite.color.b],
+          opacity: sprite.opacity,
+          flipX: sprite.flipX,
+          flipY: sprite.flipY,
+          pixelsPerUnit: sprite.pixelsPerUnit,
+          sortingLayer: sprite.sortingLayer,
+          sortingOrder: sprite.sortingOrder,
+        },
+      });
+    }
+
+    const textComp = engine.ecs.getComponent<TextRendererComponent>(entityId, 'TextRenderer');
+    if (textComp) {
+      components.push({
+        type: 'TextRenderer',
+        data: {
+          enabled: textComp.enabled,
+          text: textComp.text,
+          fontPath: textComp.fontPath,
+          fontSize: textComp.fontSize,
+          color: [textComp.color.r, textComp.color.g, textComp.color.b],
+          opacity: textComp.opacity,
+          alignment: textComp.alignment,
+          maxWidth: textComp.maxWidth,
+          billboard: textComp.billboard,
         },
       });
     }
@@ -610,6 +648,38 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           a.minDistance = d.minDistance ?? 1;
           a.maxDistance = d.maxDistance ?? 50;
           engine.ecs.addComponent(entityId, a);
+          break;
+        }
+
+        case 'Sprite': {
+          const s = new SpriteComponent();
+          const d = comp.data;
+          s.enabled = d.enabled ?? true;
+          s.texturePath = d.texturePath ?? d.texture ?? null;
+          if (d.color) s.color = new THREE.Color(d.color[0], d.color[1], d.color[2]);
+          s.opacity = d.opacity ?? 1;
+          s.flipX = d.flipX ?? false;
+          s.flipY = d.flipY ?? false;
+          s.pixelsPerUnit = d.pixelsPerUnit ?? 100;
+          s.sortingLayer = d.sortingLayer ?? 0;
+          s.sortingOrder = d.sortingOrder ?? 0;
+          engine.ecs.addComponent(entityId, s);
+          break;
+        }
+
+        case 'TextRenderer': {
+          const t = new TextRendererComponent();
+          const d = comp.data;
+          t.enabled = d.enabled ?? true;
+          t.text = d.text ?? 'Hello World';
+          t.fontPath = d.fontPath ?? null;
+          t.fontSize = d.fontSize ?? 1;
+          if (d.color) t.color = new THREE.Color(d.color[0], d.color[1], d.color[2]);
+          t.opacity = d.opacity ?? 1;
+          t.alignment = d.alignment ?? 'center';
+          t.maxWidth = d.maxWidth ?? 0;
+          t.billboard = d.billboard ?? false;
+          engine.ecs.addComponent(entityId, t);
           break;
         }
 

@@ -22,6 +22,8 @@ import { AudioInspector } from './inspector/AudioInspector';
 import { MaterialInspector } from './inspector/MaterialInspector';
 import { ModelInspector } from './inspector/ModelInspector';
 import { EnvironmentInspector } from './inspector/EnvironmentInspector';
+import { TextRendererInspector } from './inspector/TextRendererInspector';
+import { SpriteRendererInspector } from './inspector/SpriteRendererInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);
@@ -35,6 +37,8 @@ const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: (
   Transform: ({ entity }) => <TransformInspector entity={entity} />,
   MeshRenderer: MeshRendererInspector,
   Environment: EnvironmentInspector,
+  TextRenderer: TextRendererInspector,
+  Sprite: SpriteRendererInspector,
 };
 
 // ── Add Component Menu ──

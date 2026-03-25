@@ -548,22 +548,29 @@ const CLOUD_FRAG = `
   }
 
   void main() {
-    // Reconstruct world-space ray
+    // Reconstruct world-space ray via proper inverse projection
     vec2 ndc = vUv * 2.0 - 1.0;
-    vec4 clipPos = vec4(ndc, -1.0, 1.0);
-    vec4 viewDir4 = invProjMatrix * clipPos;
-    viewDir4.z = -1.0; viewDir4.w = 0.0;
-    vec3 worldDir = normalize((invViewMatrix * viewDir4).xyz);
+    vec4 viewPos4 = invProjMatrix * vec4(ndc, -1.0, 1.0);
+    vec3 viewDir = viewPos4.xyz / viewPos4.w;               // perspective divide
+    vec3 worldDir = normalize((invViewMatrix * vec4(viewDir, 0.0)).xyz);
     vec3 ro = cameraPos;
 
-    // Scene depth for occlusion test
+    // Scene depth — linearize depth buffer to view-space Z
     float sceneDepth = texture2D(tDepth, vUv).r;
+    float sceneLinearZ = cameraNear * cameraFar / (cameraFar - sceneDepth * (cameraFar - cameraNear));
+    // Convert view-space Z to ray distance using the SAME view direction
+    float rayVsZ = abs(normalize(viewDir).z);
+    float sceneWorldDist = sceneLinearZ / max(rayVsZ, 0.0001);
 
     // Intersect cloud slab
     float tMin = intersectPlane(ro, worldDir, cloudMinHeight);
     float tMax = intersectPlane(ro, worldDir, cloudMaxHeight);
     if (tMin > tMax) { float tmp = tMin; tMin = tMax; tMax = tmp; }
     tMin = max(tMin, 0.0);
+
+    // Clamp tMax to scene depth — clouds behind objects are not rendered
+    tMax = min(tMax, sceneWorldDist);
+    tMin = min(tMin, sceneWorldDist);
 
     // No intersection or behind camera
     if (tMax < 0.0 || tMin >= tMax) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
@@ -836,6 +843,8 @@ export class PostProcessingPipeline {
     this.cloudPass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
       fragmentShader: CLOUD_FRAG,
+      depthTest: false,
+      depthWrite: false,
       uniforms: {
         tDepth: { value: null },
         resolution: { value: new THREE.Vector2(halfW, halfH) },

@@ -19,6 +19,7 @@ export {
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
+  TextRendererComponent,
   AnimationComponent,
 } from './core/Components';
 

@@ -17,6 +17,8 @@ import {
   ToneMappingMode,
   CubemapFaces,
   SkyboxMode,
+  SpriteComponent,
+  TextRendererComponent,
 } from '../core/Components';
 import { PostProcessingPipeline } from './PostProcessing';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
@@ -108,6 +110,8 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new TransformNodeSystem(this));
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
+    engine.ecs.addSystem(new SpriteRendererSystem(this));
+    engine.ecs.addSystem(new TextRendererSystem(this));
     engine.ecs.addSystem(new CameraSystem(this));
     engine.ecs.addSystem(new LightSystem(this));
     engine.ecs.addSystem(new EnvironmentSystem(this));
@@ -323,6 +327,306 @@ class MeshRendererSystem implements System {
         this.trackedMesh.delete(entity);
       }
     }
+  }
+}
+
+class SpriteRendererSystem implements System {
+  readonly name = 'SpriteRenderer';
+  readonly requiredComponents = ['Transform', 'Sprite'];
+  priority = 1;
+  enabled = true;
+  private tracked: Set<EntityId> = new Set();
+  private trackedMesh: Map<EntityId, THREE.Mesh> = new Map();
+  private loadingTextures: Set<EntityId> = new Set();
+
+  constructor(private renderer: FluxionRenderer) {}
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    for (const entity of entities) {
+      const sprite = ecs.getComponent<SpriteComponent>(entity, 'Sprite');
+      if (!sprite || !sprite.enabled) continue;
+
+      // Build or rebuild sprite mesh when needed
+      if (!sprite.spriteMesh) {
+        const geom = new THREE.PlaneGeometry(1, 1);
+        const mat = new THREE.MeshBasicMaterial({
+          color: sprite.color,
+          transparent: true,
+          opacity: sprite.opacity,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        sprite.spriteMesh = new THREE.Mesh(geom, mat);
+        sprite.spriteMesh.renderOrder = sprite.sortingLayer * 1000 + sprite.sortingOrder;
+      }
+
+      // Load texture if path changed
+      if (sprite.texturePath && !sprite.spriteTexture && !this.loadingTextures.has(entity)) {
+        this.loadingTextures.add(entity);
+        this.loadSpriteTexture(entity, sprite);
+      }
+
+      // Sync material properties
+      const mat = sprite.spriteMesh.material as THREE.MeshBasicMaterial;
+      mat.color.copy(sprite.color);
+      mat.opacity = sprite.opacity;
+      mat.needsUpdate = true;
+
+      // Flip
+      sprite.spriteMesh.scale.set(
+        sprite.flipX ? -1 : 1,
+        sprite.flipY ? -1 : 1,
+        1
+      );
+
+      sprite.spriteMesh.renderOrder = sprite.sortingLayer * 1000 + sprite.sortingOrder;
+
+      const currentMesh = this.trackedMesh.get(entity);
+      if (!this.tracked.has(entity)) {
+        this.renderer.addObject(entity, sprite.spriteMesh);
+        this.tracked.add(entity);
+        this.trackedMesh.set(entity, sprite.spriteMesh);
+      } else if (currentMesh !== sprite.spriteMesh) {
+        this.renderer.removeObject(entity);
+        this.renderer.addObject(entity, sprite.spriteMesh);
+        this.trackedMesh.set(entity, sprite.spriteMesh);
+      }
+    }
+
+    for (const entity of this.tracked) {
+      if (!entities.has(entity)) {
+        this.renderer.removeObject(entity);
+        this.tracked.delete(entity);
+        this.trackedMesh.delete(entity);
+      }
+    }
+  }
+
+  private async loadSpriteTexture(entity: EntityId, sprite: SpriteComponent): Promise<void> {
+    try {
+      const { projectManager } = await import('../project/ProjectManager');
+      const absPath = projectManager.resolvePath(sprite.texturePath!);
+      const texUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+      const assets = this.renderer.engine.getSubsystem('assets') as any;
+      if (!assets) return;
+      const texture = await assets.loadTexture(texUrl);
+      sprite.spriteTexture = texture;
+
+      // Calculate aspect ratio from texture
+      if (sprite.spriteMesh) {
+        const mat = sprite.spriteMesh.material as THREE.MeshBasicMaterial;
+        mat.map = texture;
+        mat.needsUpdate = true;
+
+        // Scale quad to match image aspect ratio
+        const img = texture.image;
+        if (img && img.width && img.height) {
+          const w = img.width / sprite.pixelsPerUnit;
+          const h = img.height / sprite.pixelsPerUnit;
+          sprite.spriteMesh.geometry.dispose();
+          sprite.spriteMesh.geometry = new THREE.PlaneGeometry(w, h);
+        }
+      }
+    } catch (err) {
+      console.error(`[SpriteRendererSystem] Failed to load texture for entity ${entity}:`, err);
+    } finally {
+      this.loadingTextures.delete(entity);
+    }
+  }
+}
+
+class TextRendererSystem implements System {
+  readonly name = 'TextRenderer';
+  readonly requiredComponents = ['Transform', 'TextRenderer'];
+  priority = 2;
+  enabled = true;
+  private tracked: Set<EntityId> = new Set();
+  private trackedMesh: Map<EntityId, THREE.Mesh> = new Map();
+  private fontCache: Map<string, FontFace> = new Map();
+  private loadingFonts: Set<string> = new Set();
+
+  constructor(private renderer: FluxionRenderer) {}
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    for (const entity of entities) {
+      const textComp = ecs.getComponent<TextRendererComponent>(entity, 'TextRenderer');
+      if (!textComp || !textComp.enabled) continue;
+
+      // Build cache key to detect changes
+      const cacheKey = `${textComp.text}|${textComp.fontPath}|${textComp.fontSize}|${textComp.color.getHex()}|${textComp.opacity}|${textComp.alignment}|${textComp.maxWidth}|${textComp.billboard}`;
+
+      if (cacheKey !== textComp._cacheKey) {
+        textComp._cacheKey = cacheKey;
+        this.rebuildTextMesh(entity, textComp);
+      }
+
+      // Load font if not cached
+      if (textComp.fontPath && !this.fontCache.has(textComp.fontPath) && !this.loadingFonts.has(textComp.fontPath)) {
+        this.loadFont(textComp.fontPath);
+      }
+
+      // Billboard: always face camera
+      if (textComp.billboard && textComp.textMesh) {
+        const cam = this.renderer.getActiveCamera();
+        if (cam) {
+          textComp.textMesh.quaternion.copy(cam.quaternion);
+        }
+      }
+
+      if (!textComp.textMesh) continue;
+
+      const currentMesh = this.trackedMesh.get(entity);
+      if (!this.tracked.has(entity)) {
+        this.renderer.addObject(entity, textComp.textMesh);
+        this.tracked.add(entity);
+        this.trackedMesh.set(entity, textComp.textMesh);
+      } else if (currentMesh !== textComp.textMesh) {
+        this.renderer.removeObject(entity);
+        this.renderer.addObject(entity, textComp.textMesh);
+        this.trackedMesh.set(entity, textComp.textMesh);
+      }
+    }
+
+    for (const entity of this.tracked) {
+      if (!entities.has(entity)) {
+        this.renderer.removeObject(entity);
+        this.tracked.delete(entity);
+        this.trackedMesh.delete(entity);
+      }
+    }
+  }
+
+  private rebuildTextMesh(entity: EntityId, textComp: TextRendererComponent): void {
+    // Dispose old texture
+    if (textComp.textTexture) {
+      textComp.textTexture.dispose();
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+
+    // Determine font family
+    const fontFamily = textComp.fontPath
+      ? (this.fontCache.has(textComp.fontPath) ? `FluxFont_${this.sanitizeFontName(textComp.fontPath)}` : 'sans-serif')
+      : 'sans-serif';
+
+    const pixelFontSize = Math.max(16, Math.round(textComp.fontSize * 128));
+    ctx.font = `${pixelFontSize}px ${fontFamily}`;
+
+    // Word wrap if maxWidth > 0
+    const lines = this.wrapText(ctx, textComp.text, textComp.maxWidth > 0 ? textComp.maxWidth * 128 : Infinity);
+    const lineHeight = pixelFontSize * 1.2;
+
+    // Measure text dimensions
+    let maxLineWidth = 0;
+    for (const line of lines) {
+      const m = ctx.measureText(line);
+      if (m.width > maxLineWidth) maxLineWidth = m.width;
+    }
+
+    const padding = pixelFontSize * 0.2;
+    const canvasW = Math.ceil(maxLineWidth + padding * 2);
+    const canvasH = Math.ceil(lines.length * lineHeight + padding * 2);
+
+    if (canvasW <= 0 || canvasH <= 0) return;
+
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+
+    // Re-set font after canvas resize (reset clears state)
+    ctx.font = `${pixelFontSize}px ${fontFamily}`;
+    ctx.fillStyle = `rgba(${Math.round(textComp.color.r * 255)},${Math.round(textComp.color.g * 255)},${Math.round(textComp.color.b * 255)},${textComp.opacity})`;
+    ctx.textBaseline = 'top';
+
+    // Alignment
+    let textAlign: CanvasTextAlign = 'center';
+    if (textComp.alignment === 'left') textAlign = 'left';
+    else if (textComp.alignment === 'right') textAlign = 'right';
+    ctx.textAlign = textAlign;
+
+    const xPos = textAlign === 'left' ? padding
+      : textAlign === 'right' ? canvasW - padding
+      : canvasW / 2;
+
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], xPos, padding + i * lineHeight);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    textComp.textTexture = texture;
+
+    // World-space dimensions: 1 fontSize unit = 1 world unit height for a single line
+    const worldH = textComp.fontSize * lines.length * 1.2;
+    const worldW = worldH * (canvasW / canvasH);
+
+    const geom = new THREE.PlaneGeometry(worldW, worldH);
+    const mat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    // Dispose old mesh geometry/material
+    if (textComp.textMesh) {
+      textComp.textMesh.geometry.dispose();
+      (textComp.textMesh.material as THREE.Material).dispose();
+    }
+
+    textComp.textMesh = new THREE.Mesh(geom, mat);
+  }
+
+  private wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+    if (!isFinite(maxWidth) || maxWidth <= 0) return text.split('\n');
+    const result: string[] = [];
+    for (const paragraph of text.split('\n')) {
+      const words = paragraph.split(' ');
+      let line = '';
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          result.push(line);
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      result.push(line);
+    }
+    return result;
+  }
+
+  private async loadFont(fontPath: string): Promise<void> {
+    this.loadingFonts.add(fontPath);
+    try {
+      const { projectManager } = await import('../project/ProjectManager');
+      const absPath = projectManager.resolvePath(fontPath);
+      const fontUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+      const familyName = `FluxFont_${this.sanitizeFontName(fontPath)}`;
+      const face = new FontFace(familyName, `url(${fontUrl})`);
+      await face.load();
+      document.fonts.add(face);
+      this.fontCache.set(fontPath, face);
+
+      // Force rebuild of all text using this font (invalidate cache keys)
+      const ecs = this.renderer.engine.ecs;
+      const textComps = ecs.getComponentsOfType<TextRendererComponent>('TextRenderer');
+      for (const [, tc] of textComps) {
+        if (tc.fontPath === fontPath) {
+          tc._cacheKey = '';
+        }
+      }
+    } catch (err) {
+      console.error(`[TextRendererSystem] Failed to load font "${fontPath}":`, err);
+    } finally {
+      this.loadingFonts.delete(fontPath);
+    }
+  }
+
+  private sanitizeFontName(path: string): string {
+    return path.replace(/[^a-zA-Z0-9]/g, '_');
   }
 }
 

@@ -340,6 +340,17 @@ AssetTypeRegistry.register({
 });
 
 AssetTypeRegistry.register({
+  type: 'font',
+  displayName: 'Font',
+  icon: 'text',
+  extensions: ['.ttf', '.otf', '.woff', '.woff2'],
+  category: 'Fonts',
+  color: '#ce93d8',
+  canImport: true,
+  importFilters: [{ name: 'Font Files', extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
+});
+
+AssetTypeRegistry.register({
   type: 'scene',
   displayName: 'Scene',
   icon: 'scene',

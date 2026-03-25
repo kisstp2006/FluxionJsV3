@@ -59,6 +59,8 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   if (ecs.hasComponent(entity, 'Camera')) { icon = Icons.camera; iconColor = 'var(--accent)'; }
   if (ecs.hasComponent(entity, 'Rigidbody')) { icon = Icons.physics; iconColor = 'var(--accent-red)'; }
   if (ecs.hasComponent(entity, 'ParticleEmitter')) { icon = Icons.particle; iconColor = 'var(--accent-yellow)'; }
+  if (ecs.hasComponent(entity, 'TextRenderer')) { icon = '𝐓'; iconColor = 'var(--accent)'; }
+  if (ecs.hasComponent(entity, 'Sprite')) { icon = '🖼'; iconColor = 'var(--accent-purple)'; }
 
   const children = [...ecs.getChildren(entity)];
 
@@ -211,6 +213,8 @@ const AddEntityMenu: React.FC<AddEntityMenuProps> = ({ position, onClose, onAdd 
       items: [
         { type: 'camera', label: 'Camera', icon: Icons.camera },
         { type: 'particle', label: 'Particle System', icon: Icons.particle },
+        { type: 'text3d', label: '3D Text', icon: '𝐓' },
+        { type: 'sprite', label: 'Sprite', icon: '🖼' },
       ],
     },
     {
@@ -373,6 +377,12 @@ export const HierarchyPanel: React.FC = () => {
         engine.engine.ecs.addComponent(entity, pe);
         break;
       }
+      case 'text3d':
+        entity = scene.createText('3D Text');
+        break;
+      case 'sprite':
+        entity = scene.createSprite('Sprite');
+        break;
       // Physics
       case 'physics_box': {
         const mat = materials.createPBR({ name: 'physics_box', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });

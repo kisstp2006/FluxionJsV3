@@ -937,9 +937,19 @@ export class PostProcessingPipeline {
     this._time += dt ?? 0.016;
 
     // 1. Render scene to texture (with depth)
+    //    Disable Three.js tone mapping + color space so sceneRT stays LINEAR HDR.
+    //    Tone mapping is applied once in the composite shader.
+    const savedToneMapping = this.renderer.toneMapping;
+    const savedOutputColorSpace = this.renderer.outputColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+
     this.renderer.setRenderTarget(this.sceneRT);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+
+    this.renderer.toneMapping = savedToneMapping;
+    this.renderer.outputColorSpace = savedOutputColorSpace;
 
     // Update shared camera uniforms
     this.updateCameraUniforms();
@@ -1029,10 +1039,13 @@ export class PostProcessingPipeline {
   /** Render an overlay scene directly to screen (no post-processing). Clears depth only. */
   renderOverlay(overlayScene: THREE.Scene, camera: THREE.Camera): void {
     const prevAutoClear = this.renderer.autoClear;
+    const prevToneMapping = this.renderer.toneMapping;
     this.renderer.autoClear = false;
+    this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setRenderTarget(null);
     this.renderer.clearDepth();
     this.renderer.render(overlayScene, camera);
+    this.renderer.toneMapping = prevToneMapping;
     this.renderer.autoClear = prevAutoClear;
   }
 

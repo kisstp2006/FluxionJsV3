@@ -1,4 +1,4 @@
-# FluxionJS V2
+# FluxionJS V3
 
 **High-performance 2D/3D TypeScript game engine with Electron editor**  
 Inspired by [Nuake](https://github.com/antopilo/Nuake), [LumixEngine](https://github.com/nem0/LumixEngine) & [s&box](https://sbox.game/)

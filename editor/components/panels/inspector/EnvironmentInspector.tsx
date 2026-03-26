@@ -234,14 +234,23 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
             <PropertyRow label="Max Distance">
               <Slider value={env.ssrMaxDistance} min={1} max={200} step={1} onChange={(v) => { setProperty(undoManager, env, 'ssrMaxDistance', v); update(); }} />
             </PropertyRow>
+            <PropertyRow label="Resolution Scale">
+              <Slider value={env.ssrResolutionScale} min={0.1} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrResolutionScale', v); update(); }} />
+            </PropertyRow>
             <PropertyRow label="Thickness">
               <Slider value={env.ssrThickness} min={0.01} max={5} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'ssrThickness', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Infinite Thick">
+              <Checkbox checked={env.ssrInfiniteThick} onChange={(v) => { setProperty(undoManager, env, 'ssrInfiniteThick', v); update(); }} />
             </PropertyRow>
             <PropertyRow label="Stride">
               <Slider value={env.ssrStride} min={0.05} max={2} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrStride', v); update(); }} />
             </PropertyRow>
             <PropertyRow label="Fresnel">
               <Slider value={env.ssrFresnel} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrFresnel', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Distance Attenuation">
+              <Checkbox checked={env.ssrDistanceAttenuation} onChange={(v) => { setProperty(undoManager, env, 'ssrDistanceAttenuation', v); update(); }} />
             </PropertyRow>
             <PropertyRow label="Opacity">
               <Slider value={env.ssrOpacity} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'ssrOpacity', v); update(); }} />

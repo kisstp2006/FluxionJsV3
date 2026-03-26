@@ -278,6 +278,7 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           endColor: [particle.endColor.r, particle.endColor.g, particle.endColor.b],
           gravity: particle.gravity, spread: particle.spread,
           worldSpace: particle.worldSpace, texture: particle.texture,
+          softParticles: particle.softParticles, softDistance: particle.softDistance,
         },
       });
     }
@@ -674,10 +675,12 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           if (d.size) p.size.set(d.size[0], d.size[1]);
           if (d.startColor) p.startColor = new THREE.Color(d.startColor[0], d.startColor[1], d.startColor[2]);
           if (d.endColor) p.endColor = new THREE.Color(d.endColor[0], d.endColor[1], d.endColor[2]);
-          p.gravity = d.gravity ?? -9.81;
-          p.spread = d.spread ?? 0.5;
+          p.gravity = d.gravity ?? -2;
+          p.spread = d.spread ?? 0.3;
           p.worldSpace = d.worldSpace ?? true;
           p.texture = d.texture ?? null;
+          p.softParticles = d.softParticles ?? false;
+          p.softDistance = d.softDistance ?? 1.0;
           engine.ecs.addComponent(entityId, p);
           break;
         }
@@ -1212,7 +1215,7 @@ function _serializeEntityComponents(entityId: EntityId, engine: Engine): Seriali
   if (script) components.push({ type: 'Script', data: { scriptName: script.scriptName, properties: script.properties } });
 
   const particle = engine.ecs.getComponent<ParticleEmitterComponent>(entityId, 'ParticleEmitter');
-  if (particle) components.push({ type: 'ParticleEmitter', data: { maxParticles: particle.maxParticles, emissionRate: particle.emissionRate, lifetime: [particle.lifetime.x, particle.lifetime.y], speed: [particle.speed.x, particle.speed.y], size: [particle.size.x, particle.size.y], startColor: [particle.startColor.r, particle.startColor.g, particle.startColor.b], endColor: [particle.endColor.r, particle.endColor.g, particle.endColor.b], gravity: particle.gravity, spread: particle.spread, worldSpace: particle.worldSpace, texture: particle.texture } });
+  if (particle) components.push({ type: 'ParticleEmitter', data: { maxParticles: particle.maxParticles, emissionRate: particle.emissionRate, lifetime: [particle.lifetime.x, particle.lifetime.y], speed: [particle.speed.x, particle.speed.y], size: [particle.size.x, particle.size.y], startColor: [particle.startColor.r, particle.startColor.g, particle.startColor.b], endColor: [particle.endColor.r, particle.endColor.g, particle.endColor.b], gravity: particle.gravity, spread: particle.spread, worldSpace: particle.worldSpace, texture: particle.texture, softParticles: particle.softParticles, softDistance: particle.softDistance } });
 
   const audio = engine.ecs.getComponent<AudioSourceComponent>(entityId, 'AudioSource');
   if (audio) components.push({ type: 'AudioSource', data: { clip: audio.clip, volume: audio.volume, pitch: audio.pitch, loop: audio.loop, playOnStart: audio.playOnStart, spatial: audio.spatial, minDistance: audio.minDistance, maxDistance: audio.maxDistance } });
@@ -1363,7 +1366,8 @@ export function restoreEntitySubtree(
           p.maxParticles = d.maxParticles ?? 1000; p.emissionRate = d.emissionRate ?? 100;
           if (d.lifetime) p.lifetime.set(d.lifetime[0], d.lifetime[1]); if (d.speed) p.speed.set(d.speed[0], d.speed[1]); if (d.size) p.size.set(d.size[0], d.size[1]);
           if (d.startColor) p.startColor = new THREE.Color(d.startColor[0], d.startColor[1], d.startColor[2]); if (d.endColor) p.endColor = new THREE.Color(d.endColor[0], d.endColor[1], d.endColor[2]);
-          p.gravity = d.gravity ?? -9.81; p.spread = d.spread ?? 0.5; p.worldSpace = d.worldSpace ?? true; p.texture = d.texture ?? null;
+          p.gravity = d.gravity ?? -2; p.spread = d.spread ?? 0.3; p.worldSpace = d.worldSpace ?? true; p.texture = d.texture ?? null;
+          p.softParticles = d.softParticles ?? false; p.softDistance = d.softDistance ?? 1.0;
           engine.ecs.addComponent(entityId, p); break;
         }
         case 'AudioSource': {

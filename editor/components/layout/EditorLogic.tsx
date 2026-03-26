@@ -30,8 +30,13 @@ export const KeyboardHandler: React.FC = () => {
         switch (e.code) {
           case 'KeyZ':
             e.preventDefault();
-            const undone = undoManager.undo();
-            if (undone) log(`Undo: ${undone.label}`, 'info');
+            if (e.shiftKey) {
+              const redoneZ = undoManager.redo();
+              if (redoneZ) log(`Redo: ${redoneZ.label}`, 'info');
+            } else {
+              const undone = undoManager.undo();
+              if (undone) log(`Undo: ${undone.label}`, 'info');
+            }
             return;
           case 'KeyY':
             e.preventDefault();
@@ -202,8 +207,7 @@ export const TransformSync: React.FC = () => {
             scale: transform.scale.clone(),
           }
         );
-        (undoManager as any).undoStack.push(cmd);
-        (undoManager as any).redoStack.length = 0;
+        undoManager.pushExternal(cmd);
       }
       dragStartRef.current = null;
     };

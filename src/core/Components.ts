@@ -183,12 +183,18 @@ export class ParticleEmitterComponent implements Component {
   lifetime = new THREE.Vector2(1, 3);
   speed = new THREE.Vector2(1, 5);
   size = new THREE.Vector2(0.1, 0.5);
-  startColor = new THREE.Color(1, 1, 1);
-  endColor = new THREE.Color(1, 1, 1);
-  gravity = -9.81;
-  spread = 0.5;
+  startColor = new THREE.Color(1, 0.5, 0.1);
+  endColor = new THREE.Color(1, 0.1, 0);
+  gravity = -2;
+  spread = 0.3;
   worldSpace = true;
   texture: string | null = null;
+
+  // Soft particles: requires a separate opaque-depth pre-pass to avoid
+  // framebuffer feedback loop — disabled by default until the pipeline
+  // provides a pre-captured depth texture.
+  softParticles = false;
+  softDistance = 1.0;
 
   particleSystem: any = null;
 }

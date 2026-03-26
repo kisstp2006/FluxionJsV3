@@ -442,7 +442,13 @@ const SSAO_BLUR_FRAG = `
   }
 `;
 
-// ── SSR Shader — Screen-Space Reflections via ray marching on depth buffer ──
+// ── SSR Shader — Screen-Space Reflections via DDA screen-space ray march ──
+// Based on Three.js SSRPass + WickedEngine conventions:
+//  - Ray endpoints projected to screen-space pixel coords (DDA march)
+//  - Perspective-correct depth interpolation: 1/(1/z0 + t*(1/z1-1/z0))
+//  - Hit condition: rayZ <= sceneZ (ray passed behind surface — both negative in Three.js view space)
+//  - Jitter on first step to break up banding
+//  - Back-face rejection to avoid inside-geometry artifacts
 const SSR_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tDepth;
@@ -461,106 +467,141 @@ const SSR_FRAG = `
   uniform float cameraFar;
   varying vec2 vUv;
 
+  // Reconstruct full view-space position from UV + depth buffer.
   vec3 getViewPos(vec2 uv) {
     float d = texture2D(tDepth, uv).r;
     vec4 clipPos = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
-    vec4 viewPos = invProjMatrix * clipPos;
-    return viewPos.xyz / viewPos.w;
+    vec4 vp = invProjMatrix * clipPos;
+    return vp.xyz / vp.w;
   }
 
+  // Reconstruct only the view-space Z (cheaper than full getViewPos).
+  // Works because for a standard perspective matrix invProj*[0,0,z_ndc,1]
+  // has X=Y=0 and Z/W equals the original view-space Z.
+  float getViewZ(vec2 uv) {
+    float d = texture2D(tDepth, uv).r;
+    vec4 c = vec4(0.0, 0.0, d * 2.0 - 1.0, 1.0);
+    vec4 v = invProjMatrix * c;
+    return v.z / v.w;
+  }
+
+  // Surface normal reconstructed from depth-buffer gradients (tDepth is always full-res).
   vec3 getNormal(vec2 uv) {
-    // tDepth is full-res even when this pass renders half-res.
     vec2 texel = 1.0 / depthResolution;
-    vec3 c = getViewPos(uv);
-    vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
-    vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
-    vec3 d = getViewPos(uv - vec2(0.0, texel.y));
-    vec3 u = getViewPos(uv + vec2(0.0, texel.y));
-    vec3 dr = r - c;
-    vec3 dl = c - l;
-    vec3 du = u - c;
-    vec3 dd = c - d;
+    vec3 c  = getViewPos(uv);
+    vec3 l  = getViewPos(uv - vec2(texel.x, 0.0));
+    vec3 r  = getViewPos(uv + vec2(texel.x, 0.0));
+    vec3 dv = getViewPos(uv - vec2(0.0, texel.y));
+    vec3 u  = getViewPos(uv + vec2(0.0, texel.y));
+    vec3 dr = r - c;  vec3 dl = c - l;
+    vec3 du = u - c;  vec3 dd = c - dv;
     vec3 dx = abs(dr.z) < abs(dl.z) ? dr : dl;
     vec3 dy = abs(du.z) < abs(dd.z) ? du : dd;
     return normalize(cross(dx, dy));
   }
 
-  vec2 viewToScreen(vec3 viewPos) {
-    vec4 clip = projMatrix * vec4(viewPos, 1.0);
-    vec2 ndc = clip.xy / clip.w;
-    return ndc * 0.5 + 0.5;
+  // Project a view-space point to normalised UV [0,1].
+  vec2 viewToScreen(vec3 vp) {
+    vec4 clip = projMatrix * vec4(vp, 1.0);
+    return clip.xy / clip.w * 0.5 + 0.5;
   }
 
   void main() {
     float depth = texture2D(tDepth, vUv).r;
     if (depth >= 1.0) { gl_FragColor = vec4(0.0); return; }
 
-    vec3 viewPos = getViewPos(vUv);
-    vec3 normal = getNormal(vUv);
-    // View direction from surface point to camera (camera is at origin in view space)
-    vec3 viewDir = normalize(-viewPos);
+    vec3 viewPos    = getViewPos(vUv);
+    vec3 normal     = getNormal(vUv);
+    vec3 viewDir    = normalize(-viewPos);   // surface → camera
+
+    // Reject back-faces and inside-geometry (normal faces away from camera).
+    if (dot(normal, viewDir) < 0.001) { gl_FragColor = vec4(0.0); return; }
+
     vec3 reflectDir = normalize(reflect(-viewDir, normal));
 
-    // Fresnel (Schlick approximation)
-    float NdotV = clamp(dot(normal, viewDir), 0.0, 1.0);
+    // Fresnel (Schlick approximation).
+    float NdotV       = clamp(dot(normal, viewDir), 0.0, 1.0);
     float fresnelFactor = pow(1.0 - NdotV, 5.0) * fresnel + (1.0 - fresnel);
 
-    // Ray march in view space
-    float thick = mix(thickness, 1e6, step(0.5, infiniteThick));
-    float stepSize = max(stride, maxDistance / 64.0);
+    // Ray end-point — clamp Z so the ray never crosses the camera plane.
+    vec3 rayEnd  = viewPos + reflectDir * maxDistance;
+    rayEnd.z     = min(rayEnd.z, -cameraNear * 0.5);
 
-    // Bias ray start to avoid immediate self-intersection on the same surface
-    float startBias = max(0.01, thickness * 0.5);
-    vec3 rayPos = viewPos + normal * startBias;
-    vec3 hitColor = vec3(0.0);
+    // Project start and end to screen-space pixel coordinates.
+    vec2 ssStart = viewToScreen(viewPos) * resolution;
+    vec2 ssEnd   = viewToScreen(rayEnd)  * resolution;
+
+    vec2  delta    = ssEnd - ssStart;
+    float totalLen = max(abs(delta.x), abs(delta.y));   // Chebyshev pixel distance
+    if (totalLen < 1.0) { gl_FragColor = vec4(0.0); return; }
+
+    // stride uniform: pixels to advance per iteration (1 = full quality).
+    float pixelStride = max(1.0, ceil(stride));
+    float stepCount   = min(totalLen / pixelStride, 128.0);
+    vec2  stepXY      = delta / totalLen * pixelStride; // per-step pixel increment (DDA)
+
+    // Perspective-correct depth interpolation coefficients.
+    float recipStartZ = 1.0 / viewPos.z;
+    float recipEndZ   = 1.0 / rayEnd.z;
+
+    // Dither starting step to break up banding artifacts.
+    float noise = fract(sin(dot(vUv * 1000.0, vec2(12.9898, 78.233))) * 43758.5453);
+
+    float thick = mix(thickness, 1e6, step(0.5, infiniteThick));
+
+    vec3  hitColor   = vec3(0.0);
     float confidence = 0.0;
 
-    const int MAX_STEPS = 64;
-    for (int i = 0; i < MAX_STEPS; i++) {
-      rayPos += reflectDir * stepSize;
+    for (float i = 1.0; i <= 128.0; i++) {
+      if (i > stepCount) break;
 
-      // Adaptive step size — grows with distance
-      stepSize *= 1.05;
+      float fi   = i + noise;                  // jittered step index
+      vec2  xy   = ssStart + stepXY * fi;      // screen-space pixel position
 
-      // Check if we've gone too far
-      float traveled = length(rayPos - viewPos);
-      if (traveled > maxDistance) break;
+      if (xy.x < 0.0 || xy.x >= resolution.x ||
+          xy.y < 0.0 || xy.y >= resolution.y) break;
 
-      vec2 screenUV = viewToScreen(rayPos);
+      // Parametric t along the ray [0,1].
+      float s    = (fi * pixelStride) / totalLen;
+      // Perspective-correct view-space Z of the reflected ray at this step.
+      float rayZ = 1.0 / (recipStartZ + s * (recipEndZ - recipStartZ));
 
-      // Out of bounds
-      if (screenUV.x < 0.0 || screenUV.x > 1.0 || screenUV.y < 0.0 || screenUV.y > 1.0) break;
+      vec2  uv     = xy / resolution;
+      float sceneZ = getViewZ(uv);
 
-      // Compare depth
-      vec3 sampleViewPos = getViewPos(screenUV);
-      float depthDiff = rayPos.z - sampleViewPos.z;
+      // Hit: ray has just passed behind the scene surface.
+      // Both rayZ and sceneZ are negative; rayZ <= sceneZ means ray is further (deeper).
+      float diff = rayZ - sceneZ;
+      if (diff <= 0.0 && diff > -thick) {
 
-      if (depthDiff > 0.0 && depthDiff < thick) {
-        // Hit! — Binary refinement (4 steps)
-        vec3 lo = rayPos - reflectDir * stepSize;
-        vec3 hi = rayPos;
-        for (int j = 0; j < 4; j++) {
-          vec3 mid = (lo + hi) * 0.5;
-          vec2 midUV = viewToScreen(mid);
-          vec3 midSample = getViewPos(midUV);
-          if (mid.z - midSample.z > 0.0) {
-            hi = mid;
+        // Binary refinement over parametric s (8 iterations).
+        float sStep = pixelStride / totalLen;
+        float sLo   = max(0.0, s - sStep);
+        float sHi   = s;
+
+        for (int j = 0; j < 8; j++) {
+          float sMid      = (sLo + sHi) * 0.5;
+          float rayZMid   = 1.0 / (recipStartZ + sMid * (recipEndZ - recipStartZ));
+          vec2  uvMid     = clamp((ssStart + delta * sMid) / resolution, vec2(0.001), vec2(0.999));
+          float sceneZMid = getViewZ(uvMid);
+          if (rayZMid > sceneZMid) {
+            sLo = sMid;   // mid still in front of surface
           } else {
-            lo = mid;
+            sHi = sMid;   // mid behind surface — tighten upper bound
           }
         }
-        vec2 hitUV = viewToScreen(hi);
-        hitColor = texture2D(tScene, hitUV).rgb;
 
-        // Edge fade — SSR has no data outside the screen, so fade out near edges.
-        // Use both hitUV (where we sample) and vUv (where we display) for stability.
-        vec2 hitEdgeFade = smoothstep(vec2(0.0), vec2(0.10), hitUV) * (1.0 - smoothstep(vec2(0.90), vec2(1.0), hitUV));
-        vec2 srcEdgeFade = smoothstep(vec2(0.0), vec2(0.10), vUv) * (1.0 - smoothstep(vec2(0.90), vec2(1.0), vUv));
-        float edge = (hitEdgeFade.x * hitEdgeFade.y) * (srcEdgeFade.x * srcEdgeFade.y);
+        vec2 uvHit = clamp((ssStart + delta * sHi) / resolution, vec2(0.001), vec2(0.999));
+        hitColor = texture2D(tScene, uvHit).rgb;
 
-        // Distance fade
-        float distFade = 1.0 - clamp(traveled / maxDistance, 0.0, 1.0);
-        float distAtten = mix(1.0, distFade, step(0.5, distanceAttenuation));
+        // Edge fade — no SSR data outside screen boundaries.
+        vec2 hitEdge = smoothstep(vec2(0.0), vec2(0.10), uvHit) * (1.0 - smoothstep(vec2(0.90), vec2(1.0), uvHit));
+        vec2 srcEdge = smoothstep(vec2(0.0), vec2(0.10), vUv)   * (1.0 - smoothstep(vec2(0.90), vec2(1.0), vUv));
+        float edge = (hitEdge.x * hitEdge.y) * (srcEdge.x * srcEdge.y);
+
+        // Distance fade (quadratic falloff).
+        float ratio     = 1.0 - clamp(sHi, 0.0, 1.0);
+        float distAtten = mix(1.0, ratio * ratio, step(0.5, distanceAttenuation));
 
         confidence = fresnelFactor * edge * distAtten * opacity;
         break;

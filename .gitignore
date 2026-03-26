@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.js.map
 .cache/
+.claude/settings.local.json

@@ -105,6 +105,8 @@ export class CSGSystem implements System {
   private resultMesh: THREE.Mesh | null = null;
   private needsRebuild = false;
   private defaultMaterial = createDefaultBrushMaterial();
+  /** The material path that was last applied (or is being loaded). */
+  private currentMaterialPath: string | null = null;
 
   constructor(renderer: any) {
     this.renderer = renderer;
@@ -211,6 +213,58 @@ export class CSGSystem implements System {
     const first = additive[0].entry.brush;
     this.resultMesh.castShadow = first.castShadow;
     this.resultMesh.receiveShadow = first.receiveShadow;
+
+    // Load material from first additive brush's materialPath
+    const matPath = first.materialPath ?? null;
+    if (matPath !== this.currentMaterialPath) {
+      this.currentMaterialPath = matPath;
+      if (matPath) {
+        void this.loadAndApplyMaterial(matPath);
+      } else {
+        this.resultMesh.material = this.defaultMaterial;
+      }
+    }
+  }
+
+  private async loadAndApplyMaterial(path: string): Promise<void> {
+    try {
+      const { projectManager } = await import('../project/ProjectManager');
+      let absPath: string;
+      try { absPath = projectManager.resolvePath(path); } catch { absPath = path; }
+
+      const engine = this.renderer.engine;
+      const assets = engine.getSubsystem('assets');
+      const materials = engine.getSubsystem('materials');
+      if (!assets || !materials) return;
+
+      const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
+      const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
+        const texAbs = /^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')
+          ? relPath : `${matDir}/${relPath}`;
+        const url = texAbs.startsWith('file://') ? texAbs : `file:///${texAbs.replace(/\\/g, '/')}`;
+        return assets.loadTexture(url);
+      };
+
+      let mat: THREE.Material;
+      if (path.endsWith('.fluxvismat')) {
+        const visData = await assets.loadAsset(absPath, 'visual_material');
+        if (!visData) return;
+        mat = await materials.createFromVisualMat(visData, loadTexture, path);
+      } else {
+        const matData = await assets.loadAsset(absPath, 'material');
+        if (!matData) return;
+        mat = await materials.createFromFluxMat(matData, loadTexture, path);
+      }
+
+      // Only apply if the path hasn't been replaced while loading
+      if (this.currentMaterialPath === path && this.resultMesh) {
+        this.resultMesh.material = mat;
+      } else {
+        mat.dispose();
+      }
+    } catch (err) {
+      console.warn('[CSGSystem] Failed to load material:', path, err);
+    }
   }
 
   private removeResultMesh(): void {
@@ -242,6 +296,7 @@ export class CSGSystem implements System {
     this.removeResultMesh();
     this.tracked.clear();
     this.needsRebuild = false;
+    this.currentMaterialPath = null;
   }
 
   destroy(): void {

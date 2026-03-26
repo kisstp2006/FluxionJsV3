@@ -13,7 +13,8 @@ import * as THREE from 'three';
 import { AssetTypeRegistry, AssetTypeDefinition } from '../../src/assets/AssetTypeRegistry';
 import { AssetManager } from '../../src/assets/AssetManager';
 import { FluxMatData } from '../../src/renderer/MaterialSystem';
-import { MeshRendererComponent, AudioSourceComponent, TransformComponent } from '../../src/core/Components';
+import { MeshRendererComponent, AudioSourceComponent, TransformComponent, CSGBrushComponent } from '../../src/core/Components';
+import type { CSGSystem } from '../../src/csg/CSGSystem';
 import type { EngineSubsystems } from './EditorEngine';
 import type { EntityId } from '../../src/core/ECS';
 
@@ -208,7 +209,21 @@ ViewportDropService.register('material', async (ctx) => {
     hit.entityUnderCursor,
     'MeshRenderer',
   );
-  if (!mr || !mr.mesh) {
+
+  // ── CSGBrush fallback ──
+  if (!mr) {
+    const brush = engine.engine.ecs.getComponent<CSGBrushComponent>(
+      hit.entityUnderCursor,
+      'CSGBrush',
+    );
+    if (brush) {
+      return applyMaterialToCsg(assetPath, brush, engine, log);
+    }
+    log('Target entity has no mesh to apply material to', 'warn');
+    return null;
+  }
+
+  if (!mr.mesh) {
     log('Target entity has no mesh to apply material to', 'warn');
     return null;
   }
@@ -232,12 +247,8 @@ ViewportDropService.register('material', async (ctx) => {
     const isFluxMesh = mr.modelPath?.endsWith('.fluxmesh') ?? false;
 
     if (isFluxMesh && mr.modelPath) {
-      // For FluxMesh models, find which slot (if any) the hit sub-mesh belongs to
-      // and apply as an override to that specific slot.
-      // If we can't determine the slot, apply to all slots.
       const slotIndex = findHitSlotIndex(mr.mesh, hit.hitObject);
       if (slotIndex >= 0) {
-        // Apply to specific slot
         const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
         const existingIdx = overrides.findIndex(o => o.slotIndex === slotIndex);
         if (existingIdx >= 0) {
@@ -246,17 +257,14 @@ ViewportDropService.register('material', async (ctx) => {
           overrides.push({ slotIndex, materialPath: assetPath });
         }
         mr.materialSlots = overrides;
-        // Apply the material to sub-meshes of this slot
         applyMaterialToSlotMeshes(mr.mesh, slotIndex, mat);
         log(`Applied material to slot ${slotIndex}: ${entityNameFromPath(assetPath)}`, 'info');
       } else {
-        // Apply to all meshes
         applyMaterialToAllMeshes(mr.mesh, mat);
         mr.materialPath = assetPath;
         log(`Applied material to all meshes: ${entityNameFromPath(assetPath)}`, 'info');
       }
     } else {
-      // Non-FluxMesh: apply to all meshes
       applyMaterialToAllMeshes(mr.mesh, mat);
       mr.materialPath = assetPath;
       log(`Applied material: ${entityNameFromPath(assetPath)}`, 'info');
@@ -268,6 +276,42 @@ ViewportDropService.register('material', async (ctx) => {
     return null;
   }
 });
+
+/** Apply a .fluxmat or .fluxvismat material to the CSG result mesh */
+async function applyMaterialToCsg(
+  assetPath: string,
+  brush: CSGBrushComponent,
+  engine: EngineSubsystems,
+  log: ViewportDropContext['log'],
+): Promise<ViewportDropResult | null> {
+  try {
+    const absPath = await resolveAssetPath(assetPath);
+    const assets = engine.assets;
+    const materials = engine.materials;
+    const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
+    const loadTexture = makeTextureLoader(assets, matDir);
+
+    let mat: THREE.Material;
+    if (assetPath.endsWith('.fluxvismat')) {
+      const visData = await assets.loadAsset(absPath, 'visual_material') as any;
+      if (!visData) { log('Failed to load visual material', 'error'); return null; }
+      mat = await materials.createFromVisualMat(visData, loadTexture, assetPath);
+    } else {
+      const matData = await assets.loadAsset(absPath, 'material') as FluxMatData | null;
+      if (!matData) { log('Failed to load material data', 'error'); return null; }
+      mat = await materials.createFromFluxMat(matData, loadTexture, assetPath);
+    }
+
+    brush.materialPath = assetPath;
+    const csg = engine.csgSystem;
+    csg.setResultMaterial(mat);
+    log(`Applied material to CSG: ${entityNameFromPath(assetPath)}`, 'info');
+    return { sceneModified: true };
+  } catch (err: any) {
+    log(`Failed to apply material to CSG: ${err.message}`, 'error');
+    return null;
+  }
+}
 
 /** Apply a material to all Mesh children of a scene graph */
 function applyMaterialToAllMeshes(root: THREE.Object3D, mat: THREE.Material): void {
@@ -332,7 +376,40 @@ ViewportDropService.register('texture', async (ctx) => {
     hit.entityUnderCursor,
     'MeshRenderer',
   );
-  if (!mr || !mr.mesh) {
+
+  // ── CSGBrush fallback ──
+  if (!mr) {
+    const brush = engine.engine.ecs.getComponent<CSGBrushComponent>(
+      hit.entityUnderCursor,
+      'CSGBrush',
+    );
+    if (brush) {
+      try {
+        const absPath = absolutePath || await resolveAssetPath(assetPath);
+        const texture = await engine.assets.loadTexture(toFileUrl(absPath));
+        texture.colorSpace = THREE.SRGBColorSpace;
+        const resultMesh = engine.csgSystem.getResultMesh();
+        if (resultMesh) {
+          const mat = resultMesh.material as THREE.Material;
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.map = texture;
+            mat.needsUpdate = true;
+          } else {
+            resultMesh.material = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5, metalness: 0 });
+          }
+        }
+        log(`Applied texture to CSG: ${entityNameFromPath(assetPath)}`, 'info');
+        return { sceneModified: true };
+      } catch (err: any) {
+        log(`Failed to apply texture to CSG: ${err.message}`, 'error');
+        return null;
+      }
+    }
+    log('Target entity has no mesh to apply texture to', 'warn');
+    return null;
+  }
+
+  if (!mr.mesh) {
     log('Target entity has no mesh to apply texture to', 'warn');
     return null;
   }
@@ -342,14 +419,12 @@ ViewportDropService.register('texture', async (ctx) => {
     const texture = await engine.assets.loadTexture(toFileUrl(absPath));
     texture.colorSpace = THREE.SRGBColorSpace;
 
-    // Find the material of the hit mesh (or first mesh in group)
     const targetMat = findMaterialAtHit(mr.mesh, hit.hitObject);
     if (targetMat instanceof THREE.MeshStandardMaterial) {
       targetMat.map = texture;
       targetMat.needsUpdate = true;
       log(`Applied texture as albedo: ${entityNameFromPath(assetPath)}`, 'info');
     } else {
-      // Create a new standard material with this texture
       const newMat = new THREE.MeshStandardMaterial({
         map: texture,
         roughness: 0.5,
@@ -443,6 +518,52 @@ ViewportDropService.register('scene', async (ctx) => {
     return { selectEntity: null, sceneModified: false };
   } catch (err: any) {
     log(`Failed to load scene: ${err.message}`, 'error');
+    return null;
+  }
+});
+
+// ── Visual material drop: apply .fluxvismat to entity under cursor ──
+
+ViewportDropService.register('visual_material', async (ctx) => {
+  const { assetPath, hit, engine, log } = ctx;
+
+  if (hit.entityUnderCursor === null) {
+    log('Drop a visual material onto a mesh to apply it', 'warn');
+    return null;
+  }
+
+  const mr = engine.engine.ecs.getComponent<MeshRendererComponent>(hit.entityUnderCursor, 'MeshRenderer');
+
+  // CSGBrush fallback
+  if (!mr) {
+    const brush = engine.engine.ecs.getComponent<CSGBrushComponent>(hit.entityUnderCursor, 'CSGBrush');
+    if (brush) return applyMaterialToCsg(assetPath, brush, engine, log);
+    log('Target entity has no mesh to apply visual material to', 'warn');
+    return null;
+  }
+
+  if (!mr.mesh) {
+    log('Target entity has no mesh to apply visual material to', 'warn');
+    return null;
+  }
+
+  try {
+    const absPath = await resolveAssetPath(assetPath);
+    const assets = engine.assets;
+    const materials = engine.materials;
+    const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
+    const loadTexture = makeTextureLoader(assets, matDir);
+
+    const visData = await assets.loadAsset(absPath, 'visual_material') as any;
+    if (!visData) { log('Failed to load visual material data', 'error'); return null; }
+
+    const mat = await materials.createFromVisualMat(visData, loadTexture, assetPath);
+    applyMaterialToAllMeshes(mr.mesh, mat);
+    mr.materialPath = assetPath;
+    log(`Applied visual material: ${entityNameFromPath(assetPath)}`, 'info');
+    return { selectEntity: hit.entityUnderCursor, sceneModified: true };
+  } catch (err: any) {
+    log(`Failed to apply visual material: ${err.message}`, 'error');
     return null;
   }
 });

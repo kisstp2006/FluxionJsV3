@@ -388,27 +388,27 @@ export class CSG {
       const sn0 = new Vec3(cos0, 0, sin0).normalize();
       const sn1 = new Vec3(cos1, 0, sin1).normalize();
 
-      // bottom cap
+      // bottom cap (CCW from below → normal points -Y)
       polys.push(new CSGPolygon([
         new CSGVertex(bc.clone(), nDown, new Vec2(0.5, 0.5)),
-        new CSGVertex(b1.clone(), nDown, new Vec2(0.5 + cos1 * 0.5, 0.5 + sin1 * 0.5)),
         new CSGVertex(b0.clone(), nDown, new Vec2(0.5 + cos0 * 0.5, 0.5 + sin0 * 0.5)),
+        new CSGVertex(b1.clone(), nDown, new Vec2(0.5 + cos1 * 0.5, 0.5 + sin1 * 0.5)),
       ]));
 
-      // top cap
+      // top cap (CCW from above → normal points +Y)
       polys.push(new CSGPolygon([
         new CSGVertex(tc.clone(), nUp, new Vec2(0.5, 0.5)),
-        new CSGVertex(t0.clone(), nUp, new Vec2(0.5 + cos0 * 0.5, 0.5 + sin0 * 0.5)),
         new CSGVertex(t1.clone(), nUp, new Vec2(0.5 + cos1 * 0.5, 0.5 + sin1 * 0.5)),
+        new CSGVertex(t0.clone(), nUp, new Vec2(0.5 + cos0 * 0.5, 0.5 + sin0 * 0.5)),
       ]));
 
-      // side quad (two triangles)
+      // side quad (CCW from outside → normal points outward)
       const u0 = i / slices, u1 = (i + 1) / slices;
       polys.push(new CSGPolygon([
-        new CSGVertex(b0.clone(), sn0.clone(), new Vec2(u0, 0)),
         new CSGVertex(b1.clone(), sn1.clone(), new Vec2(u1, 0)),
-        new CSGVertex(t1.clone(), sn1.clone(), new Vec2(u1, 1)),
+        new CSGVertex(b0.clone(), sn0.clone(), new Vec2(u0, 0)),
         new CSGVertex(t0.clone(), sn0.clone(), new Vec2(u0, 1)),
+        new CSGVertex(t1.clone(), sn1.clone(), new Vec2(u1, 1)),
       ]));
     }
 
@@ -475,11 +475,11 @@ export class CSG {
       ));
     };
 
-    face([p3, p2, p1, p0]); // bottom
-    face([p0, p1, p4, p5]); // back
-    face([p0, p5, p3]);     // left tri
-    face([p1, p2, p4]);     // right tri
-    face([p3, p5, p4, p2]); // slope
+    face([p0, p1, p2, p3]); // bottom
+    face([p5, p4, p1, p0]); // back
+    face([p3, p5, p0]);     // left tri
+    face([p4, p2, p1]);     // right tri
+    face([p2, p4, p5, p3]); // slope
 
     const csg = new CSG();
     csg.polygons = polys;

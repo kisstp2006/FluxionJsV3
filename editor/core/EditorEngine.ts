@@ -27,6 +27,7 @@ export interface EngineSubsystems {
   audio: AudioSystem;
   scene: Scene;
   assets: AssetManager;
+  csgSystem: CSGSystem;
   editorCamera: THREE.PerspectiveCamera;
   orbitControls: OrbitControls;
   gizmoService: GizmoService;
@@ -143,6 +144,7 @@ export async function initEditorEngine(
     audio,
     scene,
     assets,
+    csgSystem,
     editorCamera,
     orbitControls,
     gizmoService,

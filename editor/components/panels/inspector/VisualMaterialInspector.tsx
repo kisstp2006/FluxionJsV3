@@ -3,18 +3,42 @@
 // Right-panel inspector for visual material assets.
 // ============================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import * as THREE from 'three';
 import { Section, PropertyRow } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
-import { getFileSystem } from '../../../../src/filesystem';
+import { getFileSystem, normalizePath } from '../../../../src/filesystem';
 import { VisualMaterialFile, validateGraph } from '../../../../src/materials/VisualMaterialGraph';
-import { compileVisualMaterial } from '../../../../src/materials/VisualMaterialCompiler';
+import { compileVisualMaterial, buildVisualMaterial } from '../../../../src/materials/VisualMaterialCompiler';
+import { MaterialPreviewSphere } from '../MaterialPreviewSphere';
 
 export const VisualMaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => {
   const [data, setData] = useState<VisualMaterialFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fileName = assetPath.replace(/\\/g, '/').split('/').pop() || '';
+
+  const baseDir = useMemo(
+    () => normalizePath(assetPath).replace(/\/[^/]+$/, ''),
+    [assetPath],
+  );
+
+  const loadTexture = useCallback(
+    (relPath: string): Promise<THREE.Texture> =>
+      new Promise((resolve, reject) => {
+        const p = relPath.replace(/\\/g, '/');
+        const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
+        const url = isAbsolute ? `file:///${p.replace(/^\/+/, '')}` : `file:///${baseDir}/${p}`;
+        new THREE.TextureLoader().load(url, resolve, undefined, reject);
+      }),
+    [baseDir],
+  );
+
+  const buildMaterial = useCallback(async (): Promise<THREE.Material | null> => {
+    if (!data) return null;
+    const { material } = await buildVisualMaterial(data, loadTexture);
+    return material;
+  }, [data, loadTexture]);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +87,11 @@ export const VisualMaterialInspector: React.FC<AssetInspectorProps> = ({ assetPa
 
   return (
     <>
+      <MaterialPreviewSphere
+        buildMaterial={buildMaterial}
+        deps={[data]}
+      />
+
       <Section title="Visual Material" defaultOpen>
         <PropertyRow label="File">
           <span style={labelStyle}>{fileName}</span>

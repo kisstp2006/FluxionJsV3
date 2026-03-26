@@ -15,6 +15,7 @@ import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
+import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
 
 interface DirEntry {
   name: string;
@@ -115,15 +116,42 @@ const ModelImportSettingsDialog: React.FC<{
   );
 };
 
+// Module-level cache for texture load failures — avoids retrying known-bad paths
+const _texFailed = new Set<string>();
+
 /** Small texture thumbnail with icon fallback on load error. */
 const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
-  const [failed, setFailed] = useState(false);
+  const url = `file:///${path.replace(/\\/g, '/')}`;
+  const [failed, setFailed] = useState(() => _texFailed.has(url));
   if (failed) return <>{fallback}</>;
   return (
     <img
-      src={`file:///${path.replace(/\\/g, '/')}`}
+      src={url}
       alt=""
-      onError={() => setFailed(true)}
+      onError={() => { _texFailed.add(url); setFailed(true); }}
+      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '3px', display: 'block' }}
+    />
+  );
+};
+
+/** Cached sphere thumbnail for .fluxmat / .fluxvismat files. */
+const MaterialThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(() => getThumbnail(path));
+
+  useEffect(() => {
+    if (dataUrl) return;
+    requestThumbnail(path, () => {
+      const url = getThumbnail(path);
+      if (url) setDataUrl(url);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
+  if (!dataUrl) return <>{fallback}</>;
+  return (
+    <img
+      src={dataUrl}
+      alt=""
       style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '3px', display: 'block' }}
     />
   );
@@ -236,6 +264,16 @@ export const AssetBrowserPanel: React.FC<{
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+
+  // Invalidate material thumbnail cache when a material file is saved
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path as string | undefined;
+      if (path) invalidateThumbnail(path);
+    };
+    window.addEventListener('fluxion:material-changed', handler);
+    return () => window.removeEventListener('fluxion:material-changed', handler);
+  }, []);
 
   // Auto-refresh when filesystem changes are detected by the hot-reload watcher
   useEffect(() => {
@@ -985,6 +1023,11 @@ export const AssetBrowserPanel: React.FC<{
                 )}
                 {fileType === 'texture' ? (
                   <TextureThumbnail
+                    path={entry.path}
+                    fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
+                  />
+                ) : fileType === 'material' || fileType === 'visual_material' ? (
+                  <MaterialThumbnail
                     path={entry.path}
                     fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
                   />

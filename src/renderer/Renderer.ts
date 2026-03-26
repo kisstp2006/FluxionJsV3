@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { projectManager } from '../project/ProjectManager';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
 import { EngineEvents } from '../core/EventSystem';
 import {
@@ -815,7 +816,8 @@ class LightSystem implements System {
         // Cookie / projection texture
         if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
           this.cookieLoading.add(entity);
-          const url = `file:///${lightComp.cookieTexturePath.replace(/\\/g, '/')}`;
+          const absPath = projectManager.resolvePath(lightComp.cookieTexturePath);
+          const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
           new THREE.TextureLoader().load(
             url,
             (tex) => {

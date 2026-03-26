@@ -3,11 +3,13 @@
 // PBR property editing with live save.
 // ============================================================
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import * as THREE from 'three';
 import { Section, PropertyRow, Slider, ColorInput, Checkbox, AssetInput } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem, normalizePath } from '../../../../src/filesystem';
 import { projectManager } from '../../../../src/project/ProjectManager';
+import { MaterialPreviewSphere } from '../MaterialPreviewSphere';
 
 interface FluxMatData {
   type?: string;
@@ -52,6 +54,47 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
   const [saving, setSaving] = useState(false);
 
   const fileName = assetPath.replace(/\\/g, '/').split('/').pop() || '';
+
+  // Base directory of the .fluxmat file for resolving texture paths
+  const baseDir = useMemo(
+    () => normalizePath(assetPath).replace(/\/[^/]+$/, ''),
+    [assetPath],
+  );
+
+  const loadTexture = useCallback(
+    (relPath: string): Promise<THREE.Texture> =>
+      new Promise((resolve, reject) => {
+        const p = relPath.replace(/\\/g, '/');
+        const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
+        const url = isAbsolute ? `file:///${p.replace(/^\/+/, '')}` : `file:///${baseDir}/${p}`;
+        new THREE.TextureLoader().load(url, resolve, undefined, reject);
+      }),
+    [baseDir],
+  );
+
+  const buildMaterial = useCallback(async (): Promise<THREE.Material | null> => {
+    if (!data) return null;
+    const mat = new THREE.MeshPhysicalMaterial();
+    if (data.color) mat.color.setRGB(data.color[0], data.color[1], data.color[2]);
+    mat.roughness = data.roughness ?? 0.5;
+    mat.metalness = data.metalness ?? 0;
+    if (data.emissive) mat.emissive.setRGB(data.emissive[0], data.emissive[1], data.emissive[2]);
+    mat.emissiveIntensity = data.emissiveIntensity ?? 0;
+    mat.transparent = data.transparent ?? false;
+    mat.opacity = data.opacity ?? 1;
+    mat.side = data.doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+    mat.wireframe = data.wireframe ?? false;
+    mat.alphaTest = data.alphaTest ?? 0;
+    mat.envMapIntensity = data.envMapIntensity ?? 1;
+    if (data.albedoMap) { const t = await loadTexture(data.albedoMap).catch(() => null); mat.map = t; }
+    if (data.normalMap) { const t = await loadTexture(data.normalMap).catch(() => null); if (t) { t.colorSpace = THREE.LinearSRGBColorSpace; mat.normalMap = t; } }
+    if (data.roughnessMap) { const t = await loadTexture(data.roughnessMap).catch(() => null); if (t) { t.colorSpace = THREE.LinearSRGBColorSpace; mat.roughnessMap = t; } }
+    if (data.metalnessMap) { const t = await loadTexture(data.metalnessMap).catch(() => null); if (t) { t.colorSpace = THREE.LinearSRGBColorSpace; mat.metalnessMap = t; } }
+    if (data.aoMap) { const t = await loadTexture(data.aoMap).catch(() => null); if (t) { t.colorSpace = THREE.LinearSRGBColorSpace; mat.aoMap = t; mat.aoMapIntensity = data.aoIntensity ?? 1; } }
+    if (data.emissiveMap) { const t = await loadTexture(data.emissiveMap).catch(() => null); if (t) mat.emissiveMap = t; }
+    mat.needsUpdate = true;
+    return mat;
+  }, [data, loadTexture]);
 
   // Load material data
   useEffect(() => {
@@ -115,6 +158,12 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
 
   return (
     <>
+      {/* Preview sphere */}
+      <MaterialPreviewSphere
+        buildMaterial={buildMaterial}
+        deps={[data]}
+      />
+
       {/* File Info */}
       <Section title="Material" defaultOpen>
         <PropertyRow label="File">

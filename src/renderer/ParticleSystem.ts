@@ -117,7 +117,7 @@ class ParticlePool {
   // Material ref for uniform updates
   readonly material: THREE.ShaderMaterial;
 
-  constructor(maxParticles: number, scene: THREE.Scene, depthTexture: THREE.Texture | null) {
+  constructor(maxParticles: number, scene: THREE.Scene) {
     this.maxCount = maxParticles;
 
     const geo = new THREE.PlaneGeometry(1, 1);
@@ -145,7 +145,10 @@ class ParticlePool {
         camRight:      { value: new THREE.Vector3(1, 0, 0) },
         camUp:         { value: new THREE.Vector3(0, 1, 0) },
         softParticles: { value: false },
-        tDepth:        { value: depthTexture },
+        // tDepth is null by default — only set when softParticles is enabled
+        // to avoid WebGL2 feedback loop (particles render into the same RT
+        // whose depth texture would otherwise be bound here).
+        tDepth:        { value: null as THREE.Texture | null },
         cameraNear:    { value: 0.1 },
         cameraFar:     { value: 1000 },
         resolution:    { value: new THREE.Vector2(1, 1) },
@@ -276,13 +279,11 @@ export class ParticleRenderSystem implements System {
     this.scene = scene;
   }
 
-  /** Call once the PostProcessingPipeline has been created to enable soft particles. */
+  /** Store the opaque-depth pre-pass texture for soft particles. */
   setDepthTexture(tex: THREE.Texture | null): void {
     this.depthTexture = tex;
-    // Update existing pools
-    for (const pool of this.pools.values()) {
-      pool.material.uniforms['tDepth'].value = tex;
-    }
+    // tDepth is applied per-frame in update() only when softParticles is enabled,
+    // to avoid WebGL2 feedback loop on the active render target's depth attachment.
   }
 
   /** Must be called every frame so billboard orientation + near/far stay current. */
@@ -312,7 +313,7 @@ export class ParticleRenderSystem implements System {
 
       // Create pool if needed
       if (!this.pools.has(entity)) {
-        this.pools.set(entity, new ParticlePool(emitter.maxParticles, this.scene, this.depthTexture));
+        this.pools.set(entity, new ParticlePool(emitter.maxParticles, this.scene));
         this.emitAccumulators.set(entity, 0);
       }
 
@@ -328,10 +329,15 @@ export class ParticleRenderSystem implements System {
         (u['resolution'].value as THREE.Vector2).copy(this.resolution);
       }
 
-      // Sync soft-particle settings from emitter component
+      // Sync soft-particle settings from emitter component.
+      // When soft particles are off, set tDepth to null to avoid WebGL2
+      // feedback loop detection (draw call rejected if a bound sampler
+      // references the active depth attachment, even in dead code paths).
       {
         const u = pool.material.uniforms;
-        u['softParticles'].value = emitter.softParticles && this.depthTexture !== null;
+        const useSoft = emitter.softParticles && this.depthTexture !== null;
+        u['softParticles'].value = useSoft;
+        u['tDepth'].value = useSoft ? this.depthTexture : null;
         u['softDistance'].value = emitter.softDistance;
       }
 

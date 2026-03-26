@@ -45,6 +45,9 @@ const PARTICLE_VERT = `
 `;
 
 const PARTICLE_FRAG = `
+  // Soft particles: only used when softParticles = true AND an opaque
+  // depth pre-pass texture is provided (avoids framebuffer feedback loop).
+  uniform bool softParticles;
   uniform sampler2D tDepth;
   uniform float cameraNear;
   uniform float cameraFar;
@@ -66,11 +69,15 @@ const PARTICLE_FRAG = `
     float alpha = 1.0 - smoothstep(0.4, 1.0, dist);
     alpha *= vOpacity;
 
-    // Soft particle — fade near opaque geometry
-    vec2 screenUV = gl_FragCoord.xy / resolution;
-    float sceneDepth = linearizeDepth(texture2D(tDepth, screenUV).r);
-    float fade = clamp((sceneDepth - vViewZ) / softDistance, 0.0, 1.0);
-    alpha *= fade;
+    // Soft particle fade — only when a pre-pass depth texture is available.
+    // When disabled (default) the depth texture is the ACTIVE render target,
+    // which would create a feedback loop and return 0 for all depth reads.
+    if (softParticles) {
+      vec2 screenUV = gl_FragCoord.xy / resolution;
+      float sceneDepth = linearizeDepth(texture2D(tDepth, screenUV).r);
+      float fade = clamp((sceneDepth - vViewZ) / softDistance, 0.0, 1.0);
+      alpha *= fade;
+    }
 
     if (alpha < 0.001) discard;
 
@@ -135,13 +142,14 @@ class ParticlePool {
       vertexShader: PARTICLE_VERT,
       fragmentShader: PARTICLE_FRAG,
       uniforms: {
-        camRight:     { value: new THREE.Vector3(1, 0, 0) },
-        camUp:        { value: new THREE.Vector3(0, 1, 0) },
-        tDepth:       { value: depthTexture },
-        cameraNear:   { value: 0.1 },
-        cameraFar:    { value: 1000 },
-        resolution:   { value: new THREE.Vector2(1, 1) },
-        softDistance:  { value: 0.5 },
+        camRight:      { value: new THREE.Vector3(1, 0, 0) },
+        camUp:         { value: new THREE.Vector3(0, 1, 0) },
+        softParticles: { value: false },
+        tDepth:        { value: depthTexture },
+        cameraNear:    { value: 0.1 },
+        cameraFar:     { value: 1000 },
+        resolution:    { value: new THREE.Vector2(1, 1) },
+        softDistance:  { value: 1.0 },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -318,6 +326,13 @@ export class ParticleRenderSystem implements System {
         u['cameraNear'].value = (this.camera as any).near ?? 0.1;
         u['cameraFar'].value = (this.camera as any).far ?? 1000;
         (u['resolution'].value as THREE.Vector2).copy(this.resolution);
+      }
+
+      // Sync soft-particle settings from emitter component
+      {
+        const u = pool.material.uniforms;
+        u['softParticles'].value = emitter.softParticles && this.depthTexture !== null;
+        u['softDistance'].value = emitter.softDistance;
       }
 
       let accum = this.emitAccumulators.get(entity) ?? 0;

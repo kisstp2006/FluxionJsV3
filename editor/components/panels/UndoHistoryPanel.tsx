@@ -183,7 +183,7 @@ interface HistoryRowProps {
   isFuture?: boolean;
   isScene?: boolean;
   index?: number;
-  currentRef?: React.RefObject<HTMLDivElement>;
+  currentRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const HistoryRow: React.FC<HistoryRowProps> = ({ label, isCurrent, isPast, isFuture, isScene, index, currentRef }) => {
@@ -201,7 +201,7 @@ const HistoryRow: React.FC<HistoryRowProps> = ({ label, isCurrent, isPast, isFut
 
   return (
     <div
-      ref={currentRef as React.RefObject<HTMLDivElement>}
+      ref={currentRef as React.RefObject<HTMLDivElement | null>}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{

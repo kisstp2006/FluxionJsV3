@@ -1061,6 +1061,9 @@ class EnvironmentSystem implements System {
       stride: env.ssrStride,
       fresnel: env.ssrFresnel,
       opacity: env.ssrOpacity,
+      resolutionScale: env.ssrResolutionScale,
+      infiniteThick: env.ssrInfiniteThick,
+      distanceAttenuation: env.ssrDistanceAttenuation,
     };
 
     pp.config.ssgi = {

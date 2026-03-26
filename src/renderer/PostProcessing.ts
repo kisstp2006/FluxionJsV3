@@ -447,13 +447,16 @@ const SSR_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tDepth;
   uniform vec2 resolution;
+  uniform vec2 depthResolution;
   uniform mat4 projMatrix;
   uniform mat4 invProjMatrix;
   uniform float maxDistance;
   uniform float thickness;
+  uniform float infiniteThick;
   uniform float stride;
   uniform float fresnel;
   uniform float opacity;
+  uniform float distanceAttenuation;
   uniform float cameraNear;
   uniform float cameraFar;
   varying vec2 vUv;
@@ -466,7 +469,8 @@ const SSR_FRAG = `
   }
 
   vec3 getNormal(vec2 uv) {
-    vec2 texel = 1.0 / resolution;
+    // tDepth is full-res even when this pass renders half-res.
+    vec2 texel = 1.0 / depthResolution;
     vec3 c = getViewPos(uv);
     vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
     vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
@@ -493,16 +497,21 @@ const SSR_FRAG = `
 
     vec3 viewPos = getViewPos(vUv);
     vec3 normal = getNormal(vUv);
-    vec3 viewDir = normalize(viewPos);
-    vec3 reflectDir = reflect(viewDir, normal);
+    // View direction from surface point to camera (camera is at origin in view space)
+    vec3 viewDir = normalize(-viewPos);
+    vec3 reflectDir = normalize(reflect(-viewDir, normal));
 
     // Fresnel (Schlick approximation)
-    float NdotV = max(dot(normal, -viewDir), 0.0);
+    float NdotV = clamp(dot(normal, viewDir), 0.0, 1.0);
     float fresnelFactor = pow(1.0 - NdotV, 5.0) * fresnel + (1.0 - fresnel);
 
     // Ray march in view space
-    float stepSize = stride;
-    vec3 rayPos = viewPos;
+    float thick = mix(thickness, 1e6, step(0.5, infiniteThick));
+    float stepSize = max(stride, maxDistance / 64.0);
+
+    // Bias ray start to avoid immediate self-intersection on the same surface
+    float startBias = max(0.01, thickness * 0.5);
+    vec3 rayPos = viewPos + normal * startBias;
     vec3 hitColor = vec3(0.0);
     float confidence = 0.0;
 
@@ -526,7 +535,7 @@ const SSR_FRAG = `
       vec3 sampleViewPos = getViewPos(screenUV);
       float depthDiff = rayPos.z - sampleViewPos.z;
 
-      if (depthDiff > 0.0 && depthDiff < thickness) {
+      if (depthDiff > 0.0 && depthDiff < thick) {
         // Hit! — Binary refinement (4 steps)
         vec3 lo = rayPos - reflectDir * stepSize;
         vec3 hi = rayPos;
@@ -543,14 +552,17 @@ const SSR_FRAG = `
         vec2 hitUV = viewToScreen(hi);
         hitColor = texture2D(tScene, hitUV).rgb;
 
-        // Edge fade — reduce confidence near screen edges
-        vec2 edgeFade = smoothstep(vec2(0.0), vec2(0.05), hitUV) * (1.0 - smoothstep(vec2(0.95), vec2(1.0), hitUV));
-        float edge = edgeFade.x * edgeFade.y;
+        // Edge fade — SSR has no data outside the screen, so fade out near edges.
+        // Use both hitUV (where we sample) and vUv (where we display) for stability.
+        vec2 hitEdgeFade = smoothstep(vec2(0.0), vec2(0.10), hitUV) * (1.0 - smoothstep(vec2(0.90), vec2(1.0), hitUV));
+        vec2 srcEdgeFade = smoothstep(vec2(0.0), vec2(0.10), vUv) * (1.0 - smoothstep(vec2(0.90), vec2(1.0), vUv));
+        float edge = (hitEdgeFade.x * hitEdgeFade.y) * (srcEdgeFade.x * srcEdgeFade.y);
 
         // Distance fade
         float distFade = 1.0 - clamp(traveled / maxDistance, 0.0, 1.0);
+        float distAtten = mix(1.0, distFade, step(0.5, distanceAttenuation));
 
-        confidence = fresnelFactor * edge * distFade * opacity;
+        confidence = fresnelFactor * edge * distAtten * opacity;
         break;
       }
     }
@@ -566,6 +578,7 @@ const SSGI_FRAG = `
   uniform sampler2D tScene;
   uniform sampler2D tDepth;
   uniform vec2 resolution;
+  uniform vec2 depthResolution;
   uniform mat4 projMatrix;
   uniform mat4 invProjMatrix;
   uniform float cameraNear;
@@ -578,6 +591,9 @@ const SSGI_FRAG = `
   uniform int sliceCountI;
   uniform int stepCountI;
   uniform float backfaceLighting;
+  // If > 0.5: interpret giRadius directly as screen-space pixel radius.
+  // If <= 0.5: interpret giRadius as world-space radius and project it.
+  uniform float screenSpaceSampling;
   varying vec2 vUv;
 
   #define PI 3.14159265359
@@ -591,7 +607,8 @@ const SSGI_FRAG = `
   }
 
   vec3 getNormal(vec2 uv) {
-    vec2 texel = 1.0 / resolution;
+    // tDepth is full-res even when this pass renders half-res.
+    vec2 texel = 1.0 / depthResolution;
     vec3 c = getViewPos(uv);
     vec3 l = getViewPos(uv - vec2(texel.x, 0.0));
     vec3 r = getViewPos(uv + vec2(texel.x, 0.0));
@@ -627,7 +644,8 @@ const SSGI_FRAG = `
     // Screen-space sampling radius from world-space radius
     float fov = atan(1.0 / projMatrix[1][1]);
     float halfProjScale = resolution.y / (2.0 * tan(fov));
-    float screenRadius = giRadius * halfProjScale / max(abs(P.z), 0.1);
+    float screenRadiusWorld = giRadius * halfProjScale / max(abs(P.z), 0.1);
+    float screenRadius = mix(screenRadiusWorld, giRadius, clamp(screenSpaceSampling, 0.0, 1.0));
     screenRadius = clamp(screenRadius, 4.0, resolution.y * 0.5);
 
     float totalAO = 0.0;
@@ -1021,6 +1039,8 @@ export interface PostProcessConfig {
     fresnel?: number;
     opacity?: number;
     resolutionScale?: number;
+    infiniteThick?: boolean;
+    distanceAttenuation?: boolean;
   };
   ssgi?: {
     enabled?: boolean;
@@ -1109,6 +1129,10 @@ export class PostProcessingPipeline {
   // Time tracking for clouds
   private _time = 0;
 
+  // SSR dynamic resolution tracking
+  private _ssrW = -1;
+  private _ssrH = -1;
+
   /** When true, an EnvironmentComponent is active and overrides project/editor PP settings */
   environmentOverride = false;
 
@@ -1116,7 +1140,7 @@ export class PostProcessingPipeline {
   config: PostProcessConfig = {
     bloom: { enabled: true, threshold: 0.8, strength: 0.5, radius: 0.4, softKnee: 0.6 },
     ssao: { enabled: false, radius: 0.5, bias: 0.025, intensity: 1.0 },
-    ssr: { enabled: false, maxDistance: 50, thickness: 0.5, stride: 0.3, fresnel: 1.0, opacity: 0.5, resolutionScale: 0.5 },
+    ssr: { enabled: false, maxDistance: 50, thickness: 0.5, stride: 0.3, fresnel: 1.0, opacity: 0.5, resolutionScale: 0.5, infiniteThick: false, distanceAttenuation: true },
     ssgi: { enabled: false, sliceCount: 3, stepCount: 12, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
     clouds: { enabled: false, minHeight: 200, maxHeight: 400, coverage: 0.5, density: 0.3, absorption: 1.0, scatter: 1.0, color: new THREE.Color(1, 1, 1), speed: 1.0, sunDirection: new THREE.Vector3(0.5, 1, 0.3).normalize() },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
@@ -1135,6 +1159,9 @@ export class PostProcessingPipeline {
     const h = renderer.domElement.height;
     const halfW = Math.floor(w / 2);
     const halfH = Math.floor(h / 2);
+    const ssrScale = THREE.MathUtils.clamp(this.config.ssr?.resolutionScale ?? 0.5, 0.1, 1.0);
+    const ssrW = Math.max(1, Math.floor(w * ssrScale));
+    const ssrH = Math.max(1, Math.floor(h * ssrScale));
 
     const rtParams: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
@@ -1162,7 +1189,9 @@ export class PostProcessingPipeline {
     }
     this.ssaoRT = new THREE.WebGLRenderTarget(w, h, rtParams);
     this.ssaoBlurRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.ssrRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    this.ssrRT = new THREE.WebGLRenderTarget(ssrW, ssrH, rtParams);
+    this._ssrW = ssrW;
+    this._ssrH = ssrH;
     this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
     this.ssgiBlurRT2 = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
@@ -1244,14 +1273,17 @@ export class PostProcessingPipeline {
       uniforms: {
         tScene: { value: null },
         tDepth: { value: null },
-        resolution: { value: new THREE.Vector2(halfW, halfH) },
+        resolution: { value: new THREE.Vector2(ssrW, ssrH) },
+        depthResolution: { value: new THREE.Vector2(w, h) },
         projMatrix: { value: new THREE.Matrix4() },
         invProjMatrix: { value: new THREE.Matrix4() },
         maxDistance: { value: 50 },
         thickness: { value: 0.5 },
+        infiniteThick: { value: 0 },
         stride: { value: 0.3 },
         fresnel: { value: 1.0 },
         opacity: { value: 0.5 },
+        distanceAttenuation: { value: 1 },
         cameraNear: { value: 0.1 },
         cameraFar: { value: 1000 },
       },
@@ -1265,6 +1297,7 @@ export class PostProcessingPipeline {
         tScene: { value: null },
         tDepth: { value: null },
         resolution: { value: new THREE.Vector2(halfW, halfH) },
+        depthResolution: { value: new THREE.Vector2(w, h) },
         projMatrix: { value: new THREE.Matrix4() },
         invProjMatrix: { value: new THREE.Matrix4() },
         cameraNear: { value: 0.1 },
@@ -1277,6 +1310,7 @@ export class PostProcessingPipeline {
         sliceCountI: { value: 2 },
         stepCountI: { value: 8 },
         backfaceLighting: { value: 0 },
+        screenSpaceSampling: { value: 1 },
       },
     }));
 
@@ -1485,6 +1519,21 @@ export class PostProcessingPipeline {
     this.cloudPass.material.uniforms['cameraFar'].value = far;
   }
 
+  private ensureSSRTargets(): void {
+    const scale = THREE.MathUtils.clamp(this.config.ssr?.resolutionScale ?? 0.5, 0.1, 1.0);
+    const w = this.renderer.domElement.width;
+    const h = this.renderer.domElement.height;
+    const ssrW = Math.max(1, Math.floor(w * scale));
+    const ssrH = Math.max(1, Math.floor(h * scale));
+
+    if (ssrW === this._ssrW && ssrH === this._ssrH) return;
+    this._ssrW = ssrW;
+    this._ssrH = ssrH;
+
+    this.ssrRT.setSize(ssrW, ssrH);
+    this.ssrPass.material.uniforms['resolution'].value.set(ssrW, ssrH);
+  }
+
   render(dt?: number): void {
     const bloom = this.config.bloom;
     const ssao = this.config.ssao;
@@ -1539,6 +1588,7 @@ export class PostProcessingPipeline {
       this.ssgiPass.material.uniforms['sliceCountI'].value = Math.round(ssgi!.sliceCount ?? 2);
       this.ssgiPass.material.uniforms['stepCountI'].value = Math.round(ssgi!.stepCount ?? 8);
       this.ssgiPass.material.uniforms['backfaceLighting'].value = ssgi!.backfaceLighting ?? 0;
+      this.ssgiPass.material.uniforms['screenSpaceSampling'].value = ssgi!.screenSpaceSampling ? 1 : 0;
       this.ssgiPass.render(this.renderer, this.ssgiRT);
 
       // 2-pass separable bilateral blur
@@ -1557,11 +1607,14 @@ export class PostProcessingPipeline {
     // 4. SSR
     const doSSR = !!ssr?.enabled;
     if (doSSR) {
+      this.ensureSSRTargets();
       this.ssrPass.material.uniforms['maxDistance'].value = ssr!.maxDistance ?? 50;
       this.ssrPass.material.uniforms['thickness'].value = ssr!.thickness ?? 0.5;
       this.ssrPass.material.uniforms['stride'].value = ssr!.stride ?? 0.3;
       this.ssrPass.material.uniforms['fresnel'].value = ssr!.fresnel ?? 1.0;
       this.ssrPass.material.uniforms['opacity'].value = ssr!.opacity ?? 0.5;
+      this.ssrPass.material.uniforms['infiniteThick'].value = ssr!.infiniteThick ? 1 : 0;
+      this.ssrPass.material.uniforms['distanceAttenuation'].value = ssr!.distanceAttenuation === false ? 0 : 1;
       this.ssrPass.render(this.renderer, this.ssrRT);
     }
 
@@ -1680,7 +1733,7 @@ export class PostProcessingPipeline {
     }
     this.ssaoRT.setSize(width, height);
     this.ssaoBlurRT.setSize(width, height);
-    this.ssrRT.setSize(halfW, halfH);
+    this.ensureSSRTargets();
     this.ssgiRT.setSize(halfW, halfH);
     this.ssgiBlurRT.setSize(halfW, halfH);
     this.ssgiBlurRT2.setSize(halfW, halfH);
@@ -1692,8 +1745,9 @@ export class PostProcessingPipeline {
 
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
     this.ssaoBlurPass.material.uniforms['resolution'].value.set(width, height);
-    this.ssrPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.ssrPass.material.uniforms['depthResolution'].value.set(width, height);
     this.ssgiPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.ssgiPass.material.uniforms['depthResolution'].value.set(width, height);
     this.ssgiBlurHPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiBlurVPass.material.uniforms['resolution'].value.set(halfW, halfH);
     this.ssgiUpscalePass.material.uniforms['lowResolution'].value.set(halfW, halfH);

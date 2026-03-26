@@ -348,6 +348,9 @@ export class EnvironmentComponent implements Component {
   ssrStride = 0.3;
   ssrFresnel = 1.0;
   ssrOpacity = 0.5;
+  ssrResolutionScale = 0.5;
+  ssrInfiniteThick = false;
+  ssrDistanceAttenuation = true;
 
   // ── SSGI ──
   ssgiEnabled = false;

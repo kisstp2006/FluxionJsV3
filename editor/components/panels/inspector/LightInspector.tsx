@@ -1,21 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons, AssetInput } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { LightComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const LightInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const light = engine.engine.ecs.getComponent<LightComponent>(entity, 'Light');
+  const [light, update] = useComponentInspector<LightComponent>(entity, 'Light');
   if (!light) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section title="Light" icon={Icons.light} actions={<RemoveComponentButton entity={entity} componentType="Light" onRemoved={onRemoved} />}>

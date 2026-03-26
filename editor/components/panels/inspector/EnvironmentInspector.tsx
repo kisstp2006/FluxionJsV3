@@ -1,21 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons, AssetInput } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { EnvironmentComponent, ToneMappingMode, BackgroundMode, FogMode, SkyboxMode } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty, markComponentDirty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const env = engine.engine.ecs.getComponent<EnvironmentComponent>(entity, 'Environment');
+  const [env, update] = useComponentInspector<EnvironmentComponent>(entity, 'Environment');
   if (!env) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, NumberInput, Checkbox, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
@@ -6,16 +6,12 @@ import { CameraComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const CameraInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const cam = engine.engine.ecs.getComponent<CameraComponent>(entity, 'Camera');
-  if (!cam) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
+  const engine = useEngine(); // needed for getAllEntities in handleSetMain
+  const [cam, update] = useComponentInspector<CameraComponent>(entity, 'Camera');
+  if (!engine || !cam) return null;
 
   const handleSetMain = (checked: boolean) => {
     if (checked) {

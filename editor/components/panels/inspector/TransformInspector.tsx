@@ -1,21 +1,15 @@
 import React, { useState } from 'react';
 import * as THREE from 'three';
 import { Section, PropertyRow, Vector3Input, Icons } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { TransformComponent } from '../../../../src/core/Components';
 import { markComponentDirty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const TransformInspector: React.FC<{ entity: EntityId }> = ({ entity }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
+  const [t, update] = useComponentInspector<TransformComponent>(entity, 'Transform');
   const [uniformScale, setUniformScale] = useState(true);
-  if (!engine) return null;
-
-  const t = engine.engine.ecs.getComponent<TransformComponent>(entity, 'Transform');
   if (!t) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   const handleScaleChange = (axis: 'x' | 'y' | 'z', val: number) => {
     if (uniformScale) {

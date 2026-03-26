@@ -4,6 +4,7 @@ import { Section, PropertyRow, Checkbox, NumberInput, Icons, Vector2Input } from
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
@@ -44,16 +45,11 @@ function applyUvTransform(mesh: THREE.Mesh | THREE.Group | null, scale: { x: num
 }
 
 export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
+  const engine = useEngine(); // needed for asset loading in handlers
+  const [mr, update] = useComponentInspector<MeshRendererComponent>(entity, 'MeshRenderer');
   const [fluxMeshSlots, setFluxMeshSlots] = useState<FluxMeshMaterialSlot[] | null>(null);
   const [slotsOpen, setSlotsOpen] = useState(true);
-  if (!engine) return null;
-
-  const mr = engine.engine.ecs.getComponent<MeshRendererComponent>(entity, 'MeshRenderer');
-  if (!mr) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
+  if (!engine || !mr) return null;
 
   const isFluxMesh = mr.modelPath?.endsWith('.fluxmesh') ?? false;
 

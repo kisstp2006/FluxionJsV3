@@ -1,21 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, Select, NumberInput, Slider, Checkbox, Icons } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { RigidbodyComponent, ColliderComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const RigidbodyInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const rb = engine.engine.ecs.getComponent<RigidbodyComponent>(entity, 'Rigidbody');
+  const [rb, update] = useComponentInspector<RigidbodyComponent>(entity, 'Rigidbody');
   if (!rb) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section title="Rigidbody" icon={Icons.physics} actions={<RemoveComponentButton entity={entity} componentType="Rigidbody" onRemoved={onRemoved} />}>
@@ -44,14 +38,8 @@ export const RigidbodyInspector: React.FC<{ entity: EntityId; onRemoved: () => v
 };
 
 export const ColliderInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const collider = engine.engine.ecs.getComponent<ColliderComponent>(entity, 'Collider');
+  const [collider, update] = useComponentInspector<ColliderComponent>(entity, 'Collider');
   if (!collider) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section title="Collider" icon={Icons.cube} actions={<RemoveComponentButton entity={entity} componentType="Collider" onRemoved={onRemoved} />}>

@@ -1,22 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import * as THREE from 'three';
 import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider, AssetInput } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { SpriteComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const SpriteRendererInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const sprite = engine.engine.ecs.getComponent<SpriteComponent>(entity, 'Sprite');
+  const [sprite, update] = useComponentInspector<SpriteComponent>(entity, 'Sprite');
   if (!sprite) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section title="Sprite Renderer" icon={'🖼'} actions={<RemoveComponentButton entity={entity} componentType="Sprite" onRemoved={onRemoved} />}>

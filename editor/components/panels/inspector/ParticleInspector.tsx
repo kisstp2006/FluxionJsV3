@@ -1,26 +1,20 @@
-import React, { useState } from 'react';
+import React from 'react';
 import * as THREE from 'three';
 import {
   Section, PropertyRow,
   NumberInput, Slider, Checkbox, ColorInput, AssetInput, Vector2Input,
   Icons,
 } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { ParticleEmitterComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
-import { undoManager, PropertyCommand, ColorPropertyCommand } from '../../../core/UndoService';
+import { undoManager, PropertyCommand } from '../../../core/UndoService';
 import { setProperty, setColorProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const ParticleInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const p = engine.engine.ecs.getComponent<ParticleEmitterComponent>(entity, 'ParticleEmitter');
+  const [p, update] = useComponentInspector<ParticleEmitterComponent>(entity, 'ParticleEmitter');
   if (!p) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   // Helper: change one axis of a THREE.Vector2 property with undo
   const setVec2Axis = (prop: 'lifetime' | 'speed' | 'size', axis: 'x' | 'y', value: number) => {

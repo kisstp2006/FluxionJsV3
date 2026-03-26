@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, Select, NumberInput, Vector3Input, Checkbox, AssetInput } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { CSGBrushComponent, CSGBrushShape, CSGOperation } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 const shapeOptions = [
   { value: 'box', label: 'Box' },
@@ -30,14 +30,8 @@ const usesRadius = (shape: CSGBrushShape) => shape === 'cylinder' || shape === '
 const usesSegments = (shape: CSGBrushShape) => shape !== 'box' && shape !== 'wedge';
 
 export const CSGBrushInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const brush = engine.engine.ecs.getComponent<CSGBrushComponent>(entity, 'CSGBrush');
+  const [brush, update] = useComponentInspector<CSGBrushComponent>(entity, 'CSGBrush');
   if (!brush) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   const markDirty = () => { brush._dirty = true; brush._version++; };
 

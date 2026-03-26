@@ -1,21 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider, TextInput, Select, AssetInput } from '../../../ui';
-import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { TextRendererComponent } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty } from '../../../core/ComponentService';
+import { useComponentInspector } from '../../../core/useComponentInspector';
 
 export const TextRendererInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({ entity, onRemoved }) => {
-  const engine = useEngine();
-  const [, forceUpdate] = useState(0);
-  if (!engine) return null;
-
-  const tc = engine.engine.ecs.getComponent<TextRendererComponent>(entity, 'TextRenderer');
+  const [tc, update] = useComponentInspector<TextRendererComponent>(entity, 'TextRenderer');
   if (!tc) return null;
-
-  const update = () => forceUpdate((n) => n + 1);
 
   return (
     <Section title="Text Renderer" icon={'𝐓'} actions={<RemoveComponentButton entity={entity} componentType="TextRenderer" onRemoved={onRemoved} />}>

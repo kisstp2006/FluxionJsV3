@@ -43,11 +43,36 @@ function applyAll(sys: EngineSubsystems): void {
       ...pp.config.bloom,
       enabled: proj<boolean>('project.rendering.bloom'),
       strength: proj<number>('project.rendering.bloomIntensity'),
+      threshold: proj<number>('project.rendering.bloomThreshold'),
+      radius: proj<number>('project.rendering.bloomRadius'),
     };
     pp.config.vignette = {
       ...pp.config.vignette,
       enabled: proj<boolean>('project.rendering.vignette'),
+      intensity: proj<number>('project.rendering.vignetteIntensity'),
+      roundness: proj<number>('project.rendering.vignetteRoundness'),
     };
+    pp.config.ssao = {
+      ...pp.config.ssao,
+      enabled: proj<boolean>('project.rendering.ssao'),
+      radius: proj<number>('project.rendering.ssaoRadius'),
+      intensity: proj<number>('project.rendering.ssaoIntensity'),
+    };
+    pp.config.dof = {
+      ...pp.config.dof,
+      enabled: proj<boolean>('project.rendering.dof'),
+      focusDistance: proj<number>('project.rendering.dofFocusDistance'),
+      aperture: proj<number>('project.rendering.dofAperture'),
+      maxBlur: proj<number>('project.rendering.dofMaxBlur'),
+    };
+    pp.config.ssr = {
+      ...pp.config.ssr,
+      enabled: proj<boolean>('project.rendering.ssr'),
+      maxDistance: proj<number>('project.rendering.ssrMaxDistance'),
+      opacity: proj<number>('project.rendering.ssrOpacity'),
+    };
+    pp.config.filmGrain = proj<number>('project.rendering.filmGrain');
+    pp.config.chromaticAberration = proj<number>('project.rendering.chromaticAberration');
   }
 
   // ── Viewport (from Editor Settings) ──
@@ -169,8 +194,56 @@ function applyProjectSetting(sys: EngineSubsystems, key: string, value: unknown)
     case 'project.rendering.bloomIntensity':
       if (!pp.environmentOverride) pp.config.bloom = { ...pp.config.bloom, strength: value as number };
       break;
+    case 'project.rendering.bloomThreshold':
+      if (!pp.environmentOverride) pp.config.bloom = { ...pp.config.bloom, threshold: value as number };
+      break;
+    case 'project.rendering.bloomRadius':
+      if (!pp.environmentOverride) pp.config.bloom = { ...pp.config.bloom, radius: value as number };
+      break;
     case 'project.rendering.vignette':
       if (!pp.environmentOverride) pp.config.vignette = { ...pp.config.vignette, enabled: value as boolean };
+      break;
+    case 'project.rendering.vignetteIntensity':
+      if (!pp.environmentOverride) pp.config.vignette = { ...pp.config.vignette, intensity: value as number };
+      break;
+    case 'project.rendering.vignetteRoundness':
+      if (!pp.environmentOverride) pp.config.vignette = { ...pp.config.vignette, roundness: value as number };
+      break;
+    case 'project.rendering.ssao':
+      if (!pp.environmentOverride) pp.config.ssao = { ...pp.config.ssao, enabled: value as boolean };
+      break;
+    case 'project.rendering.ssaoRadius':
+      if (!pp.environmentOverride) pp.config.ssao = { ...pp.config.ssao, radius: value as number };
+      break;
+    case 'project.rendering.ssaoIntensity':
+      if (!pp.environmentOverride) pp.config.ssao = { ...pp.config.ssao, intensity: value as number };
+      break;
+    case 'project.rendering.dof':
+      if (!pp.environmentOverride) pp.config.dof = { ...pp.config.dof, enabled: value as boolean };
+      break;
+    case 'project.rendering.dofFocusDistance':
+      if (!pp.environmentOverride) pp.config.dof = { ...pp.config.dof, focusDistance: value as number };
+      break;
+    case 'project.rendering.dofAperture':
+      if (!pp.environmentOverride) pp.config.dof = { ...pp.config.dof, aperture: value as number };
+      break;
+    case 'project.rendering.dofMaxBlur':
+      if (!pp.environmentOverride) pp.config.dof = { ...pp.config.dof, maxBlur: value as number };
+      break;
+    case 'project.rendering.ssr':
+      if (!pp.environmentOverride) pp.config.ssr = { ...pp.config.ssr, enabled: value as boolean };
+      break;
+    case 'project.rendering.ssrMaxDistance':
+      if (!pp.environmentOverride) pp.config.ssr = { ...pp.config.ssr, maxDistance: value as number };
+      break;
+    case 'project.rendering.ssrOpacity':
+      if (!pp.environmentOverride) pp.config.ssr = { ...pp.config.ssr, opacity: value as number };
+      break;
+    case 'project.rendering.filmGrain':
+      if (!pp.environmentOverride) pp.config.filmGrain = value as number;
+      break;
+    case 'project.rendering.chromaticAberration':
+      if (!pp.environmentOverride) pp.config.chromaticAberration = value as number;
       break;
 
     // ── Physics ──

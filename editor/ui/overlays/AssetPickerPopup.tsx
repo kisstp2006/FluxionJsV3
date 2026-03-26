@@ -4,7 +4,7 @@
 // Used by AssetInput; also available standalone.
 // ============================================================
 
-import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { resolveIcon } from '../Icons';
 import { AssetTypeRegistry, AssetTypeDefinition } from '../../../src/assets/AssetTypeRegistry';
 import { getFileSystem } from '../../../src/filesystem';

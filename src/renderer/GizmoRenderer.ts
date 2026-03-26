@@ -169,7 +169,7 @@ export class GizmoRenderer {
     pos: THREE.Vector3,
     quat: THREE.Quaternion,
     fov: number,
-    near: number,
+    _near: number,
     far: number,
     aspect: number,
     isOrtho: boolean,

@@ -512,7 +512,7 @@ export class CSG {
   private static fromFaces(faces: [Vec3[], Vec3][], sx: number, sy: number, sz: number): CSG {
     const polys: CSGPolygon[] = [];
     for (const [positions, normal] of faces) {
-      const verts = positions.map((p, i) => {
+      const verts = positions.map((p, _i) => {
         // Generate UVs based on face normal axis
         let u = 0, v = 0;
         const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);

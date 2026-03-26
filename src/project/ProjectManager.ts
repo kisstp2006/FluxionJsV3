@@ -5,11 +5,9 @@
 // ============================================================
 
 import {
-  type IFileSystem,
   getFileSystem,
   pathJoin,
   pathDirname,
-  pathBasename,
 } from '../filesystem';
 import { ShaderCache } from '../materials/ShaderCache';
 import { ShaderCompileService } from '../renderer/ShaderCompileService';

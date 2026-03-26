@@ -235,20 +235,15 @@ export class CreateEntityCommand implements EditorCommand {
   label: string;
   private entity: EntityId;
   private ecs: ECSManager;
-  private createFn: () => EntityId;
-  private onCreated?: (entity: EntityId) => void;
-
   constructor(
     createFn: () => EntityId,
     ecs: ECSManager,
     onCreated?: (entity: EntityId) => void,
   ) {
     this.ecs = ecs;
-    this.createFn = createFn;
     this.entity = createFn();
     this.label = `Create ${ecs.getEntityName(this.entity)}`;
     onCreated?.(this.entity);
-    this.onCreated = onCreated;
   }
 
   execute(): void {

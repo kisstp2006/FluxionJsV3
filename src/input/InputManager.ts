@@ -38,18 +38,16 @@ export class InputManager {
   // Gamepads
   gamepads: Map<number, GamepadState> = new Map();
 
-  private engine: Engine;
   private target: HTMLElement;
 
-  constructor(engine: Engine) {
-    this.engine = engine;
-    this.target = engine.config.canvas;
+  constructor(_engine: Engine) {
+    this.target = _engine.config.canvas;
     this.setupListeners();
 
     // Clear per-frame state each update
-    engine.events.on(EngineEvents.LATE_UPDATE, () => this.endFrame());
+    _engine.events.on(EngineEvents.LATE_UPDATE, () => this.endFrame());
 
-    engine.registerSubsystem('input', this);
+    _engine.registerSubsystem('input', this);
   }
 
   private setupListeners(): void {

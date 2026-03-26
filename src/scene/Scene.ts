@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
-import { ECSManager, EntityId } from '../core/ECS';
+import { EntityId } from '../core/ECS';
 import { EngineEvents } from '../core/EventSystem';
 import {
   TransformComponent,
@@ -15,8 +15,6 @@ import {
   RigidbodyComponent,
   ColliderComponent,
   ScriptComponent,
-  ParticleEmitterComponent,
-  AudioSourceComponent,
   SpriteComponent,
   EnvironmentComponent,
   TextRendererComponent,

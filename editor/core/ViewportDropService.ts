@@ -12,10 +12,8 @@
 import * as THREE from 'three';
 import { AssetTypeRegistry, AssetTypeDefinition } from '../../src/assets/AssetTypeRegistry';
 import { AssetManager } from '../../src/assets/AssetManager';
-import { MaterialSystem, FluxMatData } from '../../src/renderer/MaterialSystem';
+import { FluxMatData } from '../../src/renderer/MaterialSystem';
 import { MeshRendererComponent, AudioSourceComponent, TransformComponent } from '../../src/core/Components';
-import type { FluxMeshMaterialSlot } from '../../src/assets/FluxMeshData';
-import { applyMaterialsToModel } from '../../src/assets/FluxMeshData';
 import type { EngineSubsystems } from './EditorEngine';
 import type { EntityId } from '../../src/core/ECS';
 

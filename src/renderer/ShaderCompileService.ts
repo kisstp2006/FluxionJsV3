@@ -58,8 +58,6 @@ const SHADER_FILES: Array<{ name: string; src: string; devPath: string }> = [
 // ── ShaderCompileService ─────────────────────────────────────
 
 class ShaderCompileServiceClass {
-  private devMode = false;
-  private projectRoot: string | null = null;
 
   /**
    * Register built-in shaders into ShaderLibrary.
@@ -70,9 +68,6 @@ class ShaderCompileServiceClass {
    *                     Only used when devMode is true.
    */
   registerBuiltins(devMode: boolean, projectRoot?: string): void {
-    this.devMode = devMode;
-    this.projectRoot = projectRoot ?? null;
-
     const fs = devMode ? this._tryGetFs() : null;
     ShaderLibrary.init(fs, devMode);
 

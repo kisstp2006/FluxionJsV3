@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Section, PropertyRow, Select, ColorInput, Slider, NumberInput, Checkbox, Icons, AssetInput } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
-import { EnvironmentComponent, ToneMappingMode, BackgroundMode, FogMode, SkyboxMode, CubemapFaces } from '../../../../src/core/Components';
+import { EnvironmentComponent, ToneMappingMode, BackgroundMode, FogMode, SkyboxMode } from '../../../../src/core/Components';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty, markComponentDirty } from '../../../core/ComponentService';

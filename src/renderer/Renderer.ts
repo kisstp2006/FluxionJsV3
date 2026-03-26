@@ -15,8 +15,6 @@ import {
   LightComponent,
   EnvironmentComponent,
   ToneMappingMode,
-  CubemapFaces,
-  SkyboxMode,
   SpriteComponent,
   TextRendererComponent,
 } from '../core/Components';
@@ -214,7 +212,7 @@ class TransformNodeSystem implements System {
     this.tracked.clear();
   }
 
-  update(entities: Set<EntityId>, ecs: ECSManager): void {
+  update(entities: Set<EntityId>, _ecs: ECSManager): void {
     // Ensure every Transform entity has a scene node
     for (const entity of entities) {
       if (!this.renderer.getObject(entity)) {
@@ -528,7 +526,7 @@ class TextRendererSystem implements System {
     }
   }
 
-  private rebuildTextMesh(entity: EntityId, textComp: TextRendererComponent): void {
+  private rebuildTextMesh(_entity: EntityId, textComp: TextRendererComponent): void {
     // Dispose old texture
     if (textComp.textTexture) {
       textComp.textTexture.dispose();

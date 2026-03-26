@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Section, PropertyRow, Select, NumberInput, Vector3Input, Checkbox, AssetInput, Icons } from '../../../ui';
+import { Section, PropertyRow, Select, NumberInput, Vector3Input, Checkbox, AssetInput } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { CSGBrushComponent, CSGBrushShape, CSGOperation } from '../../../../src/core/Components';

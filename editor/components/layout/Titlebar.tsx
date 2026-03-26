@@ -4,10 +4,8 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Button, ContextMenu, Icons } from '../../ui';
-import { useEditor, useEngine } from '../../core/EditorContext';
-import { projectManager } from '../../../src/project/ProjectManager';
-import { serializeScene, loadSceneFromFile } from '../../../src/project/SceneSerializer';
+import { ContextMenu, Icons } from '../../ui';
+import { useEditor } from '../../core/EditorContext';
 
 export const Titlebar: React.FC<{
   onSaveScene?: () => void;
@@ -18,7 +16,6 @@ export const Titlebar: React.FC<{
   onOpenProjectSettings?: () => void;
 }> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings, onOpenProjectSettings }) => {
   const { state, dispatch, log } = useEditor();
-  const engine = useEngine();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
@@ -116,7 +113,7 @@ export const Titlebar: React.FC<{
             { label: 'File', items: fileMenuItems },
             { label: 'Edit', items: editMenuItems },
             { label: 'View', items: viewMenuItems },
-          ].map(({ label, items }) => (
+          ].map(({ label, items: _items }) => (
             <button
               key={label}
               onClick={(e) => openMenu(label, e)}

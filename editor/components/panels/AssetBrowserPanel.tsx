@@ -15,7 +15,6 @@ import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
-import { readAssetMeta } from '../../../src/assets/AssetMeta';
 
 interface DirEntry {
   name: string;
@@ -121,7 +120,7 @@ const FolderTreeItem: React.FC<{
 // ── Main Asset Browser ──
 export const AssetBrowserPanel: React.FC<{
   onOpenScene?: (path: string) => void;
-}> = ({ onOpenScene }) => {
+}> = ({ onOpenScene: _onOpenScene }) => {
   const { state, dispatch, log } = useEditor();
   const [selectedFolder, setSelectedFolder] = useState('');
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -461,27 +460,6 @@ export const AssetBrowserPanel: React.FC<{
     items.push({ label: 'Copy Absolute Path', icon: Icons.clipboard, onClick: () => copyAbsolutePath(entry.path) });
 
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  };
-
-  const createNewScene = async () => {
-    setInputDialog({
-      label: 'Scene name',
-      defaultValue: 'NewScene',
-      onSubmit: async (name) => {
-        if (!selectedFolder || !name.trim()) return;
-        try {
-          const sceneDef = AssetTypeRegistry.getByType('scene');
-          if (sceneDef?.createDefault) {
-            const fs = getFileSystem();
-            await sceneDef.createDefault(fs, selectedFolder, name.trim());
-            log(`Created scene: ${name.trim()}.fluxscene`, 'system');
-          }
-          refresh();
-        } catch (err: any) {
-          log(`Failed to create scene: ${err.message}`, 'error');
-        }
-      },
-    });
   };
 
   const createNewFolder = async () => {

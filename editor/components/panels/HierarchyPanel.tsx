@@ -332,7 +332,7 @@ export const HierarchyPanel: React.FC = () => {
     log(`Reparented to ${engine.engine.ecs.getEntityName(targetEntity)}`, 'info');
   }, [engine, log]);
 
-  const handleAddEntity = useCallback((category: string, type: string) => {
+  const handleAddEntity = useCallback((_category: string, type: string) => {
     if (!engine) return;
     const scene = engine.scene;
     const materials = engine.materials;

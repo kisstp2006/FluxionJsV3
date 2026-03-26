@@ -6,7 +6,6 @@
 // ============================================================
 
 import type { IFileSystem } from '../filesystem/FileSystem';
-import { pathExtension } from '../filesystem/FileSystem';
 
 // ── Types ──
 

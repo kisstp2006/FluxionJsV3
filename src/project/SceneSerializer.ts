@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
-import { ECSManager, EntityId } from '../core/ECS';
+import { EntityId } from '../core/ECS';
 import {
   TransformComponent,
   MeshRendererComponent,
@@ -22,10 +22,9 @@ import {
   TextRendererComponent,
   CSGBrushComponent,
 } from '../core/Components';
-import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
+import { Scene, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
 import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
-import { buildVisualMaterial } from '../materials/VisualMaterialCompiler';
 import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { projectManager } from './ProjectManager';
 import { applyMaterialsToModel } from '../assets/FluxMeshData';

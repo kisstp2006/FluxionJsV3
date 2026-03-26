@@ -6,8 +6,8 @@
 // ============================================================
 
 import * as THREE from 'three';
-import { ECSManager, EntityId, System, isDirty, clearDirty } from '../core/ECS';
-import { TransformComponent, CSGBrushComponent, CSGBrushShape } from '../core/Components';
+import { ECSManager, EntityId, System } from '../core/ECS';
+import { TransformComponent, CSGBrushComponent } from '../core/Components';
 import { CSG, CSGPlane, Vec3 } from './CSGCore';
 import { csgToGeometry } from './CSGBridge';
 
@@ -103,10 +103,8 @@ export class CSGSystem implements System {
   private renderer: any; // FluxionRenderer
   private tracked = new Map<EntityId, BrushEntry>();
   private resultMesh: THREE.Mesh | null = null;
-  private resultEntity: EntityId | null = null;
   private needsRebuild = false;
   private defaultMaterial = createDefaultBrushMaterial();
-  private brushMaterials = new Map<string, THREE.MeshStandardMaterial>();
 
   constructor(renderer: any) {
     this.renderer = renderer;
@@ -153,7 +151,7 @@ export class CSGSystem implements System {
     }
   }
 
-  private rebuild(ecs: ECSManager): void {
+  private rebuild(_ecs: ECSManager): void {
     // Collect all brush entries sorted by entity ID for determinism
     const entries = [...this.tracked.values()].sort((a, b) => a.entity - b.entity);
 

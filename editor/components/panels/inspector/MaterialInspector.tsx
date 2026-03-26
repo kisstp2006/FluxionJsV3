@@ -97,20 +97,6 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
     fontSize: '11px',
   };
 
-  const mapSlotStyle: React.CSSProperties = {
-    padding: '3px 6px',
-    fontSize: '10px',
-    fontFamily: 'var(--font-mono)',
-    color: 'var(--text-muted)',
-    background: 'var(--bg-input)',
-    border: '1px solid var(--border)',
-    borderRadius: '3px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    maxWidth: '150px',
-  };
-
   if (error) {
     return (
       <Section title="Material" defaultOpen>

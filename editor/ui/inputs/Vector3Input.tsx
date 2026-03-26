@@ -12,7 +12,7 @@ export const Vector3Input: React.FC<Vector3InputProps> = ({
   value,
   onChange,
   step = 0.1,
-  label,
+  label: _label,
 }) => (
   <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
     <NumberInput axis="x" value={parseFloat(value.x.toFixed(3))} onChange={(v) => onChange('x', v)} step={step} />

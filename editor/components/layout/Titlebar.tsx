@@ -3,9 +3,10 @@
 // Frameless window titlebar with menu (s&box-inspired)
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ContextMenu, Icons } from '../../ui';
 import { useEditor } from '../../core/EditorContext';
+import { undoManager } from '../../core/UndoService';
 
 export const Titlebar: React.FC<{
   onSaveScene?: () => void;
@@ -18,6 +19,22 @@ export const Titlebar: React.FC<{
   const { state, dispatch, log } = useEditor();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const [, forceUpdate] = useState(0);
+
+  // Re-render when undo stack changes so buttons reflect canUndo/canRedo
+  useEffect(() => {
+    return undoManager.subscribe(() => forceUpdate(n => n + 1));
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const cmd = undoManager.undo();
+    if (cmd) log(`Undo: ${cmd.label}`, 'info');
+  }, [log]);
+
+  const handleRedo = useCallback(() => {
+    const cmd = undoManager.redo();
+    if (cmd) log(`Redo: ${cmd.label}`, 'info');
+  }, [log]);
 
   const openMenu = (menuName: string, e: React.MouseEvent) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -50,12 +67,25 @@ export const Titlebar: React.FC<{
     },
   ];
 
+  const canUndo = undoManager.canUndo();
+  const canRedo = undoManager.canRedo();
+
   const editMenuItems = [
-    { label: 'Undo', icon: Icons.undo, shortcut: 'Ctrl+Z', onClick: () => log('Undo', 'info') },
-    { label: 'Redo', icon: Icons.redo, shortcut: 'Ctrl+Y', onClick: () => log('Redo', 'info') },
+    {
+      label: `Undo${undoManager.undoLabel ? ` ${undoManager.undoLabel}` : ''}`,
+      icon: Icons.undo, shortcut: 'Ctrl+Z',
+      onClick: handleUndo,
+      disabled: !canUndo,
+    },
+    {
+      label: `Redo${undoManager.redoLabel ? ` ${undoManager.redoLabel}` : ''}`,
+      icon: Icons.redo, shortcut: 'Ctrl+Y',
+      onClick: handleRedo,
+      disabled: !canRedo,
+    },
     { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D', onClick: () => log('Duplicated', 'info') },
-    { label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => log('Deleted', 'info') },
+    { label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D', onClick: () => {} },
+    { label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => {} },
   ];
 
   const viewMenuItems = [
@@ -131,6 +161,34 @@ export const Titlebar: React.FC<{
               {label}
             </button>
           ))}
+
+          {/* Undo / Redo quick buttons */}
+          <div style={{ display: 'flex', gap: '1px', marginLeft: '4px', marginRight: '4px' }}>
+            {[
+              { icon: Icons.undo, onClick: handleUndo, disabled: !canUndo, title: canUndo ? `Undo: ${undoManager.undoLabel}` : 'Nothing to undo' },
+              { icon: Icons.redo, onClick: handleRedo, disabled: !canRedo, title: canRedo ? `Redo: ${undoManager.redoLabel}` : 'Nothing to redo' },
+            ].map(({ icon, onClick, disabled, title }, i) => (
+              <button
+                key={i}
+                onClick={onClick}
+                disabled={disabled}
+                title={title}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: disabled ? 'var(--text-disabled, #444)' : 'var(--text-secondary)',
+                  padding: '4px 7px',
+                  borderRadius: '4px',
+                  cursor: disabled ? 'default' : 'pointer',
+                  fontSize: '12px',
+                  transition: 'all 150ms ease',
+                  opacity: disabled ? 0.4 : 1,
+                }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
 
           <button
             onClick={() => dispatch({ type: 'TOGGLE_PLAY' })}

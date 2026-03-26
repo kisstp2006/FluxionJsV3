@@ -9,6 +9,7 @@ import { useEditor, BottomTab } from '../../core/EditorContext';
 import { ConsolePanel } from '../panels/ConsolePanel';
 import { AssetBrowserPanel } from '../panels/AssetBrowserPanel';
 import { ProfilerPanel } from '../panels/ProfilerPanel';
+import { UndoHistoryPanel } from '../panels/UndoHistoryPanel';
 
 export const BottomPanel: React.FC = () => {
   const { state, dispatch } = useEditor();
@@ -17,6 +18,14 @@ export const BottomPanel: React.FC = () => {
     console: <ConsolePanel />,
     assets: <AssetBrowserPanel />,
     profiler: <ProfilerPanel />,
+    history: <UndoHistoryPanel />,
+  };
+
+  const TAB_LABELS: Record<BottomTab, string> = {
+    console: 'Console',
+    assets: 'Assets',
+    profiler: 'Profiler',
+    history: 'History',
   };
 
   return (
@@ -28,8 +37,8 @@ export const BottomPanel: React.FC = () => {
       flexDirection: 'column',
     }}>
       <TabBar
-        tabs={['Console', 'Assets', 'Profiler']}
-        activeTab={state.bottomTab.charAt(0).toUpperCase() + state.bottomTab.slice(1)}
+        tabs={['Console', 'Assets', 'Profiler', 'History']}
+        activeTab={TAB_LABELS[state.bottomTab]}
         onTabChange={(tab) => dispatch({
           type: 'SET_BOTTOM_TAB',
           tab: tab.toLowerCase() as BottomTab,

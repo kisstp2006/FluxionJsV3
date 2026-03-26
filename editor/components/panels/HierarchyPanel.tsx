@@ -11,6 +11,7 @@ import { useEditor, useEngine } from '../../core/EditorContext';
 import { EntityId } from '../../../src/core/ECS';
 import { ParticleEmitterComponent } from '../../../src/core/Components';
 import * as THREE from 'three';
+import { undoManager, CreateEntityCommand, DeleteEntityCommand, DuplicateEntityCommand, ReparentEntityCommand } from '../../core/UndoService';
 
 // ── Entity item in the tree ──
 interface HierarchyItemProps {
@@ -327,8 +328,8 @@ export const HierarchyPanel: React.FC = () => {
     const src = draggedEntity.current;
     draggedEntity.current = null;
     if (src === targetEntity) return;
-    // Prevent reparenting to a child of itself
-    engine.engine.ecs.setParent(src, targetEntity);
+    const oldParent = engine.engine.ecs.getParent(src);
+    undoManager.execute(new ReparentEntityCommand(src, targetEntity, oldParent, engine.engine.ecs));
     log(`Reparented to ${engine.engine.ecs.getEntityName(targetEntity)}`, 'info');
   }, [engine, log]);
 
@@ -336,81 +337,56 @@ export const HierarchyPanel: React.FC = () => {
     if (!engine) return;
     const scene = engine.scene;
     const materials = engine.materials;
-    let entity: EntityId;
+    const ecs = engine.engine.ecs;
 
-    switch (type) {
-      // Primitives
-      case 'empty':
-        entity = scene.createEmpty('Empty Entity');
-        break;
-      case 'cube':
-      case 'sphere':
-      case 'cylinder':
-      case 'cone':
-      case 'plane':
-      case 'capsule':
-      case 'torus':
-        entity = scene.createPrimitive(type.charAt(0).toUpperCase() + type.slice(1), type as any);
-        break;
-      // Lights
-      case 'directional':
-        entity = scene.createLight('Directional Light', 'directional', 0xffffff, 1);
-        break;
-      case 'point':
-        entity = scene.createLight('Point Light', 'point', 0xffffff, 1);
-        break;
-      case 'spot':
-        entity = scene.createLight('Spot Light', 'spot', 0xffffff, 1);
-        break;
-      case 'ambient':
-        entity = scene.createLight('Ambient Light', 'ambient', 0xffffff, 0.5);
-        break;
-      // 3D
-      case 'camera':
-        entity = scene.createCamera('Camera');
-        break;
-      case 'particle': {
-        entity = scene.createEmpty('Particle System');
-        const pe = new ParticleEmitterComponent();
-        pe.maxParticles = 200;
-        pe.emissionRate = 30;
-        engine.engine.ecs.addComponent(entity, pe);
-        break;
+    const createFn = (): EntityId => {
+      switch (type) {
+        case 'empty': return scene.createEmpty('Empty Entity');
+        case 'cube': case 'sphere': case 'cylinder': case 'cone': case 'plane': case 'capsule': case 'torus':
+          return scene.createPrimitive(type.charAt(0).toUpperCase() + type.slice(1), type as any);
+        case 'directional': return scene.createLight('Directional Light', 'directional', 0xffffff, 1);
+        case 'point':       return scene.createLight('Point Light', 'point', 0xffffff, 1);
+        case 'spot':        return scene.createLight('Spot Light', 'spot', 0xffffff, 1);
+        case 'ambient':     return scene.createLight('Ambient Light', 'ambient', 0xffffff, 0.5);
+        case 'camera':      return scene.createCamera('Camera');
+        case 'particle': {
+          const e = scene.createEmpty('Particle System');
+          const pe = new ParticleEmitterComponent(); pe.maxParticles = 200; pe.emissionRate = 30;
+          ecs.addComponent(e, pe); return e;
+        }
+        case 'text3d':  return scene.createText('3D Text');
+        case 'sprite':  return scene.createSprite('Sprite');
+        case 'physics_box': {
+          const mat = materials.createPBR({ name: 'physics_box', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
+          return scene.createPhysicsBox('Physics Box', new THREE.Vector3(1, 1, 1), mat, 'dynamic');
+        }
+        case 'physics_sphere': {
+          const mat = materials.createPBR({ name: 'physics_sphere', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
+          return scene.createPhysicsSphere('Physics Sphere', 0.5, mat, 'dynamic');
+        }
+        default: return scene.createEmpty('Entity');
       }
-      case 'text3d':
-        entity = scene.createText('3D Text');
-        break;
-      case 'sprite':
-        entity = scene.createSprite('Sprite');
-        break;
-      // Physics
-      case 'physics_box': {
-        const mat = materials.createPBR({ name: 'physics_box', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
-        entity = scene.createPhysicsBox('Physics Box', new THREE.Vector3(1, 1, 1), mat, 'dynamic');
-        break;
-      }
-      case 'physics_sphere': {
-        const mat = materials.createPBR({ name: 'physics_sphere', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
-        entity = scene.createPhysicsSphere('Physics Sphere', 0.5, mat, 'dynamic');
-        break;
-      }
-      default:
-        entity = scene.createEmpty('Entity');
-    }
+    };
 
-    log(`Created: ${engine.engine.ecs.getEntityName(entity)}`, 'info');
-    dispatch({ type: 'SELECT_ENTITY', entity });
-    dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+    undoManager.execute(new CreateEntityCommand(createFn, ecs, (entity) => {
+      log(`Created: ${ecs.getEntityName(entity)}`, 'info');
+      dispatch({ type: 'SELECT_ENTITY', entity });
+      dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+    }));
   }, [engine, log, dispatch]);
 
   const handleDuplicate = useCallback((entity: EntityId) => {
     if (!engine) return;
-    const clone = engine.scene.cloneEntity(entity);
-    if (clone !== null) {
-      log(`Duplicated: ${engine.engine.ecs.getEntityName(clone)}`, 'info');
-      dispatch({ type: 'SELECT_ENTITY', entity: clone });
-      dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-    }
+    const ecs = engine.engine.ecs;
+    undoManager.execute(new DuplicateEntityCommand(
+      () => engine.scene.cloneEntity(entity),
+      ecs,
+      (clone) => {
+        log(`Duplicated: ${ecs.getEntityName(clone)}`, 'info');
+        dispatch({ type: 'SELECT_ENTITY', entity: clone });
+        dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+      },
+    ));
   }, [engine, log, dispatch]);
 
   // Filter entities
@@ -547,13 +523,20 @@ export const HierarchyPanel: React.FC = () => {
               icon: Icons.trash,
               shortcut: 'Del',
               onClick: () => {
-                const name = engine.engine.ecs.getEntityName(contextMenu.entity);
-                engine.engine.ecs.destroyEntity(contextMenu.entity);
-                if (state.selectedEntity === contextMenu.entity) {
-                  dispatch({ type: 'SELECT_ENTITY', entity: null });
-                }
+                const target = contextMenu.entity;
+                undoManager.execute(new DeleteEntityCommand(
+                  target,
+                  engine.engine.ecs,
+                  engine.engine,
+                  (newId) => {
+                    dispatch({ type: 'SELECT_ENTITY', entity: newId });
+                    dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+                    log(`Restored entity`, 'info');
+                  },
+                ));
+                if (state.selectedEntity === target) dispatch({ type: 'SELECT_ENTITY', entity: null });
                 dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-                log(`Deleted entity: ${name}`, 'warn');
+                log(`Deleted entity: ${engine.engine.ecs.getEntityName(target)}`, 'warn');
               },
             },
           ]}

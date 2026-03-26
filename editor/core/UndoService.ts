@@ -38,6 +38,20 @@ export class UndoManager {
     this.notify();
   }
 
+  /**
+   * Push a command that was already applied externally (e.g. gizmo drag).
+   * Does NOT call command.execute() — the action already happened.
+   * Clears the redo stack and notifies listeners.
+   */
+  pushExternal(command: EditorCommand): void {
+    this.undoStack.push(command);
+    this.redoStack.length = 0;
+    if (this.undoStack.length > this.maxHistory) {
+      this.undoStack.shift();
+    }
+    this.notify();
+  }
+
   undo(): EditorCommand | null {
     const cmd = this.undoStack.pop();
     if (cmd) {

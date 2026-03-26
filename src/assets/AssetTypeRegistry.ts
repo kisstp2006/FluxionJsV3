@@ -293,7 +293,13 @@ AssetTypeRegistry.register({
       // Write .fluxmesh
       const fluxmeshPath = `${dir}/${baseName}.fluxmesh`;
       const modelFileName = importedPath.substring(importedPath.lastIndexOf('/') + 1);
-      const fluxmeshData: FluxMeshData = { version: 1, sourceModel: modelFileName, materialSlots: slots };
+      const importScale = (meta.importSettings.scale as number | undefined) ?? 1;
+      const fluxmeshData: FluxMeshData = {
+        version: 1,
+        sourceModel: modelFileName,
+        materialSlots: slots,
+        ...(importScale !== 1 ? { importScale } : {}),
+      };
       await _fs.writeFile(fluxmeshPath, JSON.stringify(fluxmeshData, null, 2));
 
       // Write .fluxmeta for the .fluxmesh

@@ -44,6 +44,77 @@ function metaPath(assetPath: string): string {
   return assetPath + '.fluxmeta';
 }
 
+// ── Model Import Settings ──
+
+interface ModelImportSettings {
+  scale: number;
+  generateCollider: boolean;
+}
+
+const ModelImportSettingsDialog: React.FC<{
+  fileCount: number;
+  onConfirm: (s: ModelImportSettings) => void;
+  onCancel: () => void;
+}> = ({ fileCount, onConfirm, onCancel }) => {
+  const [scale, setScale] = React.useState(1);
+  const [generateCollider, setGenerateCollider] = React.useState(false);
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.4)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 10000,
+    }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        borderRadius: '6px', padding: '16px', minWidth: '260px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>
+          Import {fileCount} model{fileCount > 1 ? 's' : ''} — settings
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            Import Scale
+            <input
+              type="number"
+              value={scale}
+              min={0.001}
+              step={0.1}
+              onChange={(e) => setScale(parseFloat(e.target.value) || 1)}
+              style={{
+                padding: '4px 8px', background: 'var(--bg-input)',
+                border: '1px solid var(--border)', borderRadius: '4px',
+                color: 'var(--text-primary)', fontSize: '12px', outline: 'none',
+              }}
+            />
+          </label>
+
+          <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={generateCollider}
+              onChange={(e) => setGenerateCollider(e.target.checked)}
+            />
+            Generate Collider (future)
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
+          <button onClick={onCancel} style={{
+            padding: '4px 12px', fontSize: '11px', background: 'var(--bg-hover)',
+            border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer',
+          }}>Cancel</button>
+          <button onClick={() => onConfirm({ scale, generateCollider })} style={{
+            padding: '4px 12px', fontSize: '11px', background: 'var(--accent)',
+            border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer',
+          }}>Import</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /** Small texture thumbnail with icon fallback on load error. */
 const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
   const [failed, setFailed] = useState(false);
@@ -155,6 +226,8 @@ export const AssetBrowserPanel: React.FC<{
   const [renamingEntry, setRenamingEntry] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [outdatedPaths, setOutdatedPaths] = useState<Set<string>>(new Set());
+  const [pendingModelImport, setPendingModelImport] = useState<{ fileCount: number } | null>(null);
+  const modelImportResolveRef = useRef<((s: ModelImportSettings | null) => void) | null>(null);
   type SortMode = 'name-asc' | 'name-desc' | 'type';
   const [sortMode, setSortMode] = useState<SortMode>('name-asc');
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -466,6 +539,31 @@ export const AssetBrowserPanel: React.FC<{
         { label: 'Import Assets...', icon: Icons.download, onClick: handleImport },
         { label: 'Refresh', icon: Icons.refresh, onClick: refresh },
         { label: '', icon: undefined, onClick: () => {}, separator: true },
+        {
+          label: 'Check Missing References',
+          icon: Icons.file,
+          onClick: async () => {
+            if (!projectManager.projectDir) return;
+            log('Scanning for missing references...', 'system');
+            try {
+              const { scanMissingRefs } = await import('../../../src/assets/MissingRefScanner');
+              const fs = getFileSystem();
+              const missing = await scanMissingRefs(fs, projectManager.projectDir);
+              if (missing.length === 0) {
+                log('No missing references found.', 'system');
+              } else {
+                log(`Found ${missing.length} missing reference(s):`, 'error');
+                for (const ref of missing) {
+                  const relSource = ref.sourceFile.replace(projectManager.projectDir!, '').replace(/^[\\/]+/, '');
+                  log(`  ${relSource} → [${ref.field}] "${ref.referencedPath}" not found`, 'error');
+                }
+              }
+            } catch (err: any) {
+              log(`Reference scan failed: ${err.message}`, 'error');
+            }
+          },
+        },
+        { label: '', icon: undefined, onClick: () => {}, separator: true },
         ...(selectedFolder ? [
           { label: 'Open in File Explorer', icon: Icons.externalLink, onClick: () => showInExplorer(selectedFolder) },
           { label: 'Copy Path', icon: Icons.copy, onClick: () => copyRelativePath(selectedFolder) },
@@ -543,28 +641,89 @@ export const AssetBrowserPanel: React.FC<{
     });
   };
 
-  // ── Import via dialog ──
-  const handleImport = async () => {
-    if (!selectedFolder) return;
+  // ── Import helpers ──
+
+  /** Show the model settings dialog and return the chosen settings (or null if cancelled). */
+  const promptModelSettings = (fileCount: number): Promise<ModelImportSettings | null> =>
+    new Promise((resolve) => {
+      modelImportResolveRef.current = resolve;
+      setPendingModelImport({ fileCount });
+    });
+
+  /**
+   * Common import runner: if any paths are model files, prompt for settings first,
+   * then call importFiles with per-request importSettings applied.
+   */
+  const runImportWithSettingsCheck = async (paths: string[], targetDir: string, logSuffix = '') => {
+    const modelPaths = paths.filter((p) => isModelFile(p.replace(/\\/g, '/').split('/').pop() ?? ''));
+
+    let modelSettings: ModelImportSettings | null = null;
+    if (modelPaths.length > 0) {
+      modelSettings = await promptModelSettings(modelPaths.length);
+      if (modelSettings === null) return; // user cancelled
+    }
+
+    const requests = paths.map((p) => ({
+      sourcePath: p,
+      targetDir,
+      ...(modelPaths.includes(p) && modelSettings ? { importSettings: { ...modelSettings } } : {}),
+    }));
+
     try {
-      const results = await assetImporter.importWithDialog(selectedFolder, {
+      const results = await assetImporter.importFiles(requests, {
         conflictStrategy: 'rename',
         onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
       });
       setImportProgress(null);
-
-      const ok = results.filter(r => r.success).length;
-      const fail = results.filter(r => !r.success).length;
-      if (ok > 0) log(`Imported ${ok} asset(s)${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
-      if (fail > 0) {
-        for (const r of results.filter(r => !r.success)) {
-          log(`Import failed: ${r.error}`, 'error');
-        }
+      const ok = results.filter((r) => r.success).length;
+      const fail = results.filter((r) => !r.success).length;
+      if (ok > 0) log(`Imported ${ok} asset(s)${logSuffix}${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+      for (const r of results.filter((r) => !r.success)) {
+        log(`Import failed: ${r.error}`, 'error');
       }
       refresh();
     } catch (err: any) {
       setImportProgress(null);
       log(`Import error: ${err.message}`, 'error');
+    }
+  };
+
+  // ── Import via dialog ──
+  const handleImport = async () => {
+    if (!selectedFolder) return;
+    const api = getFluxionAPI();
+    if (api?.openFilesDialog) {
+      // Build filters from registry so we can intercept model files for the settings dialog
+      const importable = AssetTypeRegistry.getImportable();
+      const allExts = importable.flatMap((d) => (d.extensions ?? []).map((e) => e.replace('.', '')));
+      const filters = [
+        { name: 'All Supported Assets', extensions: allExts },
+        ...importable.map((d) => ({
+          name: d.displayName,
+          extensions: (d.extensions ?? []).map((e) => e.replace('.', '')),
+        })),
+        { name: 'All Files', extensions: ['*'] },
+      ];
+      const paths: string[] = (await api.openFilesDialog(filters)) ?? [];
+      if (paths.length === 0) return;
+      await runImportWithSettingsCheck(paths, selectedFolder);
+    } else {
+      // Fallback for non-Electron environments — no settings dialog
+      try {
+        const results = await assetImporter.importWithDialog(selectedFolder, {
+          conflictStrategy: 'rename',
+          onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
+        });
+        setImportProgress(null);
+        const ok = results.filter((r) => r.success).length;
+        const fail = results.filter((r) => !r.success).length;
+        if (ok > 0) log(`Imported ${ok} asset(s)${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+        for (const r of results.filter((r) => !r.success)) log(`Import failed: ${r.error}`, 'error');
+        refresh();
+      } catch (err: any) {
+        setImportProgress(null);
+        log(`Import error: ${err.message}`, 'error');
+      }
     }
   };
 
@@ -588,40 +747,15 @@ export const AssetBrowserPanel: React.FC<{
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-
     if (!selectedFolder || !e.dataTransfer.files.length) return;
 
-    // Collect file paths from the Electron drag event
     const paths: string[] = [];
     for (let i = 0; i < e.dataTransfer.files.length; i++) {
       const file = e.dataTransfer.files[i];
-      if ((file as any).path) {
-        paths.push((file as any).path);
-      }
+      if ((file as any).path) paths.push((file as any).path);
     }
     if (paths.length === 0) return;
-
-    try {
-      const requests = paths.map(p => ({ sourcePath: p, targetDir: selectedFolder }));
-      const results = await assetImporter.importFiles(requests, {
-        conflictStrategy: 'rename',
-        onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
-      });
-      setImportProgress(null);
-
-      const ok = results.filter(r => r.success).length;
-      const fail = results.filter(r => !r.success).length;
-      if (ok > 0) log(`Imported ${ok} asset(s) via drag-and-drop${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
-      if (fail > 0) {
-        for (const r of results.filter(r => !r.success)) {
-          log(`Import failed: ${r.error}`, 'error');
-        }
-      }
-      refresh();
-    } catch (err: any) {
-      setImportProgress(null);
-      log(`Drop import error: ${err.message}`, 'error');
-    }
+    await runImportWithSettingsCheck(paths, selectedFolder, ' via drag-and-drop');
   };
 
   const filteredEntries = (() => {
@@ -1026,6 +1160,21 @@ export const AssetBrowserPanel: React.FC<{
             </div>
           </div>
         </div>
+      )}
+
+      {/* Model Import Settings Dialog */}
+      {pendingModelImport && (
+        <ModelImportSettingsDialog
+          fileCount={pendingModelImport.fileCount}
+          onConfirm={(s) => {
+            setPendingModelImport(null);
+            modelImportResolveRef.current?.(s);
+          }}
+          onCancel={() => {
+            setPendingModelImport(null);
+            modelImportResolveRef.current?.(null);
+          }}
+        />
       )}
 
       {/* Drop overlay */}

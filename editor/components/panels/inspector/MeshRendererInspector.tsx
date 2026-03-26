@@ -133,7 +133,24 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     return () => { cancelled = true; };
   }, [mr.modelPath]);
 
-
+  // Force-refresh when a reimported asset matches this component's model or material slots
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const reimportedPath: string = (e as CustomEvent).detail?.path ?? '';
+      if (!reimportedPath) return;
+      const assets = engine.engine.getSubsystem('assets') as any;
+      const normalise = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+      const norm = normalise(reimportedPath);
+      const modelMatches = mr.modelPath && normalise(mr.modelPath) === norm;
+      const slotMatches = mr.materialSlots?.some((s) => s.materialPath && normalise(s.materialPath) === norm);
+      if (modelMatches || slotMatches) {
+        assets?.invalidateCache?.(reimportedPath);
+        update();
+      }
+    };
+    window.addEventListener('fluxion:asset-reimported', handler);
+    return () => window.removeEventListener('fluxion:asset-reimported', handler);
+  }, [mr.modelPath, mr.materialSlots]);
 
   /** Extract filename from a path */
   const getFileName = (path: string) => {

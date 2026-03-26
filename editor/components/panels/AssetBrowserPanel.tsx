@@ -533,6 +533,7 @@ export const AssetBrowserPanel: React.FC<{
       const result = await assetImporter.reimport(entry.path);
       if (result.success) {
         log(`Reimported ${entry.name}`, 'system');
+        window.dispatchEvent(new CustomEvent('fluxion:asset-reimported', { detail: { path: entry.path } }));
       } else {
         log(`Reimport failed: ${result.error}`, 'error');
       }

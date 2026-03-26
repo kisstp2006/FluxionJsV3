@@ -12,6 +12,11 @@ const commonRules = [
     test: /\.css$/,
     use: ['style-loader', 'css-loader'],
   },
+  {
+    // Import .glsl files as plain strings (no processing, bundled at build time)
+    test: /\.glsl$/,
+    type: 'asset/source',
+  },
 ];
 
 const resolve = {

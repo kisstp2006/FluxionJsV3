@@ -367,13 +367,34 @@ export function updateVisualMaterialTime(mat: THREE.Material, time: number): voi
  * @param fileData    Parsed VisualMaterialFile JSON
  * @param loadTexture Callback to load a texture from a relative path
  * @param options     Material creation options
+ * @param rawFileContent  Optional raw JSON string used as cache key. When provided,
+ *                        the result is stored in ShaderCache (and read from it on cache hit).
  */
 export async function buildVisualMaterial(
   fileData: VisualMaterialFile,
   loadTexture: (path: string) => Promise<THREE.Texture>,
   options?: VisualMaterialOptions,
+  rawFileContent?: string,
 ): Promise<{ material: THREE.MeshPhysicalMaterial; compiled: CompiledVisualMaterial }> {
-  const compiled = compileVisualMaterial(fileData.graph);
+  let compiled: CompiledVisualMaterial;
+
+  // Cache lookup — only when raw content string is provided
+  if (rawFileContent) {
+    const { ShaderCache } = await import('./ShaderCache');
+    const hash = await ShaderCache.hash(rawFileContent);
+    const cached = await ShaderCache.get(hash);
+    if (cached) {
+      // Reconstruct a CompiledVisualMaterial from the serialized cache entry.
+      // Texture objects are null in cache; they will be loaded below from texturePaths.
+      compiled = cached as CompiledVisualMaterial;
+    } else {
+      compiled = compileVisualMaterial(fileData.graph);
+      // Store for next time (fire and forget — don't block on disk write)
+      ShaderCache.set(hash, compiled).catch(() => {});
+    }
+  } else {
+    compiled = compileVisualMaterial(fileData.graph);
+  }
 
   if (compiled.errors.length > 0) {
     console.warn('[VisualMaterial] Compilation errors:', compiled.errors);

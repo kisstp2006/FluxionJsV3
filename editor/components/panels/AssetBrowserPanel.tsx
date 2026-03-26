@@ -44,6 +44,20 @@ function metaPath(assetPath: string): string {
   return assetPath + '.fluxmeta';
 }
 
+/** Small texture thumbnail with icon fallback on load error. */
+const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{fallback}</>;
+  return (
+    <img
+      src={`file:///${path.replace(/\\/g, '/')}`}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '3px', display: 'block' }}
+    />
+  );
+};
+
 // ── Folder Tree Item ──
 const FolderTreeItem: React.FC<{
   name: string;
@@ -139,6 +153,12 @@ export const AssetBrowserPanel: React.FC<{
   const [importProgress, setImportProgress] = useState<{ percent: number; file: string } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [renamingEntry, setRenamingEntry] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [outdatedPaths, setOutdatedPaths] = useState<Set<string>>(new Set());
+  type SortMode = 'name-asc' | 'name-desc' | 'type';
+  const [sortMode, setSortMode] = useState<SortMode>('name-asc');
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const lastClickedRef = useRef<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,6 +196,26 @@ export const AssetBrowserPanel: React.FC<{
       setEntries(all.filter(e => !e.name.endsWith('.fluxmeta')));
     }).catch(() => setEntries([]));
   }, [selectedFolder, refreshKey]);
+
+  // Check which entries have an outdated source file (source hash changed since import)
+  useEffect(() => {
+    if (entries.length === 0) { setOutdatedPaths(new Set()); return; }
+    let cancelled = false;
+    const check = async () => {
+      const outdated = new Set<string>();
+      await Promise.allSettled(
+        entries
+          .filter(e => !e.isDirectory)
+          .map(async (e) => {
+            const result = await assetImporter.checkOutdated(e.path).catch(() => null);
+            if (!cancelled && result === true) outdated.add(e.path);
+          }),
+      );
+      if (!cancelled) setOutdatedPaths(outdated);
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [entries]);
 
   const handleDoubleClick = (entry: DirEntry) => {
     if (entry.isDirectory) {
@@ -376,6 +416,21 @@ export const AssetBrowserPanel: React.FC<{
     log(`Copied absolute path`, 'info');
   };
 
+  const reimportEntry = async (entry: DirEntry) => {
+    log(`Reimporting ${entry.name}...`, 'system');
+    try {
+      const result = await assetImporter.reimport(entry.path);
+      if (result.success) {
+        log(`Reimported ${entry.name}`, 'system');
+      } else {
+        log(`Reimport failed: ${result.error}`, 'error');
+      }
+      refresh();
+    } catch (err: any) {
+      log(`Reimport error: ${err.message}`, 'error');
+    }
+  };
+
   // ── Context Menus ──
 
   /** Context menu for the empty grid area (background) */
@@ -426,6 +481,11 @@ export const AssetBrowserPanel: React.FC<{
 
     const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
     if (!entry.isDirectory) {
+      // If right-clicking outside the current selection, reset to this item only
+      if (!selectedPaths.has(entry.path)) {
+        setSelectedPaths(new Set([entry.path]));
+        lastClickedRef.current = entry.path;
+      }
       dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
     }
 
@@ -445,6 +505,7 @@ export const AssetBrowserPanel: React.FC<{
 
     if (!entry.isDirectory) {
       items.push({ label: 'Duplicate', icon: Icons.copy, onClick: () => duplicateEntry(entry) });
+      items.push({ label: 'Reimport', icon: Icons.refresh, onClick: () => reimportEntry(entry) });
     }
 
     // Model-specific: extract embedded textures
@@ -563,6 +624,23 @@ export const AssetBrowserPanel: React.FC<{
     }
   };
 
+  const filteredEntries = (() => {
+    const base = searchQuery.trim()
+      ? entries.filter(e => e.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : [...entries];
+    const folders = base.filter(e => e.isDirectory);
+    const files = base.filter(e => !e.isDirectory);
+    const cmp = (a: DirEntry, b: DirEntry): number => {
+      if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+      if (sortMode === 'type') {
+        const ta = getFileType(a.name), tb = getFileType(b.name);
+        return ta !== tb ? ta.localeCompare(tb) : a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name); // name-asc default
+    };
+    return [...folders.sort(cmp), ...files.sort(cmp)];
+  })();
+
   if (!state.projectLoaded) {
     return (
       <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -591,116 +669,235 @@ export const AssetBrowserPanel: React.FC<{
         )}
       </div>
 
-      {/* Asset Grid */}
-      <div
-        ref={gridRef}
-        onContextMenu={handleBackgroundContextMenu}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onKeyDown={(e) => {
-          // Keyboard shortcuts when grid is focused
-          const selected = entries.find(en => en.path === state.selectedAsset?.path);
-          if (!selected) return;
-          if (e.key === 'Delete') { e.preventDefault(); deleteEntry(selected); }
-          if (e.key === 'F2') { e.preventDefault(); renameEntry(selected); }
-        }}
-        tabIndex={0}
-        style={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-        gap: '8px',
-        padding: '8px',
-        overflowY: 'auto',
-        alignContent: 'start',
-        position: 'relative',
-        outline: 'none',
-        border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
-        transition: 'border 150ms ease',
-      }}>
-        {entries.map((entry) => {
-          const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
-          const isRenaming = renamingEntry === entry.path;
-          return (
-            <div
-              key={entry.path}
-              draggable={!entry.isDirectory && !isRenaming}
-              onDragStart={(e) => {
-                if (entry.isDirectory) return;
-                const relPath = projectManager.projectDir
-                  ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
-                  : entry.name;
-                e.dataTransfer.setData('application/x-fluxion-asset', relPath);
-                e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
-                const typeDef = AssetTypeRegistry.resolveFile(entry.name);
-                if (typeDef) {
-                  e.dataTransfer.setData('application/x-fluxion-asset-type', typeDef.type);
-                }
-                e.dataTransfer.effectAllowed = 'copyLink';
-              }}
-              onClick={() => {
-                if (!entry.isDirectory) {
-                  dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
-                }
-              }}
-              onDoubleClick={() => handleDoubleClick(entry)}
-              onContextMenu={(e) => handleItemContextMenu(e, entry)}
-              style={{
-                display: 'flex',
-                border: state.selectedAsset?.path === entry.path ? '1px solid var(--accent)' : '1px solid transparent',
-                flexDirection: 'column',
-                alignItems: 'center',
-                padding: '8px 4px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                gap: '4px',
-                transition: 'background 150ms ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
-              {isRenaming ? (
-                <input
-                  ref={renameInputRef}
-                  autoFocus
-                  defaultValue={entry.name}
-                  onBlur={(e) => commitRename(entry, e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitRename(entry, e.currentTarget.value); }
-                    if (e.key === 'Escape') { e.stopPropagation(); setRenamingEntry(null); }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  style={{
+      {/* Asset Grid + Search bar */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Toolbar: Search + Sort */}
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search assets..."
+            style={{
+              flex: 1,
+              padding: '4px 8px',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              color: 'var(--text-primary)',
+              fontSize: '11px',
+              outline: 'none',
+              minWidth: 0,
+            }}
+          />
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            style={{
+              padding: '4px 4px',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              color: 'var(--text-secondary)',
+              fontSize: '11px',
+              outline: 'none',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <option value="name-asc">Name A-Z</option>
+            <option value="name-desc">Name Z-A</option>
+            <option value="type">Type</option>
+          </select>
+        </div>
+
+        {/* Grid */}
+        <div
+          ref={gridRef}
+          onContextMenu={handleBackgroundContextMenu}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={(e) => {
+            // Clear selection when clicking empty grid background
+            if (e.target === e.currentTarget) setSelectedPaths(new Set());
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Delete') {
+              e.preventDefault();
+              if (selectedPaths.size > 1) {
+                const toDelete = entries.filter(en => selectedPaths.has(en.path));
+                setConfirmDialog({
+                  message: `Delete ${toDelete.length} items? This cannot be undone.`,
+                  onConfirm: async () => {
+                    const fs = getFileSystem();
+                    for (const en of toDelete) {
+                      try {
+                        await fs.delete(en.path);
+                        if (!en.isDirectory) {
+                          const mp = metaPath(en.path);
+                          if (await fs.exists(mp)) await fs.delete(mp);
+                        }
+                      } catch {}
+                    }
+                    log(`Deleted ${toDelete.length} items`, 'system');
+                    setSelectedPaths(new Set());
+                    refresh();
+                  },
+                });
+              } else {
+                const sel = entries.find(en => selectedPaths.has(en.path));
+                if (sel) deleteEntry(sel);
+              }
+            }
+            if (e.key === 'F2') {
+              e.preventDefault();
+              const sel = entries.find(en => selectedPaths.has(en.path));
+              if (sel) renameEntry(sel);
+            }
+          }}
+          tabIndex={0}
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+            gap: '8px',
+            padding: '8px',
+            overflowY: 'auto',
+            alignContent: 'start',
+            position: 'relative',
+            outline: 'none',
+            border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
+            transition: 'border 150ms ease',
+          }}>
+          {filteredEntries.map((entry) => {
+            const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
+            const isRenaming = renamingEntry === entry.path;
+            const isOutdated = outdatedPaths.has(entry.path);
+            return (
+              <div
+                key={entry.path}
+                draggable={!entry.isDirectory && !isRenaming}
+                onDragStart={(e) => {
+                  if (entry.isDirectory) return;
+                  const relPath = projectManager.projectDir
+                    ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
+                    : entry.name;
+                  e.dataTransfer.setData('application/x-fluxion-asset', relPath);
+                  e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
+                  const typeDef = AssetTypeRegistry.resolveFile(entry.name);
+                  if (typeDef) {
+                    e.dataTransfer.setData('application/x-fluxion-asset-type', typeDef.type);
+                  }
+                  e.dataTransfer.effectAllowed = 'copyLink';
+                }}
+                onClick={(e) => {
+                  if (entry.isDirectory) return;
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedPaths(prev => {
+                      const next = new Set(prev);
+                      if (next.has(entry.path)) next.delete(entry.path);
+                      else { next.add(entry.path); lastClickedRef.current = entry.path; }
+                      return next;
+                    });
+                  } else if (e.shiftKey && lastClickedRef.current) {
+                    const filePaths = filteredEntries.filter(en => !en.isDirectory).map(en => en.path);
+                    const lastIdx = filePaths.indexOf(lastClickedRef.current);
+                    const thisIdx = filePaths.indexOf(entry.path);
+                    const [from, to] = lastIdx <= thisIdx ? [lastIdx, thisIdx] : [thisIdx, lastIdx];
+                    setSelectedPaths(new Set(filePaths.slice(from, to + 1)));
+                  } else {
+                    setSelectedPaths(new Set([entry.path]));
+                    lastClickedRef.current = entry.path;
+                    dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
+                  }
+                }}
+                onDoubleClick={() => handleDoubleClick(entry)}
+                onContextMenu={(e) => handleItemContextMenu(e, entry)}
+                style={{
+                  display: 'flex',
+                  position: 'relative',
+                  border: selectedPaths.has(entry.path) ? '1px solid var(--accent)' : '1px solid transparent',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '8px 4px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  gap: '4px',
+                  transition: 'background 150ms ease',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                {/* Outdated source badge */}
+                {isOutdated && (
+                  <span
+                    title="Source file has changed — right-click to Reimport"
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      right: 3,
+                      fontSize: '11px',
+                      lineHeight: 1,
+                      color: '#f0a832',
+                      pointerEvents: 'none',
+                    }}
+                  >⚠</span>
+                )}
+                {fileType === 'texture' ? (
+                  <TextureThumbnail
+                    path={entry.path}
+                    fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
+                  />
+                ) : (
+                  <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
+                )}
+                {isRenaming ? (
+                  <input
+                    ref={renameInputRef}
+                    autoFocus
+                    defaultValue={entry.name}
+                    onBlur={(e) => commitRename(entry, e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitRename(entry, e.currentTarget.value); }
+                      if (e.key === 'Escape') { e.stopPropagation(); setRenamingEntry(null); }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    style={{
+                      fontSize: '10px',
+                      color: 'var(--text-primary)',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--accent)',
+                      borderRadius: '3px',
+                      padding: '2px 4px',
+                      textAlign: 'center',
+                      maxWidth: '72px',
+                      width: '72px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-primary)',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: '3px',
-                    padding: '2px 4px',
+                    color: 'var(--text-secondary)',
                     textAlign: 'center',
+                    wordBreak: 'break-all',
                     maxWidth: '72px',
-                    width: '72px',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              ) : (
-                <span style={{
-                  fontSize: '10px',
-                  color: 'var(--text-secondary)',
-                  textAlign: 'center',
-                  wordBreak: 'break-all',
-                  maxWidth: '72px',
-                }}>
-                  {entry.name}
-                </span>
-              )}
-            </div>
-          );
-        })}
+                  }}>
+                    {entry.name}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Context Menu */}

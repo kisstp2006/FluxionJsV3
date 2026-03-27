@@ -343,6 +343,140 @@ const App: React.FC = () => {
         noEmit: true,
         strict: false,
       });
+
+      // ── Custom completion provider ──────────────────────────
+      const CK = monaco.languages.CompletionItemKind;
+      const IS = monaco.languages.CompletionItemInsertTextRule;
+
+      // Component type names for getComponent / hasComponent / removeComponent
+      const COMPONENT_TYPES = [
+        'Transform', 'MeshRenderer', 'Rigidbody', 'Collider',
+        'Light', 'AudioSource', 'Camera', 'Script',
+        'ParticleEmitter', 'TextRenderer', 'CSGBrush',
+      ];
+
+      // Lifecycle snippets available at class-body level
+      const LIFECYCLE_SNIPPETS = [
+        {
+          label: 'onStart',
+          detail: 'Lifecycle — called once when play begins',
+          insert: 'onStart() {\n\t$0\n}',
+        },
+        {
+          label: 'onUpdate',
+          detail: 'Lifecycle — called every frame',
+          insert: 'onUpdate(dt: number) {\n\t$0\n}',
+        },
+        {
+          label: 'onFixedUpdate',
+          detail: 'Lifecycle — called at fixed physics rate',
+          insert: 'onFixedUpdate(dt: number) {\n\t$0\n}',
+        },
+        {
+          label: 'onDestroy',
+          detail: 'Lifecycle — called when entity is destroyed',
+          insert: 'onDestroy() {\n\t$0\n}',
+        },
+      ];
+
+      // Common code snippets (triggered by keyword)
+      const CODE_SNIPPETS = [
+        {
+          label: 'startCoroutine',
+          detail: 'Start a generator coroutine',
+          insert: 'startCoroutine(function*() {\n\tyield { seconds: ${1:1} };\n\t$0\n}.call(this));',
+        },
+        {
+          label: 'getComponent',
+          detail: 'Get a component from this entity',
+          insert: "getComponent<${1:TransformComponent}>('${2:Transform}')",
+        },
+        {
+          label: 'Vec3',
+          detail: 'Construct a Vec3',
+          insert: 'new Vec3(${1:0}, ${2:0}, ${3:0})',
+        },
+        {
+          label: 'Mathf.lerp',
+          detail: 'Linear interpolation',
+          insert: 'Mathf.lerp(${1:a}, ${2:b}, ${3:t})',
+        },
+        {
+          label: 'Mathf.clamp',
+          detail: 'Clamp value between min and max',
+          insert: 'Mathf.clamp(${1:value}, ${2:0}, ${3:1})',
+        },
+        {
+          label: 'Debug.drawLine',
+          detail: 'Draw a debug line in the viewport',
+          insert: 'Debug.drawLine(${1:start}, ${2:end})',
+        },
+      ];
+
+      monaco.languages.registerCompletionItemProvider('typescript', {
+        triggerCharacters: ["'", '"', '.'],
+        provideCompletionItems(model: any, position: any) {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
+
+          const lineText: string = model.getLineContent(position.lineNumber);
+          const textBefore = lineText.slice(0, position.column - 1);
+
+          const items: any[] = [];
+
+          // ── String literal completions inside getComponent / hasComponent / removeComponent ──
+          const componentArgMatch = /(?:getComponent(?:Of)?|hasComponent|removeComponent|addTag|findWithTag|findAll)\s*\([^)]*['"]([^'"]*)?$/.test(textBefore);
+          if (componentArgMatch) {
+            for (const ctype of COMPONENT_TYPES) {
+              items.push({
+                label: ctype,
+                kind: CK.EnumMember,
+                detail: 'Component type',
+                insertText: ctype,
+                range,
+              });
+            }
+            return { suggestions: items };
+          }
+
+          // ── Lifecycle snippets at class body level (after whitespace/newline) ──
+          const atClassBody = /^\s*(on\w*)?$/.test(textBefore);
+          if (atClassBody) {
+            for (const s of LIFECYCLE_SNIPPETS) {
+              items.push({
+                label: s.label,
+                kind: CK.Method,
+                detail: s.detail,
+                documentation: s.detail,
+                insertText: s.insert,
+                insertTextRules: IS.InsertAsSnippet,
+                range,
+                sortText: '0' + s.label,
+              });
+            }
+          }
+
+          // ── General code snippets ──
+          for (const s of CODE_SNIPPETS) {
+            items.push({
+              label: s.label,
+              kind: CK.Snippet,
+              detail: s.detail,
+              documentation: s.detail,
+              insertText: s.insert,
+              insertTextRules: IS.InsertAsSnippet,
+              range,
+            });
+          }
+
+          return { suggestions: items };
+        },
+      });
     }
 
     // Ctrl+S to save

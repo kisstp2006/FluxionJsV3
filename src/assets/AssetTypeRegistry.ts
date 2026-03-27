@@ -10,6 +10,14 @@ import type { FluxMeshData, FluxMeshMaterialSlot, FluxMeshSubMeshRef } from './F
 
 // ── Types ──
 
+export interface ScriptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  generate: (className: string) => string;
+}
+
 export interface AssetTypeDefinition {
   /** Unique type id, e.g. 'texture', 'model', 'audio', 'scene' */
   type: string;
@@ -34,7 +42,9 @@ export interface AssetTypeDefinition {
    * When present, a "New <displayName>" option appears in the
    * Asset Browser context menu.
    */
-  createDefault?: (fs: IFileSystem, dirPath: string, name: string) => Promise<string>;
+  createDefault?: (fs: IFileSystem, dirPath: string, name: string, templateId?: string) => Promise<string>;
+  /** Optional list of creation templates shown in a picker dialog. */
+  templates?: ScriptTemplate[];
   /** Show in import dialog? */
   canImport?: boolean;
   /** Electron file dialog filters for importing */
@@ -377,6 +387,182 @@ AssetTypeRegistry.register({
   serializable: false,
 });
 
+export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
+  {
+    id: 'empty',
+    name: 'Empty Script',
+    description: 'Minimal class with no lifecycle methods',
+    icon: '📄',
+    generate: (cls) => `export default class ${cls} extends FluxionScript {\n\n}\n`,
+  },
+  {
+    id: 'default',
+    name: 'Default Script',
+    description: 'Basic template with onStart, onUpdate and onDestroy',
+    icon: '⚡',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  // Public fields appear as editable properties in the Inspector`,
+      `  // speed = 5.0;`,
+      ``,
+      `  onStart() {`,
+      `    this.log('${cls} started');`,
+      `  }`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    // Called every frame — dt is delta time in seconds`,
+      `  }`,
+      ``,
+      `  onDestroy() {}`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+  {
+    id: 'movement',
+    name: 'Movement Controller',
+    description: 'WASD movement using Transform',
+    icon: '🎮',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  speed = 5.0;`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    const tf = this.transform;`,
+      `    if (!tf) return;`,
+      ``,
+      `    const move = new Vec3(`,
+      `      this.input.getAxis('KeyA', 'KeyD'),`,
+      `      0,`,
+      `      this.input.getAxis('KeyW', 'KeyS'),`,
+      `    );`,
+      ``,
+      `    if (move.lengthSq() > 0) {`,
+      `      move.normalize().multiplyScalar(this.speed * dt);`,
+      `      tf.position.add(move);`,
+      `    }`,
+      `  }`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+  {
+    id: 'rotator',
+    name: 'Rotator',
+    description: 'Continuously rotates an object',
+    icon: '🔄',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  /** Degrees per second on each axis */`,
+      `  speedX = 0;`,
+      `  speedY = 45;`,
+      `  speedZ = 0;`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    const tf = this.transform;`,
+      `    if (!tf) return;`,
+      `    tf.rotation.x += Mathf.Deg2Rad * this.speedX * dt;`,
+      `    tf.rotation.y += Mathf.Deg2Rad * this.speedY * dt;`,
+      `    tf.rotation.z += Mathf.Deg2Rad * this.speedZ * dt;`,
+      `  }`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+  {
+    id: 'camera-follow',
+    name: 'Camera Follow',
+    description: 'Smoothly follows a target entity by name',
+    icon: '📷',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  targetName = 'Player';`,
+      `  offset = new Vec3(0, 5, -10);`,
+      `  smoothSpeed = 5.0;`,
+      ``,
+      `  private _target = -1;`,
+      ``,
+      `  onStart() {`,
+      `    const found = this.find(this.targetName);`,
+      `    if (found !== undefined) this._target = found;`,
+      `    else this.warn('Target "' + this.targetName + '" not found');`,
+      `  }`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    if (this._target < 0) return;`,
+      `    const targetTf = this.getComponentOf(this._target, 'Transform');`,
+      `    const myTf = this.transform;`,
+      `    if (!targetTf || !myTf) return;`,
+      ``,
+      `    const desired = targetTf.position.clone().add(this.offset);`,
+      `    myTf.position.lerp(desired, Mathf.clamp01(this.smoothSpeed * dt));`,
+      `  }`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+  {
+    id: 'physics-object',
+    name: 'Physics Object',
+    description: 'Applies forces via Rigidbody on input',
+    icon: '🧱',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  forceMagnitude = 10.0;`,
+      `  jumpForce = 5.0;`,
+      ``,
+      `  private _rb = null;`,
+      ``,
+      `  onStart() {`,
+      `    this._rb = this.getComponent('Rigidbody');`,
+      `    if (!this._rb) this.warn('No Rigidbody component found');`,
+      `  }`,
+      ``,
+      `  onFixedUpdate(dt) {`,
+      `    if (!this._rb) return;`,
+      ``,
+      `    const h = this.input.getAxis('KeyA', 'KeyD');`,
+      `    const v = this.input.getAxis('KeyS', 'KeyW');`,
+      ``,
+      `    if (h !== 0 || v !== 0) {`,
+      `      const force = new Vec3(h, 0, v).normalize().multiplyScalar(this.forceMagnitude);`,
+      `      this._rb.applyForce?.(force.x, force.y, force.z);`,
+      `    }`,
+      ``,
+      `    if (this.input.isKeyPressed('Space')) {`,
+      `      this._rb.applyImpulse?.(0, this.jumpForce, 0);`,
+      `    }`,
+      `  }`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+  {
+    id: 'coroutine',
+    name: 'Coroutine Example',
+    description: 'Demonstrates generator-based coroutines',
+    icon: '⏱️',
+    generate: (cls) => [
+      `export default class ${cls} extends FluxionScript {`,
+      `  onStart() {`,
+      `    this.startCoroutine(this.introSequence());`,
+      `  }`,
+      ``,
+      `  *introSequence() {`,
+      `    this.log('Sequence started');`,
+      `    yield { seconds: 1 };`,
+      `    this.log('1 second passed');`,
+      `    yield { seconds: 2 };`,
+      `    this.log('3 seconds total — done');`,
+      `  }`,
+      ``,
+      `  onUpdate(dt) {}`,
+      `}`,
+      ``,
+    ].join('\n'),
+  },
+];
+
 AssetTypeRegistry.register({
   type: 'script',
   displayName: 'Script',
@@ -385,26 +571,11 @@ AssetTypeRegistry.register({
   category: 'Scripts',
   color: '#7986cb',
   serializable: false,
-  createDefault: async (fs, dirPath, name) => {
+  templates: SCRIPT_TEMPLATES,
+  createDefault: async (fs, dirPath, name, templateId) => {
     const className = name.replace(/[^a-zA-Z0-9_$]/g, '_');
-    const content = [
-      `export default class ${className} extends FluxionScript {`,
-      `  // Expose public fields as inspector properties:`,
-      `  // speed = 5.0;`,
-      `  // playerName = 'Hero';`,
-      ``,
-      `  onStart() {`,
-      `    console.log('[Script] ${className} started on entity', this.entity);`,
-      `  }`,
-      ``,
-      `  onUpdate(dt) {`,
-      `    // Called every frame. Use this.getComponent('Transform') to move things.`,
-      `  }`,
-      ``,
-      `  onDestroy() {}`,
-      `}`,
-      ``,
-    ].join('\n');
+    const template = SCRIPT_TEMPLATES.find((t) => t.id === templateId) ?? SCRIPT_TEMPLATES[1];
+    const content = template.generate(className);
     const filePath = `${dirPath}/${name}.ts`;
     await fs.writeFile(filePath, content);
     return filePath;

@@ -6,6 +6,7 @@
 // ============================================================
 
 import * as THREE from 'three';
+import type { Engine } from '../core/Engine';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, ParticleEmitterComponent } from '../core/Components';
 
@@ -249,6 +250,15 @@ class ParticlePool {
     this.opacityAttr.needsUpdate = true;
   }
 
+  /** Kill all live particles in-place, keeping the pool allocated. */
+  reset(): void {
+    this.particles.length = 0;
+    this.alive = 0;
+    this.instancedMesh.count = 0;
+    this.opacityAttr.array.fill(0);
+    this.opacityAttr.needsUpdate = true;
+  }
+
   dispose(): void {
     this.instancedMesh.geometry.dispose();
     this.material.dispose();
@@ -272,12 +282,14 @@ export class ParticleRenderSystem implements System {
   private emitAccumulators: Map<EntityId, number> = new Map();
   private lastMaxParticles: Map<EntityId, number> = new Map();
   private scene: THREE.Scene;
+  private engine: Engine | null = null;
   private depthTexture: THREE.Texture | null = null;
   private camera: THREE.Camera | null = null;
   private resolution = new THREE.Vector2(1, 1);
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, engine?: Engine) {
     this.scene = scene;
+    this.engine = engine ?? null;
   }
 
   /** Store the opaque-depth pre-pass texture for soft particles. */
@@ -342,6 +354,9 @@ export class ParticleRenderSystem implements System {
         u['softDistance'].value = emitter.softDistance;
       }
 
+      // Particle simulation only runs in play mode
+      if (this.engine?.simulationPaused) continue;
+
       let accum = this.emitAccumulators.get(entity) ?? 0;
 
       // Emit particles
@@ -366,6 +381,14 @@ export class ParticleRenderSystem implements System {
         this.emitAccumulators.delete(entity);
       }
     }
+  }
+
+  /** Kill all live particles without destroying the pools (called on play-mode stop). */
+  clearAllParticles(): void {
+    for (const pool of this.pools.values()) {
+      pool.reset();
+    }
+    this.emitAccumulators.clear();
   }
 
   destroy(): void {

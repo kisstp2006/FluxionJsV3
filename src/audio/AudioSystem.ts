@@ -27,7 +27,7 @@ export class AudioSystem {
     this.listener = this.context.listener;
 
     // Register ECS system
-    _engine.ecs.addSystem(new AudioSyncSystem(this));
+    _engine.ecs.addSystem(new AudioSyncSystem(this, _engine));
 
     // Resume context on user interaction
     const resume = () => {
@@ -138,6 +138,17 @@ export class AudioSystem {
     this.masterGain.gain.value = this.masterVolume;
   }
 
+  /** Stop all currently-playing AudioSource components and reset the auto-play tracker. */
+  stopAll(ecs: ECSManager): void {
+    for (const entity of ecs.getAllEntities()) {
+      const audioComp = ecs.getComponent<AudioSourceComponent>(entity, 'AudioSource');
+      if (audioComp) this.stop(audioComp);
+    }
+    // Let the ECS system know it should re-trigger playOnStart next time play mode starts
+    const syncSys = ecs.getSystem<AudioSyncSystem>('AudioSync');
+    syncSys?.onSceneClear();
+  }
+
   dispose(): void {
     this.context.close();
     this.buffers.clear();
@@ -154,7 +165,7 @@ class AudioSyncSystem implements System {
   private started: Set<EntityId> = new Set();
   private cameraEntity: EntityId | null = null;
 
-  constructor(private audio: AudioSystem) {}
+  constructor(private audio: AudioSystem, private engine: Engine) {}
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     for (const entity of entities) {
@@ -162,8 +173,8 @@ class AudioSyncSystem implements System {
       const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
       if (!audioComp || !transform) continue;
 
-      // Auto-play on start
-      if (audioComp.playOnStart && !this.started.has(entity)) {
+      // Auto-play on start — only in play mode
+      if (audioComp.playOnStart && !this.started.has(entity) && !this.engine.simulationPaused) {
         this.audio.play(audioComp, transform.position);
         this.started.add(entity);
       }

@@ -83,7 +83,7 @@ export async function initEditorEngine(
   log('Rapier3D physics initialized', 'system');
 
   // Particles
-  const particleSys = new ParticleRenderSystem(renderer.scene);
+  const particleSys = new ParticleRenderSystem(renderer.scene, engine);
   engine.ecs.addSystem(particleSys);
 
   // CSG System

@@ -38,6 +38,7 @@ export class FluxionScript {
   /** @internal */ _audio!: AudioSystem | null;
   /** @internal */ _cleanupFns: (() => void)[] = [];
   /** @internal */ _coroutines: Map<symbol, { gen: Generator; waitUntil: number }> = new Map();
+  /** @internal — false until onStart() has been called in this play session. */ _started = false;
 
   // ── Convenience getters ──────────────────────────────────────
 

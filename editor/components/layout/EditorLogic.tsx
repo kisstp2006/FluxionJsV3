@@ -12,6 +12,8 @@ import { undoManager, TransformCommand, DeleteEntityCommand, DuplicateEntityComm
 import { DebugDraw } from '../../../src/renderer/DebugDraw';
 import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
+import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
+import { ScriptSystem } from '../../../src/core/ScriptSystem';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -248,9 +250,30 @@ export const SimulationSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     engine.engine.simulationPaused = !state.isPlaying;
-    // Restore editor camera when simulation stops
-    if (!state.isPlaying) {
+
+    if (state.isPlaying) {
+      // Switch to first game camera that exists in the scene
+      const cameras = engine.engine.ecs.query('Transform', 'Camera');
+      if (cameras.length > 0) {
+        const camComp = engine.engine.ecs.getComponent<CameraComponent>(cameras[0], 'Camera');
+        if (camComp?.camera) {
+          engine.renderer.setActiveCamera(camComp.camera as THREE.PerspectiveCamera);
+        }
+      }
+    } else {
+      // Restore editor camera
       engine.renderer.setActiveCamera(engine.editorCamera);
+
+      // Stop all playing audio and reset auto-play tracker
+      engine.audio.stopAll(engine.engine.ecs);
+
+      // Clear all live particles
+      const particleSys = engine.engine.ecs.getSystem<ParticleRenderSystem>('ParticleRenderer');
+      particleSys?.clearAllParticles();
+
+      // Reset scripts: clear coroutines + re-arm onStart() for next play session
+      const scriptSys = engine.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
+      scriptSys?.onSimulationStop();
     }
   }, [engine, state.isPlaying]);
 

@@ -164,6 +164,20 @@ export class ScriptSystem implements System {
 
         const inst = comp._instances.get(entry.path);
         if (!inst) continue;
+
+        // Scripts only run in play mode
+        if (this.engine.simulationPaused) continue;
+
+        // Call onStart() before the very first onUpdate() — mirrors Unity behaviour
+        if (!inst._started) {
+          inst._started = true;
+          try {
+            inst.onStart?.();
+          } catch (err) {
+            console.error(`[ScriptSystem] onStart error in "${entry.path}":`, err);
+          }
+        }
+
         try {
           if (this.updateTimeout > 0) {
             const t0 = performance.now();
@@ -275,14 +289,23 @@ export class ScriptSystem implements System {
       (instance as any)[key] = val;
     }
 
-    // Store before calling onStart so onStart can access the instance
+    // Store instance — onStart() is deferred until the first update() tick in play mode
+    instance._started = false;
     comp._instances.set(entry.path, instance);
     comp._loading.delete(entry.path);
+  }
 
-    try {
-      instance.onStart?.();
-    } catch (err) {
-      console.error(`[ScriptSystem] onStart error in "${entry.path}":`, err);
+  /** Called when play mode stops — clears coroutines and resets start flags on all instances. */
+  onSimulationStop(): void {
+    const ecs = this.engine.ecs;
+    for (const entity of ecs.getAllEntities()) {
+      const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
+      if (!comp) continue;
+      for (const inst of comp._instances.values()) {
+        if (!inst) continue;
+        inst._coroutines?.clear();
+        inst._started = false;
+      }
     }
   }
 

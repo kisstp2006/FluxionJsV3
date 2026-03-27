@@ -14,6 +14,7 @@ import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
+import type { ScriptTemplate } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
 import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
 
@@ -245,6 +246,11 @@ export const AssetBrowserPanel: React.FC<{
     submitLabel?: string;
     onSubmit: (value: string) => void;
   } | null>(null);
+  const [scriptCreateDialog, setScriptCreateDialog] = useState<{
+    templates: ScriptTemplate[];
+    onCreate: (templateId: string, name: string) => void;
+  } | null>(null);
+  const [scriptCreateStep, setScriptCreateStep] = useState<{ templateId: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     message: string;
     onConfirm: () => void;
@@ -559,21 +565,40 @@ export const AssetBrowserPanel: React.FC<{
           label: `New ${def.displayName}`,
           icon: resolveIcon(def.icon),
           onClick: () => {
-            setInputDialog({
-              label: `${def.displayName} name`,
-              defaultValue: `New${def.displayName}`,
-              onSubmit: async (name) => {
-                if (!selectedFolder || !name.trim() || !def.createDefault) return;
-                try {
-                  const fs = getFileSystem();
-                  await def.createDefault(fs, selectedFolder, name.trim());
-                  log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
-                  refresh();
-                } catch (err: any) {
-                  log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
-                }
-              },
-            });
+            if (def.templates && def.templates.length > 0) {
+              // Show template picker first, then name input
+              setScriptCreateStep(null);
+              setScriptCreateDialog({
+                templates: def.templates,
+                onCreate: async (templateId, name) => {
+                  if (!selectedFolder || !name.trim() || !def.createDefault) return;
+                  try {
+                    const fs = getFileSystem();
+                    await def.createDefault(fs, selectedFolder, name.trim(), templateId);
+                    log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
+                    refresh();
+                  } catch (err: any) {
+                    log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
+                  }
+                },
+              });
+            } else {
+              setInputDialog({
+                label: `${def.displayName} name`,
+                defaultValue: `New${def.displayName}`,
+                onSubmit: async (name) => {
+                  if (!selectedFolder || !name.trim() || !def.createDefault) return;
+                  try {
+                    const fs = getFileSystem();
+                    await def.createDefault(fs, selectedFolder, name.trim());
+                    log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
+                    refresh();
+                  } catch (err: any) {
+                    log(`Failed to create ${def.displayName.toLowerCase()}: ${err.message}`, 'error');
+                  }
+                },
+              });
+            }
           },
         })),
         { label: 'New Folder', icon: Icons.folder, onClick: createNewFolder },
@@ -1088,6 +1113,116 @@ export const AssetBrowserPanel: React.FC<{
           onClose={() => setCtxMenu(null)}
           items={ctxMenu.items}
         />
+      )}
+
+      {/* Script Template Picker Dialog */}
+      {scriptCreateDialog && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 10000,
+        }} onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: 'var(--bg-panel)', border: '1px solid var(--border)',
+            borderRadius: '8px', padding: '20px', width: 520,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}>
+            {!scriptCreateStep ? (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  New Script
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                  Choose a template to start from
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {scriptCreateDialog.templates.map((tpl) => (
+                    <div
+                      key={tpl.id}
+                      onClick={() => setScriptCreateStep({ templateId: tpl.id })}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
+                        border: '1px solid var(--border)', background: 'var(--bg-hover)',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                    >
+                      <span style={{ fontSize: 22, lineHeight: 1 }}>{tpl.icon}</span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tpl.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tpl.description}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }} style={{
+                    padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                    border: '1px solid var(--border)', borderRadius: 4,
+                    color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  Script Name
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                  Template: <span style={{ color: 'var(--accent)' }}>
+                    {scriptCreateDialog.templates.find((t) => t.id === scriptCreateStep.templateId)?.name}
+                  </span>
+                </div>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const input = (e.currentTarget.elements.namedItem('name') as HTMLInputElement);
+                  if (input?.value?.trim()) {
+                    scriptCreateDialog.onCreate(scriptCreateStep.templateId, input.value.trim());
+                  }
+                  setScriptCreateDialog(null);
+                  setScriptCreateStep(null);
+                }}>
+                  <input
+                    name="name"
+                    autoFocus
+                    defaultValue="NewScript"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setScriptCreateStep(null); // go back
+                      }
+                    }}
+                    style={{
+                      width: '100%', padding: '6px 8px',
+                      background: 'var(--bg-input)', border: '1px solid var(--border)',
+                      borderRadius: 4, color: 'var(--text-primary)', fontSize: 12,
+                      outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, gap: 8 }}>
+                    <button type="button" onClick={() => setScriptCreateStep(null)} style={{
+                      padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                      border: '1px solid var(--border)', borderRadius: 4,
+                      color: 'var(--text-secondary)', cursor: 'pointer',
+                    }}>← Back</button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }} style={{
+                        padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                        border: '1px solid var(--border)', borderRadius: 4,
+                        color: 'var(--text-secondary)', cursor: 'pointer',
+                      }}>Cancel</button>
+                      <button type="submit" style={{
+                        padding: '4px 14px', fontSize: 11, background: 'var(--accent)',
+                        border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer',
+                      }}>Create</button>
+                    </div>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Input Dialog (Create / etc.) */}

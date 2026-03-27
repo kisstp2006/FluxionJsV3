@@ -320,7 +320,7 @@ export class PostProcessingPipeline {
       uniforms: {
         tScene: { value: null },
         tDepth: { value: null },
-        resolution: { value: new THREE.Vector2(ssrW, ssrH) },
+        resolution: { value: new THREE.Vector2(1, 1) },
         depthResolution: { value: new THREE.Vector2(w, h) },
         projMatrix: { value: new THREE.Matrix4() },
         invProjMatrix: { value: new THREE.Matrix4() },

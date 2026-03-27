@@ -160,7 +160,15 @@ interface RigidbodyComponent {
   linearDamping: number;
   angularDamping: number;
   gravityScale: number;
-  isSensor: boolean;
+  friction: number;
+  restitution: number;
+  isContinuous: boolean;
+  lockLinearX: boolean;
+  lockLinearY: boolean;
+  lockLinearZ: boolean;
+  lockAngularX: boolean;
+  lockAngularY: boolean;
+  lockAngularZ: boolean;
   enabled: boolean;
 }
 
@@ -170,8 +178,40 @@ interface ColliderComponent {
   radius: number;
   height: number;
   isTrigger: boolean;
-  friction: number;
-  restitution: number;
+  offset: _THREE.Vector3;
+  enabled: boolean;
+}
+
+/** Character Controller component — kinematic capsule character with built-in
+ *  slope/step handling, jumping, crouching, and air control. */
+interface CharacterControllerComponent {
+  // Shape
+  radius: number;
+  height: number;
+  crouchHeight: number;
+  centerOffsetY: number;
+  // Speeds
+  walkSpeed: number;
+  runSpeed: number;
+  crouchSpeed: number;
+  airSpeed: number;
+  // Jump
+  jumpImpulse: number;
+  maxJumps: number;
+  // Ground
+  maxSlopeAngle: number;
+  maxStepHeight: number;
+  stepDownHeight: number;
+  // Physics
+  gravityScale: number;
+  airFriction: number;
+  airControl: number;
+  pushForce: number;
+  mass: number;
+  // Runtime state (read-only from scripts)
+  readonly _isGrounded: boolean;
+  readonly _isCrouching: boolean;
+  readonly _isRunning: boolean;
   enabled: boolean;
 }
 
@@ -450,13 +490,14 @@ declare class FluxionScript {
    * Common component types:
    * - 'Transform'      → TransformComponent
    * - 'MeshRenderer'   → MeshRendererComponent
-   * - 'Rigidbody'      → RigidbodyComponent
-   * - 'Collider'       → ColliderComponent
-   * - 'Light'          → LightComponent
-   * - 'AudioSource'    → AudioSourceComponent
-   * - 'Camera'         → CameraComponent
-   * - 'Script'         → ScriptComponent
-   * - 'Particle'       → ParticleComponent
+   * - 'Rigidbody'           → RigidbodyComponent
+   * - 'Collider'            → ColliderComponent
+   * - 'CharacterController' → CharacterControllerComponent
+   * - 'Light'               → LightComponent
+   * - 'AudioSource'         → AudioSourceComponent
+   * - 'Camera'              → CameraComponent
+   * - 'Script'              → ScriptComponent
+   * - 'Particle'            → ParticleComponent
    *
    * @example
    * const rb = this.getComponent<RigidbodyComponent>('Rigidbody');
@@ -521,6 +562,69 @@ declare class FluxionScript {
 
   /** Check whether an entity has a tag. Defaults to this entity. */
   hasTag(tag: string, entity?: number): boolean;
+
+  // ── Physics ──────────────────────────────────────────────────
+
+  /**
+   * Physics world access. Methods are no-ops when the entity has no
+   * matching component (e.g. CharacterController methods on a plain
+   * Rigidbody entity are silently ignored).
+   *
+   * @example
+   *   // Move a character controller
+   *   this.physics.move(this.input.getAxis('Horizontal'), this.input.getAxis('Vertical'));
+   *   if (this.input.getButtonDown('Jump')) this.physics.jump();
+   *
+   * @example
+   *   // Listen for collisions
+   *   this.on<{entity1: number; entity2: number}>('physics:collision-enter', (e) => {
+   *     if (e.entity1 === this.entity || e.entity2 === this.entity) { ... }
+   *   });
+   */
+  readonly physics: {
+    /** Cast a ray and return the first hit, or null. */
+    raycast(
+      origin: _THREE.Vector3,
+      direction: _THREE.Vector3,
+      maxDistance?: number,
+    ): { entity: number | null; point: _THREE.Vector3; normal: _THREE.Vector3; distance: number } | null;
+
+    /** Change the world gravity vector. */
+    setGravity(x: number, y: number, z: number): void;
+
+    /** Apply a continuous force to this entity's Rigidbody (N). */
+    applyForce(force: _THREE.Vector3): void;
+
+    /** Apply an instant impulse to this entity's Rigidbody. */
+    applyImpulse(impulse: _THREE.Vector3): void;
+
+    /** Apply a torque to this entity's Rigidbody. */
+    applyTorque(torque: _THREE.Vector3): void;
+
+    /** Directly set the linear velocity of this entity's Rigidbody. */
+    setVelocity(velocity: _THREE.Vector3): void;
+
+    /** Get the current linear velocity of this entity's Rigidbody. */
+    getVelocity(): _THREE.Vector3;
+
+    /** Set horizontal movement input (call every frame). */
+    move(x: number, z: number): void;
+
+    /** Trigger a jump (respects maxJumps and grounded state). */
+    jump(): void;
+
+    /** Whether the character is currently grounded. */
+    isGrounded(): boolean;
+
+    /** Enable or disable crouching. */
+    crouch(state: boolean): void;
+
+    /** Whether the character is currently crouching. */
+    isCrouching(): boolean;
+
+    /** Enable or disable running (switches to runSpeed). */
+    setRunning(state: boolean): void;
+  };
 
   // ── Events ───────────────────────────────────────────────────
 

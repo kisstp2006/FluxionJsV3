@@ -15,6 +15,7 @@ import {
   LightComponent,
   RigidbodyComponent,
   ColliderComponent,
+  CharacterControllerComponent,
   ScriptComponent,
   ParticleEmitterComponent,
   AudioSourceComponent,
@@ -242,6 +243,25 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           bodyType: rb.bodyType, mass: rb.mass, friction: rb.friction,
           restitution: rb.restitution, gravityScale: rb.gravityScale,
           linearDamping: rb.linearDamping, angularDamping: rb.angularDamping,
+          isContinuous: rb.isContinuous,
+          lockLinearX: rb.lockLinearX, lockLinearY: rb.lockLinearY, lockLinearZ: rb.lockLinearZ,
+          lockAngularX: rb.lockAngularX, lockAngularY: rb.lockAngularY, lockAngularZ: rb.lockAngularZ,
+        },
+      });
+    }
+
+    const cc = engine.ecs.getComponent<CharacterControllerComponent>(entityId, 'CharacterController');
+    if (cc) {
+      components.push({
+        type: 'CharacterController',
+        data: {
+          radius: cc.radius, height: cc.height, crouchHeight: cc.crouchHeight,
+          centerOffsetY: cc.centerOffsetY,
+          walkSpeed: cc.walkSpeed, runSpeed: cc.runSpeed, crouchSpeed: cc.crouchSpeed, airSpeed: cc.airSpeed,
+          jumpImpulse: cc.jumpImpulse, maxJumps: cc.maxJumps,
+          maxSlopeAngle: cc.maxSlopeAngle, maxStepHeight: cc.maxStepHeight, stepDownHeight: cc.stepDownHeight,
+          gravityScale: cc.gravityScale, airFriction: cc.airFriction, airControl: cc.airControl,
+          pushForce: cc.pushForce, mass: cc.mass,
         },
       });
     }
@@ -662,7 +682,39 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           r.gravityScale = d.gravityScale ?? 1;
           r.linearDamping = d.linearDamping ?? 0;
           r.angularDamping = d.angularDamping ?? 0.05;
+          r.isContinuous = d.isContinuous ?? false;
+          r.lockLinearX = d.lockLinearX ?? false;
+          r.lockLinearY = d.lockLinearY ?? false;
+          r.lockLinearZ = d.lockLinearZ ?? false;
+          r.lockAngularX = d.lockAngularX ?? false;
+          r.lockAngularY = d.lockAngularY ?? false;
+          r.lockAngularZ = d.lockAngularZ ?? false;
           engine.ecs.addComponent(entityId, r);
+          break;
+        }
+
+        case 'CharacterController': {
+          const cc = new CharacterControllerComponent();
+          const d = comp.data;
+          cc.radius = d.radius ?? 0.25;
+          cc.height = d.height ?? 1.8;
+          cc.crouchHeight = d.crouchHeight ?? 0.9;
+          cc.centerOffsetY = d.centerOffsetY ?? 0.9;
+          cc.walkSpeed = d.walkSpeed ?? 5;
+          cc.runSpeed = d.runSpeed ?? 8;
+          cc.crouchSpeed = d.crouchSpeed ?? 2.5;
+          cc.airSpeed = d.airSpeed ?? 3;
+          cc.jumpImpulse = d.jumpImpulse ?? 6;
+          cc.maxJumps = d.maxJumps ?? 1;
+          cc.maxSlopeAngle = d.maxSlopeAngle ?? 45;
+          cc.maxStepHeight = d.maxStepHeight ?? 0.3;
+          cc.stepDownHeight = d.stepDownHeight ?? 0.3;
+          cc.gravityScale = d.gravityScale ?? 1;
+          cc.airFriction = d.airFriction ?? 0.3;
+          cc.airControl = d.airControl ?? 0.8;
+          cc.pushForce = d.pushForce ?? 50;
+          cc.mass = d.mass ?? 70;
+          engine.ecs.addComponent(entityId, cc);
           break;
         }
 
@@ -1256,7 +1308,10 @@ function _serializeEntityComponents(entityId: EntityId, engine: Engine): Seriali
   if (light) components.push({ type: 'Light', data: { enabled: light.enabled, lightType: light.lightType, color: [light.color.r, light.color.g, light.color.b], intensity: light.intensity, range: light.range, castShadow: light.castShadow, shadowMapSize: light.shadowMapSize, spotAngle: light.spotAngle, spotPenumbra: light.spotPenumbra, cookieTexturePath: light.cookieTexturePath } });
 
   const rb = engine.ecs.getComponent<RigidbodyComponent>(entityId, 'Rigidbody');
-  if (rb) components.push({ type: 'Rigidbody', data: { bodyType: rb.bodyType, mass: rb.mass, friction: rb.friction, restitution: rb.restitution, gravityScale: rb.gravityScale, linearDamping: rb.linearDamping, angularDamping: rb.angularDamping } });
+  if (rb) components.push({ type: 'Rigidbody', data: { bodyType: rb.bodyType, mass: rb.mass, friction: rb.friction, restitution: rb.restitution, gravityScale: rb.gravityScale, linearDamping: rb.linearDamping, angularDamping: rb.angularDamping, isContinuous: rb.isContinuous, lockLinearX: rb.lockLinearX, lockLinearY: rb.lockLinearY, lockLinearZ: rb.lockLinearZ, lockAngularX: rb.lockAngularX, lockAngularY: rb.lockAngularY, lockAngularZ: rb.lockAngularZ } });
+
+  const cc2 = engine.ecs.getComponent<CharacterControllerComponent>(entityId, 'CharacterController');
+  if (cc2) components.push({ type: 'CharacterController', data: { radius: cc2.radius, height: cc2.height, crouchHeight: cc2.crouchHeight, centerOffsetY: cc2.centerOffsetY, walkSpeed: cc2.walkSpeed, runSpeed: cc2.runSpeed, crouchSpeed: cc2.crouchSpeed, airSpeed: cc2.airSpeed, jumpImpulse: cc2.jumpImpulse, maxJumps: cc2.maxJumps, maxSlopeAngle: cc2.maxSlopeAngle, maxStepHeight: cc2.maxStepHeight, stepDownHeight: cc2.stepDownHeight, gravityScale: cc2.gravityScale, airFriction: cc2.airFriction, airControl: cc2.airControl, pushForce: cc2.pushForce, mass: cc2.mass } });
 
   const col = engine.ecs.getComponent<ColliderComponent>(entityId, 'Collider');
   if (col) components.push({ type: 'Collider', data: { shape: col.shape, size: [col.size.x, col.size.y, col.size.z], radius: col.radius, height: col.height, isTrigger: col.isTrigger, offset: [col.offset.x, col.offset.y, col.offset.z] } });
@@ -1403,7 +1458,20 @@ export function restoreEntitySubtree(
         case 'Rigidbody': {
           const r = new RigidbodyComponent(); const d = comp.data;
           r.bodyType = d.bodyType || 'dynamic'; r.mass = d.mass ?? 1; r.friction = d.friction ?? 0.5; r.restitution = d.restitution ?? 0.3; r.gravityScale = d.gravityScale ?? 1; r.linearDamping = d.linearDamping ?? 0; r.angularDamping = d.angularDamping ?? 0.05;
+          r.isContinuous = d.isContinuous ?? false;
+          r.lockLinearX = d.lockLinearX ?? false; r.lockLinearY = d.lockLinearY ?? false; r.lockLinearZ = d.lockLinearZ ?? false;
+          r.lockAngularX = d.lockAngularX ?? false; r.lockAngularY = d.lockAngularY ?? false; r.lockAngularZ = d.lockAngularZ ?? false;
           engine.ecs.addComponent(entityId, r); break;
+        }
+        case 'CharacterController': {
+          const cc = new CharacterControllerComponent(); const d = comp.data;
+          cc.radius = d.radius ?? 0.25; cc.height = d.height ?? 1.8; cc.crouchHeight = d.crouchHeight ?? 0.9; cc.centerOffsetY = d.centerOffsetY ?? 0.9;
+          cc.walkSpeed = d.walkSpeed ?? 5; cc.runSpeed = d.runSpeed ?? 8; cc.crouchSpeed = d.crouchSpeed ?? 2.5; cc.airSpeed = d.airSpeed ?? 3;
+          cc.jumpImpulse = d.jumpImpulse ?? 6; cc.maxJumps = d.maxJumps ?? 1;
+          cc.maxSlopeAngle = d.maxSlopeAngle ?? 45; cc.maxStepHeight = d.maxStepHeight ?? 0.3; cc.stepDownHeight = d.stepDownHeight ?? 0.3;
+          cc.gravityScale = d.gravityScale ?? 1; cc.airFriction = d.airFriction ?? 0.3; cc.airControl = d.airControl ?? 0.8;
+          cc.pushForce = d.pushForce ?? 50; cc.mass = d.mass ?? 70;
+          engine.ecs.addComponent(entityId, cc); break;
         }
         case 'Collider': {
           const c = new ColliderComponent(); const d = comp.data;

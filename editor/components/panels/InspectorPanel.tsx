@@ -30,6 +30,7 @@ import { FuiInspector } from './inspector/FuiInspector';
 import { FuiComponentInspector } from './inspector/FuiComponentInspector';
 import { CSGBrushInspector } from './inspector/CSGBrushInspector';
 import { ScriptInspector } from './inspector/ScriptInspector';
+import { RigidbodyInspector, ColliderInspector, CharacterControllerInspector } from './inspector/PhysicsInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);
@@ -51,6 +52,9 @@ const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: (
   CSGBrush: CSGBrushInspector,
   Fui: FuiComponentInspector,
   Script: ScriptInspector,
+  Rigidbody: RigidbodyInspector,
+  Collider: ColliderInspector,
+  CharacterController: CharacterControllerInspector,
 };
 
 // ── Add Component Menu ──

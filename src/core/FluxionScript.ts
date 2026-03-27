@@ -58,14 +58,65 @@ export class FluxionScript {
     return this._ecs.getComponent<TransformComponent>(this.entity, 'Transform') ?? null;
   }
 
-  /** Physics world access — raycast, gravity. */
+  /** Physics world access — raycast, forces, gravity, CharacterController. */
   get physics() {
     const world = (this._engine as any).getSubsystem?.('physics') as any;
+    const eid = this.entity;
     return {
+      /** Cast a ray and return the first hit. */
       raycast: (origin: import('three').Vector3, direction: import('three').Vector3, maxDist = 100) =>
         world?.raycast(origin, direction, maxDist) ?? null,
+
+      /** Set world gravity. */
       setGravity: (x: number, y: number, z: number) =>
         world?.setGravity(x, y, z),
+
+      /** Apply a continuous force to this entity's rigidbody (Newtons). */
+      applyForce: (force: import('three').Vector3) =>
+        world?.applyForce(eid, force),
+
+      /** Apply an instant impulse to this entity's rigidbody. */
+      applyImpulse: (impulse: import('three').Vector3) =>
+        world?.applyImpulse(eid, impulse),
+
+      /** Apply a torque to this entity's rigidbody. */
+      applyTorque: (torque: import('three').Vector3) =>
+        world?.applyTorque(eid, torque),
+
+      /** Directly set the linear velocity of this entity's rigidbody. */
+      setVelocity: (velocity: import('three').Vector3) =>
+        world?.setVelocity(eid, velocity),
+
+      /** Get the current linear velocity of this entity's rigidbody. */
+      getVelocity: (): import('three').Vector3 =>
+        world?.getVelocity(eid) ?? new (require('three').Vector3)(),
+
+      // ── CharacterController helpers ───────────────────────────────────────
+      // These are no-ops if the entity has no CharacterController component.
+
+      /** Set horizontal movement input (world-space X/Z) for this frame. Call every frame. */
+      move: (x: number, z: number) =>
+        world?.ccMove(eid, x, z),
+
+      /** Trigger a jump. Only takes effect when grounded (or within maxJumps). */
+      jump: () =>
+        world?.ccJump(eid),
+
+      /** Whether the character is currently standing on solid ground. */
+      isGrounded: (): boolean =>
+        world?.ccIsGrounded(eid) ?? false,
+
+      /** Enable or disable crouching. */
+      crouch: (state: boolean) =>
+        world?.ccSetCrouch(eid, state),
+
+      /** Whether the character is currently crouching. */
+      isCrouching: (): boolean =>
+        world?.ccIsCrouching(eid) ?? false,
+
+      /** Enable or disable running (uses runSpeed instead of walkSpeed). */
+      setRunning: (state: boolean) =>
+        world?.ccSetRunning(eid, state),
     };
   }
 

@@ -12,6 +12,7 @@ import {
   LightComponent,
   RigidbodyComponent,
   ColliderComponent,
+  CharacterControllerComponent,
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
@@ -207,6 +208,24 @@ ComponentRegistry.register({
     { key: 'offset', type: 'vector3', label: 'Offset' },
   ],
   create: () => new ColliderComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'CharacterController',
+  displayName: 'Character Controller',
+  icon: '🧍',
+  properties: [
+    { key: 'radius',         type: 'number', label: 'Radius',       step: 0.05 },
+    { key: 'height',         type: 'number', label: 'Height',       step: 0.1 },
+    { key: 'crouchHeight',   type: 'number', label: 'Crouch Height',step: 0.1 },
+    { key: 'walkSpeed',      type: 'number', label: 'Walk Speed',   step: 0.5 },
+    { key: 'runSpeed',       type: 'number', label: 'Run Speed',    step: 0.5 },
+    { key: 'jumpImpulse',    type: 'number', label: 'Jump Impulse', step: 0.5 },
+    { key: 'maxJumps',       type: 'number', label: 'Max Jumps',    step: 1   },
+    { key: 'maxSlopeAngle',  type: 'slider', label: 'Max Slope °',  min: 0, max: 89, step: 1 },
+    { key: 'gravityScale',   type: 'number', label: 'Gravity Scale',step: 0.1 },
+  ],
+  create: () => new CharacterControllerComponent(),
 });
 
 ComponentRegistry.register({

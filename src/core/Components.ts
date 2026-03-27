@@ -145,6 +145,14 @@ export class RigidbodyComponent implements Component {
   restitution = 0.3;
   isContinuous = false;
 
+  // Axis locks — prevent movement/rotation on specific world axes
+  lockLinearX = false;
+  lockLinearY = false;
+  lockLinearZ = false;
+  lockAngularX = false;
+  lockAngularY = false;
+  lockAngularZ = false;
+
   // Runtime handle — set by physics system
   bodyHandle: any = null;
 }
@@ -166,6 +174,79 @@ export class ColliderComponent implements Component {
   offset = new THREE.Vector3(0, 0, 0);
 
   colliderHandle: any = null;
+}
+
+// ── Character Controller ──
+
+export class CharacterControllerComponent implements Component {
+  readonly type = 'CharacterController';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  // ── Shape ──────────────────────────────────────────────────
+  /** Capsule radius (metres). */
+  radius = 0.25;
+  /** Total standing capsule height (metres). */
+  height = 1.8;
+  /** Total capsule height while crouching (metres). */
+  crouchHeight = 0.9;
+  /** Local offset from the entity pivot to the capsule centre.
+   *  Default: pivot at feet → centre at height/2. */
+  centerOffsetY = 0.9;
+
+  // ── Speeds ─────────────────────────────────────────────────
+  walkSpeed = 5.0;
+  runSpeed = 8.0;
+  crouchSpeed = 2.5;
+  /** Max horizontal speed achievable while airborne. */
+  airSpeed = 3.0;
+
+  // ── Jump ───────────────────────────────────────────────────
+  /** Initial upward velocity applied on jump (m/s). */
+  jumpImpulse = 6.0;
+  /** 1 = single jump, 2 = double jump, etc. */
+  maxJumps = 1;
+
+  // ── Slope & Step ───────────────────────────────────────────
+  /** Maximum slope angle (degrees) the character can walk up. */
+  maxSlopeAngle = 45;
+  /** Maximum obstacle height (metres) the character auto-steps over. */
+  maxStepHeight = 0.3;
+  /** Distance below feet to snap the character to the ground. */
+  stepDownHeight = 0.3;
+
+  // ── Gravity ────────────────────────────────────────────────
+  gravityScale = 1.0;
+
+  // ── Air control ────────────────────────────────────────────
+  /** Lateral velocity exponential decay per second in air (0 = no friction). */
+  airFriction = 0.3;
+  /** [0–1] multiplier for horizontal input effectiveness while airborne. */
+  airControl = 0.8;
+
+  // ── Push force ─────────────────────────────────────────────
+  /** Force (N) applied to dynamic rigidbodies the character bumps into. */
+  pushForce = 50.0;
+  /** Character mass (kg) — used in push force scaling. */
+  mass = 70.0;
+
+  // ── Runtime state (NOT serialised) ─────────────────────────
+  _isGrounded = false;
+  _isCrouching = false;
+  _isRunning = false;
+  _velocityY = 0;
+  _lateralVelocity = new THREE.Vector2(0, 0);
+  _jumpCount = 0;
+  /** Horizontal input set by script each frame via physics.move(x, z). */
+  _moveInput = new THREE.Vector2(0, 0);
+  _wantsJump = false;
+  _wantsCrouch = false;
+  _wantsRun = false;
+
+  // ── Rapier handles (runtime, NOT serialised) ───────────────
+  _rapierController: any = null;
+  _rapierBody: any = null;
+  _rapierCollider: any = null;
 }
 
 // ── Script Component ──

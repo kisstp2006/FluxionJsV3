@@ -384,6 +384,9 @@ export class RigidbodyComponent extends BaseComponent {
   @field({ type: 'boolean', label: 'Freeze Z', group: 'Freeze Rotation' })
   lockAngularZ = false;
 
+  @field({ type: 'boolean', label: 'Can Sleep', group: 'Performance' })
+  canSleep = true;
+
   /** Runtime Rapier body handle — NOT serialized */
   bodyHandle: any = null;
 }
@@ -418,6 +421,14 @@ export class ColliderComponent extends BaseComponent {
 
   @field({ type: 'vector3', label: 'Offset' })
   offset = new THREE.Vector3(0, 0, 0);
+
+  /** Bitmask — which collision groups this collider belongs to (bits 0-15). Default = group 1. */
+  @field({ type: 'number', label: 'Collision Layer', step: 1, min: 0, max: 65535, group: 'Filtering' })
+  collisionLayer = 0x0001;
+
+  /** Bitmask — which collision groups this collider interacts with. Default = all groups. */
+  @field({ type: 'number', label: 'Collision Mask', step: 1, min: 0, max: 65535, group: 'Filtering' })
+  collisionMask = 0xFFFF;
 
   /** Runtime Rapier collider handle — NOT serialized */
   colliderHandle: any = null;
@@ -475,7 +486,19 @@ export class CharacterControllerComponent extends BaseComponent {
   @field({ type: 'number', label: 'Mass (kg)', step: 5, group: 'Advanced' })
   mass = 70.0;
 
-  // Runtime state — NOT serialized
+  /** Seconds after leaving ground during which jumping is still allowed. */
+  @field({ type: 'number', label: 'Coyote Time', step: 0.01, min: 0, max: 0.5, group: 'Advanced' })
+  coyoteTime = 0.12;
+
+  /** Seconds before landing during which a queued jump is remembered. */
+  @field({ type: 'number', label: 'Jump Buffer', step: 0.01, min: 0, max: 0.3, group: 'Advanced' })
+  jumpBufferTime = 0.10;
+
+  /** Draw capsule, ground contact and velocity in the viewport (dev only). */
+  @field({ type: 'boolean', label: 'Debug Visualize', group: 'Debug' })
+  debugVisualize = false;
+
+  // ── Runtime state — NOT serialized ────────────────────────────────────────
   _isGrounded = false;
   _isCrouching = false;
   _isRunning = false;
@@ -486,6 +509,10 @@ export class CharacterControllerComponent extends BaseComponent {
   _wantsJump = false;
   _wantsCrouch = false;
   _wantsRun = false;
+  /** Counts down: how many seconds of coyote-time remain after leaving ground. */
+  _coyoteTimer = 0;
+  /** Counts down: buffered jump request still pending. */
+  _jumpBufferTimer = 0;
   _rapierController: any = null;
   _rapierBody: any = null;
   _rapierCollider: any = null;

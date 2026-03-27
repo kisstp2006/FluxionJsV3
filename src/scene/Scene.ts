@@ -527,8 +527,8 @@ export class Scene {
         components.push({
           type: 'Script',
           data: {
-            scriptName: script.scriptName,
-            properties: script.properties,
+            enabled: script.enabled,
+            scripts: script.scripts.map(s => ({ path: s.path, enabled: s.enabled, properties: s.properties })),
           },
         });
       }

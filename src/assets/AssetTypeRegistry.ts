@@ -384,6 +384,31 @@ AssetTypeRegistry.register({
   extensions: ['.ts', '.js'],
   category: 'Scripts',
   color: '#7986cb',
+  serializable: false,
+  createDefault: async (fs, dirPath, name) => {
+    const className = name.replace(/[^a-zA-Z0-9_$]/g, '_');
+    const content = [
+      `export default class ${className} extends FluxionScript {`,
+      `  // Expose public fields as inspector properties:`,
+      `  // speed = 5.0;`,
+      `  // playerName = 'Hero';`,
+      ``,
+      `  onStart() {`,
+      `    console.log('[Script] ${className} started on entity', this.entity);`,
+      `  }`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    // Called every frame. Use this.getComponent('Transform') to move things.`,
+      `  }`,
+      ``,
+      `  onDestroy() {}`,
+      `}`,
+      ``,
+    ].join('\n');
+    const filePath = `${dirPath}/${name}.ts`;
+    await fs.writeFile(filePath, content);
+    return filePath;
+  },
 });
 
 AssetTypeRegistry.register({

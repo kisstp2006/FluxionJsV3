@@ -262,7 +262,10 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
     if (script) {
       components.push({
         type: 'Script',
-        data: { scriptName: script.scriptName, properties: script.properties },
+        data: {
+          enabled: script.enabled,
+          scripts: script.scripts.map(s => ({ path: s.path, enabled: s.enabled, properties: s.properties })),
+        },
       });
     }
 
@@ -677,8 +680,18 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
 
         case 'Script': {
           const s = new ScriptComponent();
-          s.scriptName = comp.data.scriptName || '';
-          s.properties = comp.data.properties || {};
+          const d = comp.data;
+          s.enabled = d.enabled ?? true;
+          if (d.scripts) {
+            s.scripts = (d.scripts as any[]).map((e: any) => ({
+              path: e.path ?? '',
+              enabled: e.enabled ?? true,
+              properties: e.properties ?? {},
+            }));
+          } else if (d.scriptName) {
+            // backward compat: old single-script format
+            s.scripts = [{ path: d.scriptName, enabled: true, properties: d.properties ?? {} }];
+          }
           engine.ecs.addComponent(entityId, s);
           break;
         }
@@ -1248,7 +1261,7 @@ function _serializeEntityComponents(entityId: EntityId, engine: Engine): Seriali
   if (col) components.push({ type: 'Collider', data: { shape: col.shape, size: [col.size.x, col.size.y, col.size.z], radius: col.radius, height: col.height, isTrigger: col.isTrigger, offset: [col.offset.x, col.offset.y, col.offset.z] } });
 
   const script = engine.ecs.getComponent<ScriptComponent>(entityId, 'Script');
-  if (script) components.push({ type: 'Script', data: { scriptName: script.scriptName, properties: script.properties } });
+  if (script) components.push({ type: 'Script', data: { enabled: script.enabled, scripts: script.scripts.map(s => ({ path: s.path, enabled: s.enabled, properties: s.properties })) } });
 
   const particle = engine.ecs.getComponent<ParticleEmitterComponent>(entityId, 'ParticleEmitter');
   if (particle) components.push({ type: 'ParticleEmitter', data: { maxParticles: particle.maxParticles, emissionRate: particle.emissionRate, lifetime: [particle.lifetime.x, particle.lifetime.y], speed: [particle.speed.x, particle.speed.y], size: [particle.size.x, particle.size.y], startColor: [particle.startColor.r, particle.startColor.g, particle.startColor.b], endColor: [particle.endColor.r, particle.endColor.g, particle.endColor.b], gravity: particle.gravity, spread: particle.spread, worldSpace: particle.worldSpace, texture: particle.texture, softParticles: particle.softParticles, softDistance: particle.softDistance } });
@@ -1396,7 +1409,7 @@ export function restoreEntitySubtree(
           c.shape = d.shape || 'box'; if (d.size) c.size.set(d.size[0], d.size[1], d.size[2]); c.radius = d.radius ?? 0.5; c.height = d.height ?? 2; c.isTrigger = d.isTrigger ?? false; if (d.offset) c.offset.set(d.offset[0], d.offset[1], d.offset[2]);
           engine.ecs.addComponent(entityId, c); break;
         }
-        case 'Script': { const s = new ScriptComponent(); s.scriptName = comp.data.scriptName || ''; s.properties = comp.data.properties || {}; engine.ecs.addComponent(entityId, s); break; }
+        case 'Script': { const s = new ScriptComponent(); const sd = comp.data; s.enabled = sd.enabled ?? true; if (sd.scripts) { s.scripts = (sd.scripts as any[]).map((e: any) => ({ path: e.path ?? '', enabled: e.enabled ?? true, properties: e.properties ?? {} })); } else if (sd.scriptName) { s.scripts = [{ path: sd.scriptName, enabled: true, properties: sd.properties ?? {} }]; } engine.ecs.addComponent(entityId, s); break; }
         case 'ParticleEmitter': {
           const p = new ParticleEmitterComponent(); const d = comp.data;
           p.maxParticles = d.maxParticles ?? 1000; p.emissionRate = d.emissionRate ?? 100;

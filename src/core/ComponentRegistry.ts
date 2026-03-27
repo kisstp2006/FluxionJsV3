@@ -19,6 +19,7 @@ import {
   EnvironmentComponent,
   TextRendererComponent,
   CSGBrushComponent,
+  ScriptComponent,
 } from './Components';
 
 // ── Property Descriptor ──────────────────────────────────────
@@ -340,4 +341,15 @@ ComponentRegistry.register({
     { key: 'materialPath', type: 'string', label: 'Material' },
   ],
   create: () => new CSGBrushComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'Script',
+  displayName: 'Script',
+  icon: '⌨',
+  addable: true,
+  removable: true,
+  // Properties are dynamically shown by ScriptInspector — no static metadata needed.
+  properties: [],
+  create: () => new ScriptComponent(),
 });

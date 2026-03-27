@@ -155,20 +155,30 @@ export class ColliderComponent implements Component {
   colliderHandle: any = null;
 }
 
-// ── Script Component (like s&box C# scripts) ──
+// ── Script Component ──
+
+/** One script attached to a ScriptComponent. */
+export interface ScriptEntry {
+  /** Project-relative path to the .ts or .js file. */
+  path: string;
+  enabled: boolean;
+  /** Inspector-overridden property values (keyed by class field name). */
+  properties: Record<string, any>;
+}
 
 export class ScriptComponent implements Component {
   readonly type = 'Script';
   entityId: EntityId = 0;
   enabled = true;
 
-  scriptName = '';
-  properties: Record<string, any> = {};
+  /** All scripts attached to this component. */
+  scripts: ScriptEntry[] = [];
 
-  onStart?: () => void;
-  onUpdate?: (dt: number) => void;
-  onFixedUpdate?: (dt: number) => void;
-  onDestroy?: () => void;
+  // ── Runtime (NOT serialized) ──
+  /** Live instances keyed by script path. Managed by ScriptSystem. */
+  _instances: Map<string, any> = new Map();
+  /** Paths currently being loaded (to avoid duplicate async loads). */
+  _loading: Set<string> = new Set();
 }
 
 // ── Particle Emitter (like Nuake particles) ──

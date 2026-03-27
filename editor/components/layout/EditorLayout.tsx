@@ -54,6 +54,16 @@ export const EditorLayout: React.FC = () => {
     return () => window.removeEventListener('fluxion:open-fui-editor', handler);
   }, []);
 
+  // Listen for open-script-editor events — open Monaco script editor window
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path;
+      if (path) (window as any).fluxionAPI?.openScriptEditor?.(path);
+    };
+    window.addEventListener('fluxion:open-script-editor', handler);
+    return () => window.removeEventListener('fluxion:open-script-editor', handler);
+  }, []);
+
   // Listen for material-changed relay from VME windows (IPC) and re-dispatch as local custom event
   React.useEffect(() => {
     window.fluxionAPI?.onMaterialChangedRelay?.((changedPath: string) => {

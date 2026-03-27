@@ -337,6 +337,8 @@ export const AssetBrowserPanel: React.FC<{
       window.dispatchEvent(new CustomEvent('fluxion:open-visual-material-editor', { detail: { path: entry.path } }));
     } else if (entry.name.endsWith('.fui')) {
       window.dispatchEvent(new CustomEvent('fluxion:open-fui-editor', { detail: { path: entry.path } }));
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
+      window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path: entry.path } }));
     } else {
       log(`Opening ${entry.name}...`, 'info');
     }

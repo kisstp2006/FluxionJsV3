@@ -83,4 +83,14 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   offFuiOpenTab: () => {
     ipcRenderer.removeAllListeners('fui:open-tab');
   },
+
+  // Script Editor (separate window)
+  openScriptEditor: (filePath: string) => ipcRenderer.invoke('script:open', filePath),
+  // Script tab management (main process → Script window)
+  onScriptOpenTab: (callback: (path: string) => void) => {
+    ipcRenderer.on('script:open-tab', (_, path) => callback(path));
+  },
+  offScriptOpenTab: () => {
+    ipcRenderer.removeAllListeners('script:open-tab');
+  },
 });

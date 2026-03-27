@@ -10,6 +10,7 @@ import * as crypto from 'crypto';
 let mainWindow: BrowserWindow | null = null;
 let vmeWindow: BrowserWindow | null = null;
 let fuiWindow: BrowserWindow | null = null;
+let scriptWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -40,6 +41,8 @@ function createWindow(): void {
     vmeWindow = null;
     if (fuiWindow && !fuiWindow.isDestroyed()) fuiWindow.close();
     fuiWindow = null;
+    if (scriptWindow && !scriptWindow.isDestroyed()) scriptWindow.close();
+    scriptWindow = null;
     mainWindow = null;
   });
 }
@@ -226,6 +229,38 @@ ipcMain.handle('fui:open', async (_, filePath: string) => {
   fuiWindow.on('closed', () => {
     fuiWindow = null;
   });
+});
+
+// ── Script Editor Window ──
+
+ipcMain.handle('script:open', async (_, filePath: string) => {
+  if (scriptWindow && !scriptWindow.isDestroyed()) {
+    scriptWindow.webContents.send('script:open-tab', filePath);
+    scriptWindow.focus();
+    return;
+  }
+
+  scriptWindow = new BrowserWindow({
+    width: 1000,
+    height: 700,
+    minWidth: 600,
+    minHeight: 400,
+    title: 'Script Editor',
+    backgroundColor: '#0d1117',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    icon: path.join(__dirname, '../../Data/icon.png'),
+  });
+
+  scriptWindow.setMenuBarVisibility(false);
+  scriptWindow.loadFile(path.join(__dirname, '../editor/script-window.html'), {
+    query: { filePath },
+  });
+  scriptWindow.on('closed', () => { scriptWindow = null; });
 });
 
 ipcMain.handle('vme:materialChanged', async (_event, filePath: string) => {

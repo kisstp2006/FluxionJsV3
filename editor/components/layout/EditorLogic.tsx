@@ -643,6 +643,29 @@ export const AssetHotReload: React.FC = () => {
       assets.invalidateCache(changedPath);
     };
 
+    // ── Script reload: invalidate compiler cache + destroy instances so ScriptSystem re-loads ──
+
+    const reloadScript = async (changedPath: string) => {
+      const { ecs } = getSubsystems();
+      if (!ecs) return;
+      const nChanged = norm(changedPath);
+      const { invalidateScript } = await import('../../../src/core/ScriptCompiler');
+      const { projectManager } = await import('../../../src/project/ProjectManager');
+      invalidateScript(changedPath);
+      const scriptComps = ecs.getComponentsOfType<any>('Script');
+      for (const [, comp] of scriptComps) {
+        for (const entry of (comp.scripts ?? [])) {
+          let abs = entry.path;
+          try { abs = projectManager.resolvePath(entry.path); } catch {}
+          if (norm(abs) !== nChanged && norm(entry.path) !== nChanged) continue;
+          const inst = comp._instances?.get(entry.path);
+          try { inst?.onDestroy?.(); } catch {}
+          comp._instances?.delete(entry.path);
+          comp._loading?.delete(entry.path);
+        }
+      }
+    };
+
     // ── FUI reload: mark all FuiComponents referencing this file as dirty ──
     // FuiRuntimeSystem detects isDirty(comp) each frame and re-loads the document.
 
@@ -702,6 +725,9 @@ export const AssetHotReload: React.FC = () => {
           break;
         case 'fui':
           await reloadFui(path);
+          break;
+        case 'script':
+          await reloadScript(path);
           break;
         // shader, scene, json, prefab — no live reload needed
       }

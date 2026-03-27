@@ -112,6 +112,23 @@ export class ProjectManager {
     await fs.mkdir(pathJoin(projectDir, 'Assets/Audio'));
     await fs.mkdir(pathJoin(projectDir, 'Assets/Scripts'));
     await fs.mkdir(pathJoin(projectDir, 'Prefabs'));
+
+    // Create example script
+    const exampleScript = [
+      `export default class ExampleScript extends FluxionScript {`,
+      `  // speed = 5.0;`,
+      ``,
+      `  onStart() {`,
+      `    console.log('[Script] ExampleScript started on entity', this.entity);`,
+      `  }`,
+      ``,
+      `  onUpdate(dt) {`,
+      `    // Called every frame.`,
+      `  }`,
+      `}`,
+      ``,
+    ].join('\n');
+    await fs.writeFile(pathJoin(projectDir, 'Assets/Scripts/ExampleScript.ts'), exampleScript);
     await fs.mkdir(pathJoin(projectDir, '.fluxion'));
 
     // Create project config

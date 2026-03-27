@@ -4,8 +4,8 @@
   "description": "High-performance 2D/3D TypeScript game engine with Electron editor — inspired by Nuake, LumixEngine & s&box",
   "main": "dist/electron/main.js",
   "scripts": {
-    "build": "webpack --config webpack.config.js",
-    "build:watch": "webpack --config webpack.config.js --watch",
+    "build": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env production",
+    "build:watch": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --watch",
     "start": "npm run build && electron dist/electron/main.js",
     "dev": "concurrently \"npm run build:watch\" \"wait-on dist/electron/main.js && electron dist/electron/main.js\"",
     "lint": "eslint src/ editor/ electron/"
@@ -24,9 +24,11 @@
   "license": "MIT",
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.1",
     "electron": "^41.0.3",
     "lucide-react": "^1.6.0",
+    "monaco-editor": "^0.55.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "three": "^0.170.0"

@@ -18,6 +18,7 @@ import { Scene } from '../../src/scene/Scene';
 import { AssetManager } from '../../src/assets/AssetManager';
 import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 import { CSGSystem } from '../../src/csg/CSGSystem';
+import { ScriptSystem } from '../../src/core/ScriptSystem';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -88,6 +89,9 @@ export async function initEditorEngine(
   // CSG System
   const csgSystem = new CSGSystem(renderer);
   engine.ecs.addSystem(csgSystem);
+
+  // Script System
+  engine.ecs.addSystem(new ScriptSystem(engine, input, renderer, audio));
 
   // Wire soft-particle depth texture + camera after PP pipeline exists
   const depthTex = renderer.postProcessing.getSceneDepthTexture();

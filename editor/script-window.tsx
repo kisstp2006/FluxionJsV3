@@ -6,11 +6,16 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import MonacoEditor from '@monaco-editor/react';
+import MonacoEditor, { loader } from '@monaco-editor/react';
 import './styles/globals.css';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
+
+// Point @monaco-editor/react to the locally-served monaco min/vs files
+// (dist/editor/vs/) instead of the default CDN. This is required in Electron
+// because the renderer runs at file:// and cannot reach external URLs.
+loader.config({ paths: { vs: './vs' } });
 
 // Initialize filesystem
 const _fs = new ElectronFileSystem();

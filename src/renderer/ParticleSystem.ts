@@ -260,6 +260,7 @@ class ParticlePool {
 
 const _right = new THREE.Vector3();
 const _up = new THREE.Vector3();
+const _forward = new THREE.Vector3();
 
 export class ParticleRenderSystem implements System {
   readonly name = 'ParticleRenderer';
@@ -295,7 +296,7 @@ export class ParticleRenderSystem implements System {
   update(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
     // Extract camera vectors once per frame
     if (this.camera) {
-      this.camera.matrixWorld.extractBasis(_right, _up, new THREE.Vector3());
+      this.camera.matrixWorld.extractBasis(_right, _up, _forward);
     }
 
     for (const entity of entities) {

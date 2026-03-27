@@ -14,7 +14,7 @@ export interface DebugLine {
   endColor?: THREE.Color;
 }
 
-const INITIAL_CAPACITY = 1024; // max lines before realloc
+const INITIAL_CAPACITY = 4096; // max lines before realloc
 
 /**
  * Static debug drawing service (ezEngine pattern).

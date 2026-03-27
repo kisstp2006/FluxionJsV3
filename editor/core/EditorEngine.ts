@@ -119,7 +119,7 @@ export async function initEditorEngine(
   const gizmoService = new GizmoService(editorCamera, canvas, orbitControls);
 
   // Selection outline
-  const selectionOutline = new THREE.BoxHelper(new THREE.Mesh(), 0x58a6ff);
+  const selectionOutline = new THREE.BoxHelper(new THREE.Object3D(), 0x58a6ff);
   selectionOutline.visible = false;
   renderer.gizmoScene.add(selectionOutline);
 

@@ -8,6 +8,10 @@ import { Engine } from '../core/Engine';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, AudioSourceComponent } from '../core/Components';
 
+// Module-level scratch vectors — avoids 2 allocations per frame in AudioSyncSystem
+const _audioForward = new THREE.Vector3();
+const _audioUp = new THREE.Vector3();
+
 export class AudioSystem {
   private context: AudioContext;
   private masterGain: GainNode;
@@ -102,7 +106,16 @@ export class AudioSystem {
       } catch {
         // Already stopped
       }
+      audioComp.source.disconnect();
       audioComp.source = null;
+    }
+    if (audioComp.gainNode) {
+      audioComp.gainNode.disconnect();
+      audioComp.gainNode = null;
+    }
+    if (audioComp.pannerNode) {
+      audioComp.pannerNode.disconnect();
+      audioComp.pannerNode = null;
     }
   }
 
@@ -139,6 +152,7 @@ class AudioSyncSystem implements System {
   priority = 60;
   enabled = true;
   private started: Set<EntityId> = new Set();
+  private cameraEntity: EntityId | null = null;
 
   constructor(private audio: AudioSystem) {}
 
@@ -162,15 +176,23 @@ class AudioSyncSystem implements System {
       }
     }
 
-    // Update listener from camera
-    const cameras = ecs.query('Transform', 'Camera');
-    if (cameras.length > 0) {
-      const camTransform = ecs.getComponent<TransformComponent>(cameras[0], 'Transform');
+    // Update listener from camera — cache entity to avoid query() allocation each frame
+    if (this.cameraEntity === null || !ecs.entityExists(this.cameraEntity) || !ecs.hasComponent(this.cameraEntity, 'Camera')) {
+      const cameras = ecs.query('Transform', 'Camera');
+      this.cameraEntity = cameras.length > 0 ? cameras[0] : null;
+    }
+    if (this.cameraEntity !== null) {
+      const camTransform = ecs.getComponent<TransformComponent>(this.cameraEntity, 'Transform');
       if (camTransform) {
-        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camTransform.quaternion);
-        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camTransform.quaternion);
-        this.audio.updateListenerPosition(camTransform.position, forward, up);
+        _audioForward.set(0, 0, -1).applyQuaternion(camTransform.quaternion);
+        _audioUp.set(0, 1, 0).applyQuaternion(camTransform.quaternion);
+        this.audio.updateListenerPosition(camTransform.position, _audioForward, _audioUp);
       }
     }
+  }
+
+  onSceneClear(): void {
+    this.started.clear();
+    this.cameraEntity = null;
   }
 }

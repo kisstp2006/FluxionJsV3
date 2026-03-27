@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { buildVisualMaterial, updateVisualMaterialTime } from '../materials/VisualMaterialCompiler';
 
+// Non-color data textures that must use linear color space — module-level to avoid per-call allocation
+const NON_COLOR_MAPS = new Set(['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']);
+
 // ── Texture Cache ──
 
 /**
@@ -236,7 +239,6 @@ export class MaterialSystem {
       ['emissiveMap', 'emissiveMap'],
     ];
 
-    const NON_COLOR_MAPS = new Set(['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']);
     const texPromises: Promise<void>[] = [];
     for (const [jsonKey, configKey] of mapEntries) {
       const path = data[jsonKey] as string | undefined;

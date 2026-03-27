@@ -22,6 +22,18 @@ import {
 } from '../core/Components';
 import { AssetManager } from '../assets/AssetManager';
 
+// Module-level constants — avoid per-call allocation
+const PRIMITIVE_GEOMETRIES: Record<string, () => THREE.BufferGeometry> = {
+  cube: () => new THREE.BoxGeometry(1, 1, 1),
+  sphere: () => new THREE.SphereGeometry(0.5, 32, 32),
+  cylinder: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
+  cone: () => new THREE.ConeGeometry(0.5, 1, 32),
+  plane: () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+  capsule: () => new THREE.CapsuleGeometry(0.3, 0.6, 8, 16),
+  torus: () => new THREE.TorusGeometry(0.5, 0.15, 16, 48),
+};
+const CLONE_OFFSET = new THREE.Vector3(1, 0, 0);
+
 export interface SceneData {
   name: string;
   version: number;
@@ -90,16 +102,7 @@ export class Scene {
     primitiveType: 'cube' | 'sphere' | 'cylinder' | 'cone' | 'plane' | 'capsule' | 'torus',
     material?: THREE.Material
   ): EntityId {
-    const geometries: Record<string, () => THREE.BufferGeometry> = {
-      cube: () => new THREE.BoxGeometry(1, 1, 1),
-      sphere: () => new THREE.SphereGeometry(0.5, 32, 32),
-      cylinder: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
-      cone: () => new THREE.ConeGeometry(0.5, 1, 32),
-      plane: () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-      capsule: () => new THREE.CapsuleGeometry(0.3, 0.6, 8, 16),
-      torus: () => new THREE.TorusGeometry(0.5, 0.15, 16, 48),
-    };
-    const geomFactory = geometries[primitiveType] || geometries.cube;
+    const geomFactory = PRIMITIVE_GEOMETRIES[primitiveType] || PRIMITIVE_GEOMETRIES.cube;
     const mat = material || new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.1 });
     const entity = this.createMesh(name, geomFactory(), mat);
     const meshComp = this.engine.ecs.getComponent<MeshRendererComponent>(entity, 'MeshRenderer');
@@ -108,7 +111,7 @@ export class Scene {
   }
 
   /** Deep-clone an entity with all components, returns new entity */
-  cloneEntity(entityId: EntityId, offset = new THREE.Vector3(1, 0, 0)): EntityId | null {
+  cloneEntity(entityId: EntityId, offset = CLONE_OFFSET): EntityId | null {
     const ecs = this.engine.ecs;
     const name = ecs.getEntityName(entityId);
     const clone = ecs.createEntity(`${name} (copy)`);

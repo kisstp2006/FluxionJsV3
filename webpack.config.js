@@ -192,6 +192,14 @@ module.exports = (env = {}) => {
         template: './editor/script-window.html',
         filename: 'script-window.html',
       }),
+      // Copy monaco's prebuilt min/vs directory so the loader can reference it
+      // locally instead of fetching from CDN (which is blocked in Electron).
+      new CopyWebpackPlugin({
+        patterns: [{
+          from: path.resolve(__dirname, 'node_modules/monaco-editor/min/vs'),
+          to: path.resolve(__dirname, 'dist/editor/vs'),
+        }],
+      }),
       new webpack.DefinePlugin({ 'global': 'globalThis' }),
     ],
   };

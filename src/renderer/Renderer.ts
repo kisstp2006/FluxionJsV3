@@ -24,6 +24,9 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
 
+// Module-level scratch — avoids per-frame Vector3 allocations in LightSystem
+const _lightForward = new THREE.Vector3();
+
 export interface RendererConfig {
   shadows?: boolean;
   shadowMapSize?: number;
@@ -809,7 +812,7 @@ class LightSystem implements System {
         lightComp.light.castShadow = lightComp.castShadow;
 
         // Update target from transform forward direction (local -Z)
-        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(transform.quaternion);
+        const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
         lightComp.light.target.position.copy(transform.position).add(forward);
         lightComp.light.target.updateMatrixWorld();
 
@@ -850,7 +853,7 @@ class LightSystem implements System {
         }
 
         // Update target from transform forward direction (local -Z)
-        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(transform.quaternion);
+        const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
         lightComp.light.target.position.copy(transform.position).add(forward);
         lightComp.light.target.updateMatrixWorld();
       }

@@ -20,6 +20,9 @@ import ssgiBlurSrc      from './shaders/ssgi_blur.frag.glsl';
 import ssgiUpscaleSrc   from './shaders/ssgi_upscale.frag.glsl';
 import cloudSrc         from './shaders/cloud.frag.glsl';
 
+// Shared full-screen quad geometry — all passes reuse one PlaneGeometry
+const _sharedFSQGeometry = new THREE.PlaneGeometry(2, 2);
+
 // Custom full-screen quad pass helper
 class FullScreenPass {
   private fsQuad: THREE.Mesh;
@@ -27,7 +30,7 @@ class FullScreenPass {
 
   constructor(material: THREE.ShaderMaterial) {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    this.fsQuad = new THREE.Mesh(_sharedFSQGeometry, material);
   }
 
   render(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null): void {
@@ -40,7 +43,7 @@ class FullScreenPass {
   }
 
   dispose(): void {
-    this.fsQuad.geometry.dispose();
+    // Do NOT dispose _sharedFSQGeometry — it is shared across all passes
     (this.fsQuad.material as THREE.ShaderMaterial).dispose();
   }
 }
@@ -138,16 +141,21 @@ export class PostProcessingPipeline {
   private sceneRT: THREE.WebGLRenderTarget;
   private bloomChain: THREE.WebGLRenderTarget[] = [];
   private static readonly BLOOM_LEVELS = 5;
-  private ssaoRT: THREE.WebGLRenderTarget;
-  private ssaoBlurRT: THREE.WebGLRenderTarget;
-  private ssrRT: THREE.WebGLRenderTarget;
-  private ssgiRT: THREE.WebGLRenderTarget;
-  private ssgiBlurRT: THREE.WebGLRenderTarget;
-  private ssgiBlurRT2: THREE.WebGLRenderTarget;
-  private ssgiUpscaleRT: THREE.WebGLRenderTarget;
-  private dofCocRT: THREE.WebGLRenderTarget;
-  private dofBlurRT: THREE.WebGLRenderTarget;
-  private cloudRT: THREE.WebGLRenderTarget;
+  // Optional RTs — allocated lazily on first use to save ~109 MB at startup
+  private ssaoRT: THREE.WebGLRenderTarget | null = null;
+  private ssaoBlurRT: THREE.WebGLRenderTarget | null = null;
+  private ssrRT: THREE.WebGLRenderTarget | null = null;
+  private ssgiRT: THREE.WebGLRenderTarget | null = null;
+  private ssgiBlurRT: THREE.WebGLRenderTarget | null = null;
+  private ssgiBlurRT2: THREE.WebGLRenderTarget | null = null;
+  private ssgiUpscaleRT: THREE.WebGLRenderTarget | null = null;
+  private dofCocRT: THREE.WebGLRenderTarget | null = null;
+  private dofBlurRT: THREE.WebGLRenderTarget | null = null;
+  private cloudRT: THREE.WebGLRenderTarget | null = null;
+  // Stored for lazy RT creation
+  private _rtParams!: THREE.RenderTargetOptions;
+  private _w = 1;
+  private _h = 1;
 
   // Passes
   private bloomBrightPass: FullScreenPass;
@@ -208,9 +216,9 @@ export class PostProcessingPipeline {
     const h = renderer.domElement.height;
     const halfW = Math.floor(w / 2);
     const halfH = Math.floor(h / 2);
-    const ssrScale = THREE.MathUtils.clamp(this.config.ssr?.resolutionScale ?? 0.5, 0.1, 1.0);
-    const ssrW = Math.max(1, Math.floor(w * ssrScale));
-    const ssrH = Math.max(1, Math.floor(h * ssrScale));
+
+    this._w = w;
+    this._h = h;
 
     const rtParams: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
@@ -236,18 +244,8 @@ export class PostProcessingPipeline {
       const bh = Math.max(1, Math.floor(halfH / (1 << i)));
       this.bloomChain.push(new THREE.WebGLRenderTarget(bw, bh, rtParams));
     }
-    this.ssaoRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.ssaoBlurRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.ssrRT = new THREE.WebGLRenderTarget(ssrW, ssrH, rtParams);
-    this._ssrW = ssrW;
-    this._ssrH = ssrH;
-    this.ssgiRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
-    this.ssgiBlurRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
-    this.ssgiBlurRT2 = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
-    this.ssgiUpscaleRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.dofCocRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.dofBlurRT = new THREE.WebGLRenderTarget(w, h, rtParams);
-    this.cloudRT = new THREE.WebGLRenderTarget(halfW, halfH, rtParams);
+    // Optional RTs allocated lazily on first use — store params for deferred creation
+    this._rtParams = rtParams;
 
     // ── Bloom bright pass ──
     this.bloomBrightPass = new FullScreenPass(new THREE.ShaderMaterial({
@@ -600,12 +598,23 @@ export class PostProcessingPipeline {
     this.cloudPass.material.uniforms['cameraFar'].value = far;
   }
 
+  private makeRT(w: number, h: number): THREE.WebGLRenderTarget {
+    return new THREE.WebGLRenderTarget(w, h, this._rtParams);
+  }
+
   private ensureSSRTargets(): void {
     const scale = THREE.MathUtils.clamp(this.config.ssr?.resolutionScale ?? 0.5, 0.1, 1.0);
     const w = this.renderer.domElement.width;
     const h = this.renderer.domElement.height;
     const ssrW = Math.max(1, Math.floor(w * scale));
     const ssrH = Math.max(1, Math.floor(h * scale));
+
+    if (!this.ssrRT) {
+      this.ssrRT = this.makeRT(ssrW, ssrH);
+      this._ssrW = ssrW;
+      this._ssrH = ssrH;
+      return;
+    }
 
     if (ssrW === this._ssrW && ssrH === this._ssrH) return;
     this._ssrW = ssrW;
@@ -647,6 +656,8 @@ export class PostProcessingPipeline {
     // 2. SSAO (only if SSGI is disabled, since SSGI provides its own AO)
     const doSSAO = !!(ssao?.enabled && !ssgi?.enabled);
     if (doSSAO) {
+      if (!this.ssaoRT) this.ssaoRT = this.makeRT(this._w, this._h);
+      if (!this.ssaoBlurRT) this.ssaoBlurRT = this.makeRT(this._w, this._h);
       this.ssaoPass.material.uniforms['radius'].value = ssao!.radius ?? 0.5;
       this.ssaoPass.material.uniforms['bias'].value = ssao!.bias ?? 0.025;
       this.ssaoPass.material.uniforms['intensity'].value = ssao!.intensity ?? 1.0;
@@ -661,6 +672,12 @@ export class PostProcessingPipeline {
     // 3. SSGI
     const doSSGI = !!ssgi?.enabled;
     if (doSSGI) {
+      const halfW = Math.floor(this._w / 2);
+      const halfH = Math.floor(this._h / 2);
+      if (!this.ssgiRT) this.ssgiRT = this.makeRT(halfW, halfH);
+      if (!this.ssgiBlurRT) this.ssgiBlurRT = this.makeRT(halfW, halfH);
+      if (!this.ssgiBlurRT2) this.ssgiBlurRT2 = this.makeRT(halfW, halfH);
+      if (!this.ssgiUpscaleRT) this.ssgiUpscaleRT = this.makeRT(this._w, this._h);
       this.ssgiPass.material.uniforms['giRadius'].value = ssgi!.radius ?? 12;
       this.ssgiPass.material.uniforms['giThickness'].value = ssgi!.thickness ?? 1;
       this.ssgiPass.material.uniforms['giExpFactor'].value = ssgi!.expFactor ?? 2;
@@ -732,6 +749,7 @@ export class PostProcessingPipeline {
     // 6. Volumetric Clouds
     const doClouds = !!clouds?.enabled;
     if (doClouds) {
+      if (!this.cloudRT) this.cloudRT = this.makeRT(Math.floor(this._w / 2), Math.floor(this._h / 2));
       this.cloudPass.material.uniforms['cloudMinHeight'].value = clouds!.minHeight ?? 200;
       this.cloudPass.material.uniforms['cloudMaxHeight'].value = clouds!.maxHeight ?? 400;
       this.cloudPass.material.uniforms['cloudCoverage'].value = clouds!.coverage ?? 0.5;
@@ -748,6 +766,8 @@ export class PostProcessingPipeline {
     // 7. Depth of Field
     const doDof = !!dof?.enabled;
     if (doDof) {
+      if (!this.dofCocRT) this.dofCocRT = this.makeRT(this._w, this._h);
+      if (!this.dofBlurRT) this.dofBlurRT = this.makeRT(this._w, this._h);
       // CoC pass
       this.dofCocPass.material.uniforms['focusDistance'].value = dof!.focusDistance ?? 10;
       this.dofCocPass.material.uniforms['aperture'].value = dof!.aperture ?? 0.025;
@@ -766,16 +786,16 @@ export class PostProcessingPipeline {
     cu['tScene'].value = this.sceneRT.texture;
     cu['tBloom'].value = bloom?.enabled ? this.bloomChain[0].texture : this.sceneRT.texture;
     cu['bloomStrength'].value = bloom?.enabled ? (bloom.strength ?? 0.5) : 0;
-    cu['tSSAO'].value = this.ssaoBlurRT.texture;
+    cu['tSSAO'].value = this.ssaoBlurRT?.texture ?? null;
     cu['ssaoEnabled'].value = doSSAO;
-    cu['tSSR'].value = this.ssrRT.texture;
+    cu['tSSR'].value = this.ssrRT?.texture ?? null;
     cu['ssrEnabled'].value = doSSR;
-    cu['tSSGI'].value = this.ssgiUpscaleRT.texture;
+    cu['tSSGI'].value = this.ssgiUpscaleRT?.texture ?? null;
     cu['ssgiEnabled'].value = doSSGI;
-    cu['tClouds'].value = this.cloudRT.texture;
+    cu['tClouds'].value = this.cloudRT?.texture ?? null;
     cu['cloudsEnabled'].value = doClouds;
-    cu['tDof'].value = this.dofBlurRT.texture;
-    cu['tDofCoC'].value = this.dofCocRT.texture;
+    cu['tDof'].value = this.dofBlurRT?.texture ?? null;
+    cu['tDofCoC'].value = this.dofCocRT?.texture ?? null;
     cu['dofEnabled'].value = doDof;
     cu['dofMaxBlur'].value = dof?.maxBlur ?? 10;
     cu['vignetteIntensity'].value = this.config.vignette?.enabled ? (this.config.vignette.intensity ?? 0.3) : 0;
@@ -801,6 +821,8 @@ export class PostProcessingPipeline {
   }
 
   setSize(width: number, height: number): void {
+    this._w = width;
+    this._h = height;
     const halfW = Math.floor(width / 2);
     const halfH = Math.floor(height / 2);
 
@@ -812,16 +834,16 @@ export class PostProcessingPipeline {
     for (let i = 0; i < PostProcessingPipeline.BLOOM_LEVELS; i++) {
       this.bloomChain[i].setSize(halfW >> i, halfH >> i);
     }
-    this.ssaoRT.setSize(width, height);
-    this.ssaoBlurRT.setSize(width, height);
+    this.ssaoRT?.setSize(width, height);
+    this.ssaoBlurRT?.setSize(width, height);
     this.ensureSSRTargets();
-    this.ssgiRT.setSize(halfW, halfH);
-    this.ssgiBlurRT.setSize(halfW, halfH);
-    this.ssgiBlurRT2.setSize(halfW, halfH);
-    this.ssgiUpscaleRT.setSize(width, height);
-    this.dofCocRT.setSize(width, height);
-    this.dofBlurRT.setSize(width, height);
-    this.cloudRT.setSize(halfW, halfH);
+    this.ssgiRT?.setSize(halfW, halfH);
+    this.ssgiBlurRT?.setSize(halfW, halfH);
+    this.ssgiBlurRT2?.setSize(halfW, halfH);
+    this.ssgiUpscaleRT?.setSize(width, height);
+    this.dofCocRT?.setSize(width, height);
+    this.dofBlurRT?.setSize(width, height);
+    this.cloudRT?.setSize(halfW, halfH);
 
 
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
@@ -840,16 +862,16 @@ export class PostProcessingPipeline {
   dispose(): void {
     this.sceneRT.dispose();
     for (const rt of this.bloomChain) rt.dispose();
-    this.ssaoRT.dispose();
-    this.ssaoBlurRT.dispose();
-    this.ssrRT.dispose();
-    this.ssgiRT.dispose();
-    this.ssgiBlurRT.dispose();
-    this.ssgiBlurRT2.dispose();
-    this.ssgiUpscaleRT.dispose();
-    this.dofCocRT.dispose();
-    this.dofBlurRT.dispose();
-    this.cloudRT.dispose();
+    this.ssaoRT?.dispose();
+    this.ssaoBlurRT?.dispose();
+    this.ssrRT?.dispose();
+    this.ssgiRT?.dispose();
+    this.ssgiBlurRT?.dispose();
+    this.ssgiBlurRT2?.dispose();
+    this.ssgiUpscaleRT?.dispose();
+    this.dofCocRT?.dispose();
+    this.dofBlurRT?.dispose();
+    this.cloudRT?.dispose();
     this.bloomBrightPass.dispose();
     this.bloomDownPass.dispose();
     this.bloomUpPass.dispose();

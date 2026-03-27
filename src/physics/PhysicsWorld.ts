@@ -16,11 +16,15 @@ import {
 // Rapier types (loaded dynamically since it's a WASM module)
 type RAPIER = typeof import('@dimforge/rapier3d-compat');
 
+const _velocityScratch = new THREE.Vector3();
+
 export class PhysicsWorld {
   private rapier!: RAPIER;
   private world!: InstanceType<RAPIER['World']>;
   private bodyMap: Map<EntityId, any> = new Map();
   private colliderMap: Map<EntityId, any> = new Map();
+  /** O(1) reverse lookup: collider handle number → entity */
+  private colliderHandleToEntity: Map<number, EntityId> = new Map();
   private engine: Engine;
   private initialized = false;
   private gravity = new THREE.Vector3(0, -9.81, 0);
@@ -135,6 +139,7 @@ export class PhysicsWorld {
     const coll = this.world.createCollider(colliderDesc, rb.bodyHandle);
     collider.colliderHandle = coll;
     this.colliderMap.set(entity, coll);
+    this.colliderHandleToEntity.set(coll.handle, entity);
   }
 
   removeBody(entity: EntityId): void {
@@ -143,6 +148,8 @@ export class PhysicsWorld {
       this.world.removeRigidBody(body);
       this.bodyMap.delete(entity);
     }
+    const coll = this.colliderMap.get(entity);
+    if (coll) this.colliderHandleToEntity.delete(coll.handle);
     this.colliderMap.delete(entity);
   }
 
@@ -193,6 +200,7 @@ export class PhysicsWorld {
   ): void {
     const coll = this.colliderMap.get(entity);
     if (coll && this.initialized) {
+      this.colliderHandleToEntity.delete(coll.handle);
       this.world.removeCollider(coll, true);
       this.colliderMap.delete(entity);
     }
@@ -240,9 +248,9 @@ export class PhysicsWorld {
 
   getVelocity(entity: EntityId): THREE.Vector3 {
     const body = this.bodyMap.get(entity);
-    if (!body) return new THREE.Vector3();
+    if (!body) return _velocityScratch.set(0, 0, 0);
     const v = body.linvel();
-    return new THREE.Vector3(v.x, v.y, v.z);
+    return _velocityScratch.set(v.x, v.y, v.z);
   }
 
   // ── Raycasting ──
@@ -266,15 +274,8 @@ export class PhysicsWorld {
     const hitNormal = hit.collider.castRayAndGetNormal(ray, maxDistance, true);
     const normal = hitNormal ? hitNormal.normal : { x: 0, y: 1, z: 0 };
 
-    // Find which entity owns this collider
-    const colliderHandle = hit.collider;
-    let hitEntity: EntityId | null = null;
-    for (const [entity, coll] of this.colliderMap) {
-      if (coll === colliderHandle) {
-        hitEntity = entity;
-        break;
-      }
-    }
+    // Find which entity owns this collider — O(1) via handle map
+    const hitEntity: EntityId | null = this.colliderHandleToEntity.get(hit.collider.handle) ?? null;
 
     return {
       entity: hitEntity,
@@ -290,6 +291,7 @@ export class PhysicsWorld {
     }
     this.bodyMap.clear();
     this.colliderMap.clear();
+    this.colliderHandleToEntity.clear();
   }
 }
 

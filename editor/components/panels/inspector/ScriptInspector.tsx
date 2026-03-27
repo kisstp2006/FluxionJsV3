@@ -97,7 +97,9 @@ const ScriptEntryRow: React.FC<{
         const compiled = compileScript(source, absPath);
         const cls = loadScriptClass(compiled);
         if (!cancelled) {
-          setScriptClass(cls);
+          // Wrap in arrow function: React calls setState(fn) as an updater
+          // (fn(prevState)), which would invoke the class without 'new'.
+          setScriptClass(() => cls);
           setCompileError(cls ? null : 'No default export found.');
         }
       } catch (err: any) {

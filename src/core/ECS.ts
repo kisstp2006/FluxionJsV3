@@ -48,6 +48,9 @@ export interface System {
   onSceneClear?(): void;
 }
 
+// Module-level scratch for query() — avoids spread+filter array allocation per call
+const _queryScratch: EntityId[] = [];
+
 export class ECSManager {
   private nextEntityId: EntityId = 1;
   private entities: Set<EntityId> = new Set();
@@ -59,6 +62,9 @@ export class ECSManager {
   private parentMap: Map<EntityId, EntityId> = new Map();
   private childrenMap: Map<EntityId, Set<EntityId>> = new Map();
   private dirty = true;
+  // O(1) indexes maintained incrementally — no full-scan on every query
+  private rootEntities: Set<EntityId> = new Set();
+  private tagIndex: Map<string, Set<EntityId>> = new Map();
 
   // ── Entity management ──
 
@@ -68,6 +74,7 @@ export class ECSManager {
     this.entityTags.set(id, new Set());
     this.childrenMap.set(id, new Set());
     if (name) this.entityNames.set(id, name);
+    this.rootEntities.add(id);
     this.dirty = true;
     return id;
   }
@@ -91,6 +98,15 @@ export class ECSManager {
     // Remove all components
     for (const [, store] of this.components) {
       store.delete(entity);
+    }
+
+    // Remove from O(1) indexes
+    this.rootEntities.delete(entity);
+    const tags = this.entityTags.get(entity);
+    if (tags) {
+      for (const tag of tags) {
+        this.tagIndex.get(tag)?.delete(entity);
+      }
     }
 
     this.entities.delete(entity);
@@ -125,6 +141,8 @@ export class ECSManager {
     }
     this.parentMap.set(child, parent);
     this.childrenMap.get(parent)?.add(child);
+    // child now has a parent → remove from root index
+    this.rootEntities.delete(child);
   }
 
   getParent(entity: EntityId): EntityId | undefined {
@@ -136,13 +154,16 @@ export class ECSManager {
   }
 
   getRootEntities(): EntityId[] {
-    return [...this.entities].filter(e => !this.parentMap.has(e));
+    return [...this.rootEntities];
   }
 
   // ── Tags ──
 
   addTag(entity: EntityId, tag: string): void {
     this.entityTags.get(entity)?.add(tag);
+    let set = this.tagIndex.get(tag);
+    if (!set) { set = new Set(); this.tagIndex.set(tag, set); }
+    set.add(entity);
   }
 
   hasTag(entity: EntityId, tag: string): boolean {
@@ -150,7 +171,7 @@ export class ECSManager {
   }
 
   getEntitiesWithTag(tag: string): EntityId[] {
-    return [...this.entities].filter(e => this.entityTags.get(e)?.has(tag));
+    return [...(this.tagIndex.get(tag) ?? [])];
   }
 
   // ── Component management ──
@@ -222,9 +243,13 @@ export class ECSManager {
   // ── Queries ──
 
   query(...componentTypes: string[]): EntityId[] {
-    return [...this.entities].filter(entity =>
-      componentTypes.every(type => this.hasComponent(entity, type))
-    );
+    _queryScratch.length = 0;
+    for (const entity of this.entities) {
+      if (componentTypes.every(type => this.hasComponent(entity, type))) {
+        _queryScratch.push(entity);
+      }
+    }
+    return _queryScratch.slice();
   }
 
   // ── Update ──
@@ -233,13 +258,18 @@ export class ECSManager {
     if (!this.dirty) return;
 
     for (const system of this.systems) {
-      const matching = new Set<EntityId>();
+      let matching = this.systemEntityCache.get(system.name);
+      if (!matching) {
+        matching = new Set<EntityId>();
+        this.systemEntityCache.set(system.name, matching);
+      } else {
+        matching.clear();
+      }
       for (const entity of this.entities) {
         if (system.requiredComponents.every(type => this.hasComponent(entity, type))) {
-          matching.add(entity);
+          matching!.add(entity);
         }
       }
-      this.systemEntityCache.set(system.name, matching);
     }
 
     this.dirty = false;
@@ -302,5 +332,7 @@ export class ECSManager {
       this.destroyEntity(entity);
     }
     this.nextEntityId = 1;
+    this.rootEntities.clear();
+    this.tagIndex.clear();
   }
 }

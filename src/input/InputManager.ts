@@ -159,9 +159,15 @@ export class InputManager {
       if (!pad) continue;
       const state = this.gamepads.get(pad.index);
       if (state) {
-        state.axes = [...pad.axes];
-        state.buttons = pad.buttons.map(b => b.pressed);
-        state.buttonValues = pad.buttons.map(b => b.value);
+        // Mutate in-place to avoid per-frame array allocations
+        for (let i = 0; i < pad.axes.length; i++) state.axes[i] = pad.axes[i];
+        state.axes.length = pad.axes.length;
+        for (let i = 0; i < pad.buttons.length; i++) {
+          state.buttons[i] = pad.buttons[i].pressed;
+          state.buttonValues[i] = pad.buttons[i].value;
+        }
+        state.buttons.length = pad.buttons.length;
+        state.buttonValues.length = pad.buttons.length;
       }
     }
   }

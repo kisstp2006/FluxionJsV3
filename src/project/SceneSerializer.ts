@@ -20,6 +20,7 @@ import {
   EnvironmentComponent,
   SpriteComponent,
   TextRendererComponent,
+  FuiComponent,
 } from '../core/Components';
 import { Scene, SceneData, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
@@ -326,6 +327,25 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           alignment: textComp.alignment,
           maxWidth: textComp.maxWidth,
           billboard: textComp.billboard,
+        },
+      });
+    }
+
+    const fui = engine.ecs.getComponent<FuiComponent>(entityId, 'Fui');
+    if (fui) {
+      components.push({
+        type: 'Fui',
+        data: {
+          enabled: fui.enabled,
+          mode: fui.mode,
+          fuiPath: fui.fuiPath,
+          screenX: fui.screenX,
+          screenY: fui.screenY,
+          screenWidth: fui.screenWidth,
+          screenHeight: fui.screenHeight,
+          worldWidth: fui.worldWidth,
+          worldHeight: fui.worldHeight,
+          billboard: fui.billboard,
         },
       });
     }
@@ -706,6 +726,26 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           t.maxWidth = d.maxWidth ?? 0;
           t.billboard = d.billboard ?? false;
           engine.ecs.addComponent(entityId, t);
+          break;
+        }
+
+        case 'Fui': {
+          const f = new FuiComponent();
+          const d = comp.data;
+          f.enabled = d.enabled ?? true;
+          f.mode = d.mode === 'world' ? 'world' : 'screen';
+          f.fuiPath = d.fuiPath ?? '';
+
+          f.screenX = d.screenX ?? 0;
+          f.screenY = d.screenY ?? 0;
+          f.screenWidth = d.screenWidth ?? 800;
+          f.screenHeight = d.screenHeight ?? 600;
+
+          f.worldWidth = d.worldWidth ?? 1.6;
+          f.worldHeight = d.worldHeight ?? 0.9;
+          f.billboard = d.billboard ?? true;
+
+          engine.ecs.addComponent(entityId, f);
           break;
         }
 

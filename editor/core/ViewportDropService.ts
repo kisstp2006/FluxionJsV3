@@ -13,11 +13,13 @@ import * as THREE from 'three';
 import { AssetTypeRegistry, AssetTypeDefinition } from '../../src/assets/AssetTypeRegistry';
 import { AssetManager } from '../../src/assets/AssetManager';
 import { MaterialSystem, FluxMatData } from '../../src/renderer/MaterialSystem';
-import { MeshRendererComponent, AudioSourceComponent, TransformComponent } from '../../src/core/Components';
+import { MeshRendererComponent, AudioSourceComponent, TransformComponent, FuiComponent } from '../../src/core/Components';
 import type { FluxMeshMaterialSlot } from '../../src/assets/FluxMeshData';
 import { applyMaterialsToModel } from '../../src/assets/FluxMeshData';
 import type { EngineSubsystems } from './EditorEngine';
 import type { EntityId } from '../../src/core/ECS';
+import { getFileSystem } from '../../src/filesystem';
+import { parseFuiJson } from '../../src/ui/FuiParser';
 
 // ── Types ──
 
@@ -364,6 +366,49 @@ ViewportDropService.register('texture', async (ctx) => {
     return { selectEntity: hit.entityUnderCursor, sceneModified: true };
   } catch (err: any) {
     log(`Failed to apply texture: ${err.message}`, 'error');
+    return null;
+  }
+});
+
+// ── FUI drop: attach UI component ───────────────────────────────
+
+ViewportDropService.register('fui', async (ctx) => {
+  const { assetPath, absolutePath, hit, engine, log } = ctx;
+
+  // Find or create target entity.
+  let target = hit.entityUnderCursor;
+  if (target == null) {
+    target = engine.scene.createEmpty(`UI: ${assetPath.split(/[\\/]/).pop()?.replace(/\.fui$/i, '') ?? 'FUI'}`);
+    const t = engine.engine.ecs.getComponent<TransformComponent>(target, 'Transform');
+    if (t) t.position.copy(hit.worldPos);
+  }
+
+  try {
+    const ecs = engine.engine.ecs;
+    if (!ecs.hasComponent(target, 'Fui')) {
+      const comp = new FuiComponent();
+      comp.fuiPath = assetPath;
+      ecs.addComponent(target, comp);
+    } else {
+      const comp = ecs.getComponent<FuiComponent>(target, 'Fui');
+      if (comp) comp.fuiPath = assetPath;
+    }
+
+    // Optional: initialize screen dimensions from document canvas.
+    const fs = getFileSystem();
+    const raw = await fs.readFile(absolutePath);
+    const doc = parseFuiJson(raw);
+    const comp = engine.engine.ecs.getComponent<FuiComponent>(target, 'Fui');
+    if (comp) {
+      comp.mode = doc.mode;
+      comp.screenWidth = doc.canvas.width;
+      comp.screenHeight = doc.canvas.height;
+    }
+
+    log(`Attached FUI: ${assetPath}`, 'info');
+    return { selectEntity: target, sceneModified: true };
+  } catch (e: any) {
+    log(`Failed to attach FUI: ${e?.message ?? String(e)}`, 'error');
     return null;
   }
 });

@@ -15,6 +15,7 @@ import {
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
+  FuiComponent,
   EnvironmentComponent,
   TextRendererComponent,
 } from './Components';
@@ -271,4 +272,36 @@ ComponentRegistry.register({
   addable: true,
   properties: [],  // Custom inspector handles the UI
   create: () => new EnvironmentComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'Fui',
+  displayName: 'UI (FUI)',
+  icon: '▦',
+  addable: true,
+  properties: [
+    {
+      key: 'mode',
+      type: 'select',
+      label: 'Space',
+      options: [
+        { value: 'screen', label: 'Screen Space' },
+        { value: 'world', label: 'World Space' },
+      ],
+    },
+    { key: 'fuiPath', type: 'string', label: 'FUI Path' },
+
+    // Screen
+    { key: 'screenX', type: 'number', label: 'Screen X', step: 1, min: 0 },
+    { key: 'screenY', type: 'number', label: 'Screen Y', step: 1, min: 0 },
+    { key: 'screenWidth', type: 'number', label: 'Screen Width', step: 1, min: 1 },
+    { key: 'screenHeight', type: 'number', label: 'Screen Height', step: 1, min: 1 },
+
+    // World
+    { key: 'worldWidth', type: 'number', label: 'World Width', step: 0.1, min: 0.01 },
+    { key: 'worldHeight', type: 'number', label: 'World Height', step: 0.1, min: 0.01 },
+
+    { key: 'billboard', type: 'boolean', label: 'Billboard (face camera)' },
+  ],
+  create: () => new FuiComponent(),
 });

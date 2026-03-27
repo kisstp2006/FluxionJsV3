@@ -457,3 +457,57 @@ AssetTypeRegistry.register({
   extensions: ['.json'],
   category: 'Data',
 });
+
+AssetTypeRegistry.register({
+  type: 'fui',
+  displayName: 'UI (FUI)',
+  icon: 'json',
+  extensions: ['.fui'],
+  category: 'UI',
+  createDefault: async (fs, dirPath, name) => {
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filePath = `${dirPath}/${safeName}.fui`;
+    const defaultFui = JSON.stringify(
+      {
+        version: 1,
+        mode: 'screen',
+        canvas: { width: 800, height: 600 },
+        root: {
+          id: 'root',
+          type: 'panel',
+          rect: { x: 0, y: 0, w: 800, h: 600 },
+          style: { backgroundColor: '#0b1020' },
+          children: [
+            {
+              id: 'title',
+              type: 'label',
+              rect: { x: 20, y: 20, w: 760, h: 60 },
+              text: 'Hello FUI',
+              style: { color: '#ffffff', fontSize: 36, align: 'center' },
+            },
+            {
+              id: 'btn1',
+              type: 'button',
+              rect: { x: 300, y: 140, w: 200, h: 60 },
+              text: 'Click Me',
+              style: {
+                backgroundColor: '#2b3a67',
+                borderColor: '#6b8cff',
+                borderWidth: 2,
+                radius: 10,
+                textColor: '#ffffff',
+                fontSize: 24,
+                align: 'center',
+                padding: 8,
+              },
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    );
+    await fs.writeFile(filePath, defaultFui);
+    return filePath;
+  },
+});

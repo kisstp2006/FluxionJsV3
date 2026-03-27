@@ -265,6 +265,41 @@ export class TextRendererComponent implements Component {
   _cacheKey = '';
 }
 
+// ── Fluxion UI (.fui) ──
+
+export type FuiMode = 'screen' | 'world';
+
+/**
+ * FUI runtime component.
+ * The document is loaded from `fuiPath` and rendered either as:
+ * - screen-space: DOM overlay canvas
+ * - world-space: Three.js plane with CanvasTexture
+ */
+export class FuiComponent implements Component {
+  readonly type = 'Fui';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  mode: FuiMode = 'screen';
+
+  /**
+   * Project-relative or absolute path to a `.fui` file.
+   * (When project is loaded, project-relative resolves via ProjectManager.)
+   */
+  fuiPath = '';
+
+  // ── Screen space ──
+  screenX = 0;
+  screenY = 0;
+  screenWidth = 800;
+  screenHeight = 600;
+
+  // ── World space ──
+  worldWidth = 1.6;
+  worldHeight = 0.9;
+  billboard = true;
+}
+
 // ── Animation Component (skeletal animation like Nuake) ──
 
 export class AnimationComponent implements Component {

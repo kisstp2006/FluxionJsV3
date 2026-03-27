@@ -20,6 +20,8 @@ export {
   AudioSourceComponent,
   SpriteComponent,
   TextRendererComponent,
+  FuiComponent,
+  FuiMode,
   AnimationComponent,
 } from './core/Components';
 
@@ -31,6 +33,11 @@ export { ParticleRenderSystem } from './renderer/ParticleSystem';
 
 // Physics
 export { PhysicsWorld } from './physics/PhysicsWorld';
+
+// UI (FUI)
+export { compileFui, renderFuiToCanvas, hitTestFuiButtons } from './ui/FuiRenderer';
+export { parseFuiJson } from './ui/FuiParser';
+export { FuiRuntimeSystem } from './ui/FuiRuntimeSystem';
 
 // Scene
 export { Scene, SceneData, PrefabManager, PrefabData } from './scene/Scene';

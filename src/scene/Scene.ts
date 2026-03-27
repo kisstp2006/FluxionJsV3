@@ -20,6 +20,7 @@ import {
   SpriteComponent,
   EnvironmentComponent,
   TextRendererComponent,
+  FuiComponent,
 } from '../core/Components';
 import { AssetManager } from '../assets/AssetManager';
 
@@ -220,6 +221,22 @@ export class Scene {
       txtComp.maxWidth = txt.maxWidth;
       txtComp.billboard = txt.billboard;
       ecs.addComponent(clone, txtComp);
+    }
+
+    // Copy FUI
+    const fui = ecs.getComponent<FuiComponent>(entityId, 'Fui');
+    if (fui) {
+      const fComp = new FuiComponent();
+      fComp.mode = fui.mode;
+      fComp.fuiPath = fui.fuiPath;
+      fComp.screenX = fui.screenX;
+      fComp.screenY = fui.screenY;
+      fComp.screenWidth = fui.screenWidth;
+      fComp.screenHeight = fui.screenHeight;
+      fComp.worldWidth = fui.worldWidth;
+      fComp.worldHeight = fui.worldHeight;
+      fComp.billboard = fui.billboard;
+      ecs.addComponent(clone, fComp);
     }
 
     // Copy parent

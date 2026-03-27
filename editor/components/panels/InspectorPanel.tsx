@@ -26,6 +26,7 @@ import { EnvironmentInspector } from './inspector/EnvironmentInspector';
 import { TextRendererInspector } from './inspector/TextRendererInspector';
 import { SpriteRendererInspector } from './inspector/SpriteRendererInspector';
 import { LightInspector } from './inspector/LightInspector';
+import { FuiInspector } from './inspector/FuiInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);
@@ -33,6 +34,7 @@ AssetInspectorRegistry.register('audio', AudioInspector);
 AssetInspectorRegistry.register('material', MaterialInspector);
 AssetInspectorRegistry.register('model', ModelInspector);
 AssetInspectorRegistry.register('visual_material', VisualMaterialInspector);
+AssetInspectorRegistry.register('fui', FuiInspector);
 
 // Component types that have hand-written inspectors (complex UI needs).
 // Everything else is auto-generated from ComponentRegistry metadata.

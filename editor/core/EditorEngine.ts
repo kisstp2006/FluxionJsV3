@@ -16,6 +16,7 @@ import { InputManager } from '../../src/input/InputManager';
 import { AudioSystem } from '../../src/audio/AudioSystem';
 import { Scene } from '../../src/scene/Scene';
 import { AssetManager } from '../../src/assets/AssetManager';
+import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -69,6 +70,9 @@ export async function initEditorEngine(
   engine.registerSubsystem('assets', assets);
   const input = new InputManager(engine);
   const audio = new AudioSystem(engine);
+
+  // UI (FUI) runtime: supports screen-space overlay + world-space canvas planes.
+  engine.ecs.addSystem(new FuiRuntimeSystem(engine, renderer, input));
 
   // Physics
   const physics = new PhysicsWorld(engine);

@@ -12,7 +12,7 @@
 // ============================================================
 
 import type {
-  FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode,
+  FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode,
   FuiAnimation, FuiAnimatableProperty, FuiAlign,
 } from './FuiTypes';
 
@@ -45,6 +45,24 @@ export interface FuiButtonOpts {
   radius?: number;
   padding?: number;
   opacity?: number;
+  parent?: string;
+}
+
+export interface FuiIconOpts {
+  /**
+   * Flat tint colour applied to the icon (CSS colour string).
+   * Omit to render with the SVG's original colours.
+   */
+  color?: string;
+  opacity?: number;
+  /**
+   * How the icon fills its rect. Default: `'contain'`.
+   * - `'contain'` — uniform scale, letter-box.
+   * - `'cover'`   — uniform scale, crop to fill.
+   * - `'fill'`    — stretch to exact rect size.
+   */
+  fit?: 'contain' | 'cover' | 'fill';
+  /** Parent node ID. Defaults to the root panel. */
   parent?: string;
 }
 
@@ -168,6 +186,35 @@ export class FuiBuilder {
         padding: opts.padding,
         opacity: opts.opacity,
       },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add an SVG icon node.
+   *
+   * The `src` is a project-relative path to an `.svg` file. The image is
+   * loaded asynchronously the first time; subsequent renders use the cache.
+   *
+   * @example
+   *   builder.icon('close_icon', 370, 6, 24, 24, 'Assets/UI/close.svg', { color: '#ffffff' })
+   */
+  icon(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    src: string,
+    opts: FuiIconOpts = {},
+  ): this {
+    const node: FuiIconNode = {
+      type: 'icon',
+      id,
+      rect: { x, y, w, h },
+      src,
+      style: (opts.color || opts.opacity !== undefined || opts.fit)
+        ? { color: opts.color, opacity: opts.opacity, fit: opts.fit }
+        : undefined,
     };
     this._nodeMap.set(id, node);
     this._nodeParent.set(id, opts.parent ?? '__root__');

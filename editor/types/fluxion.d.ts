@@ -204,6 +204,149 @@ interface ParticleComponent {
   enabled: boolean;
 }
 
+interface SpriteComponent {
+  /** Project-relative path to the sprite texture (.png / .jpg / .svg …) */
+  texturePath: string | null;
+  color: _THREE.Color;
+  opacity: number;
+  flipX: boolean;
+  flipY: boolean;
+  pixelsPerUnit: number;
+  sortingLayer: number;
+  sortingOrder: number;
+  /**
+   * For SVG textures: rasterisation resolution in pixels (width = height).
+   * Higher values give sharper results at the cost of VRAM.  Default: 512.
+   */
+  svgRenderSize: number;
+  enabled: boolean;
+}
+
+// ── FUI (Fluxion UI) types ────────────────────────────────────
+
+type FuiAlign = 'left' | 'center' | 'right';
+type FuiMode = 'screen' | 'world';
+type FuiNodeType = 'panel' | 'label' | 'button' | 'icon';
+
+interface FuiRect {
+  x: number; y: number; w: number; h: number;
+}
+
+interface FuiIconNodeStyle {
+  /**
+   * Flat tint colour applied to the SVG icon using `source-in` compositing.
+   * Omit to render with the SVG's original colours.
+   * @example '#ffffff'
+   */
+  color?: string;
+  opacity?: number;
+  /**
+   * How the icon fills its rect. Default: `'contain'`.
+   * - `'contain'` — uniform scale, letter-box.
+   * - `'cover'`   — uniform scale, crop to fill.
+   * - `'fill'`    — stretch to exact rect size.
+   */
+  fit?: 'contain' | 'cover' | 'fill';
+}
+
+/**
+ * Fluent builder for creating FUI documents in code.
+ *
+ * @example
+ * ```ts
+ * const doc = new FuiBuilder(400, 120)
+ *   .background('#1a1a2e80')
+ *   .label('title', 10, 10, 380, 30, 'Hello World', { color: '#fff', fontSize: 20 })
+ *   .icon('close_icon', 370, 6, 24, 24, 'Assets/UI/close.svg', { color: '#ffffff' })
+ *   .button('play_btn', 100, 60, 200, 44, 'Play', { bg: '#3a86ff', radius: 8 })
+ *   .build();
+ * ```
+ */
+declare class FuiBuilder {
+  constructor(width?: number, height?: number, mode?: FuiMode);
+
+  /** Add a rectangular panel (container / background). */
+  panel(
+    id: string, x: number, y: number, w: number, h: number,
+    opts?: {
+      bg?: string; border?: string; borderWidth?: number;
+      radius?: number; opacity?: number; parent?: string;
+    },
+  ): this;
+
+  /** Add a text label. */
+  label(
+    id: string, x: number, y: number, w: number, h: number,
+    text: string,
+    opts?: {
+      color?: string; fontSize?: number;
+      align?: FuiAlign; opacity?: number; parent?: string;
+    },
+  ): this;
+
+  /** Add a clickable button. */
+  button(
+    id: string, x: number, y: number, w: number, h: number,
+    text: string,
+    opts?: {
+      bg?: string; border?: string; borderWidth?: number;
+      textColor?: string; fontSize?: number; radius?: number;
+      padding?: number; opacity?: number; parent?: string;
+    },
+  ): this;
+
+  /**
+   * Add an SVG icon node.
+   *
+   * The `src` is a project-relative path to an `.svg` file.  The image is
+   * loaded asynchronously the first time; subsequent renders use a cache.
+   *
+   * @param src     Project-relative path, e.g. `'Assets/UI/arrow.svg'`.
+   * @param opts    Optional styling (tint colour, opacity, fit mode).
+   *
+   * @example
+   *   builder.icon('close_btn', 370, 6, 24, 24, 'Assets/UI/close.svg', { color: '#fff' })
+   */
+  icon(
+    id: string, x: number, y: number, w: number, h: number,
+    src: string,
+    opts?: {
+      /** Flat tint colour (original SVG colours if omitted). */
+      color?: string;
+      opacity?: number;
+      /**
+       * How the icon fills its rect.
+       * - `'contain'` uniform scale, letter-box (default).
+       * - `'cover'`   uniform scale, crop to fill.
+       * - `'fill'`    stretch to exact size.
+       */
+      fit?: 'contain' | 'cover' | 'fill';
+      parent?: string;
+    },
+  ): this;
+
+  /** Shortcut: add a full-canvas background panel named `'bg'`. */
+  background(color: string, opts?: { opacity?: number }): this;
+
+  /** Compile all added nodes into a FuiDocument ready for FuiRuntimeSystem. */
+  build(): FuiDocument;
+
+  /** Serialize the document to a JSON string (for saving `.fui` files). */
+  toJSON(): string;
+
+  /** Generate a unique node ID safe for dynamic UIs. */
+  static genId(prefix?: string): string;
+}
+
+/** Serialised FUI document — pass to `fui._inlineDoc` to render in-game. */
+interface FuiDocument {
+  version: number;
+  mode: FuiMode;
+  canvas: { width: number; height: number };
+  root: Record<string, any>;
+  animations?: any[];
+}
+
 // ─────────────────────────────────────────────────────────────
 // Engine sub-systems exposed through FluxionScript
 // ─────────────────────────────────────────────────────────────

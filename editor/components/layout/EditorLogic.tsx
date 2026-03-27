@@ -14,6 +14,7 @@ import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
 import { ScriptSystem } from '../../../src/core/ScriptSystem';
+import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -246,12 +247,19 @@ export const TransformSync: React.FC = () => {
 export const SimulationSync: React.FC = () => {
   const { state } = useEditor();
   const engine = useEngine();
+  // Snapshot captured when play starts — restored when play stops (if setting enabled)
+  const sceneSnapshot = useRef<SceneFileData | null>(null);
 
   useEffect(() => {
     if (!engine) return;
     engine.engine.simulationPaused = !state.isPlaying;
 
     if (state.isPlaying) {
+      // Capture scene state before simulation begins
+      if (SettingsRegistry.get<boolean>('editor.playMode.restoreSceneOnStop')) {
+        sceneSnapshot.current = serializeScene(engine.scene, engine.engine, engine.editorCamera, engine.orbitControls.target);
+      }
+
       // Switch to first game camera that exists in the scene
       const cameras = engine.engine.ecs.query('Transform', 'Camera');
       if (cameras.length > 0) {
@@ -274,6 +282,12 @@ export const SimulationSync: React.FC = () => {
       // Reset scripts: clear coroutines + re-arm onStart() for next play session
       const scriptSys = engine.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
       scriptSys?.onSimulationStop();
+
+      // Restore scene to pre-play snapshot
+      if (sceneSnapshot.current) {
+        deserializeScene(engine.engine, sceneSnapshot.current, engine.scene);
+        sceneSnapshot.current = null;
+      }
     }
   }, [engine, state.isPlaying]);
 

@@ -439,10 +439,21 @@ class SpriteRendererSystem implements System {
     try {
       const { projectManager } = await import('../project/ProjectManager');
       const absPath = projectManager.resolvePath(sprite.texturePath!);
-      const texUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
-      const assets = this.renderer.engine.getSubsystem('assets') as any;
-      if (!assets) return;
-      const texture = await assets.loadTexture(texUrl);
+
+      let texture: THREE.Texture;
+
+      // SVG files are rasterised via SvgLoader so they render at the correct
+      // resolution rather than relying on the browser's default SVG intrinsic size.
+      if (sprite.texturePath!.toLowerCase().endsWith('.svg')) {
+        const { SvgLoader } = await import('./SvgLoader');
+        texture = await SvgLoader.createTexture(absPath, sprite.svgRenderSize);
+      } else {
+        const texUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+        const assets = this.renderer.engine.getSubsystem('assets') as any;
+        if (!assets) return;
+        texture = await assets.loadTexture(texUrl);
+      }
+
       sprite.spriteTexture = texture;
 
       // Calculate aspect ratio from texture

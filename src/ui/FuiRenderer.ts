@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiDocument, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiDocument, FuiIconNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -22,7 +22,62 @@ export interface FuiCompiledNode {
   rect: FuiRect; // absolute in document coords
   style?: any;
   text?: string;
+  /** Icon-node only: absolute filesystem path to the SVG source file. */
+  src?: string;
   children: FuiCompiledNode[];
+}
+
+// ── SVG image cache (module-level, survives across renders) ──
+
+type SvgCacheEntry =
+  | { state: 'loading' }
+  | { state: 'ready'; img: HTMLImageElement }
+  | { state: 'error' };
+
+const _svgCache = new Map<string, SvgCacheEntry>();
+
+/**
+ * Start loading all SVG icons referenced in a compiled FUI document.
+ * When *any* icon finishes loading (or fails), `onLoaded` is called so the
+ * caller can trigger a re-render.
+ *
+ * @param compiled        A compiled FUI document (from `compileFui`).
+ * @param resolveAbsPath  Function that converts a project-relative `src` path
+ *                        to an absolute filesystem path.
+ * @param onLoaded        Callback invoked when at least one icon becomes ready.
+ */
+export function preloadFuiImages(
+  compiled: FuiCompiled,
+  resolveAbsPath: (src: string) => string,
+  onLoaded: () => void,
+): void {
+  for (const node of compiled.drawOrder) {
+    if (node.type !== 'icon' || !node.src) continue;
+    const key = node.src;
+    if (_svgCache.has(key)) continue; // already loading or ready
+
+    _svgCache.set(key, { state: 'loading' });
+    const absPath = resolveAbsPath(key);
+    const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      _svgCache.set(key, { state: 'ready', img });
+      onLoaded();
+    };
+    img.onerror = () => {
+      _svgCache.set(key, { state: 'error' });
+    };
+    img.src = url;
+  }
+}
+
+/**
+ * Remove a cached SVG image (call after the source file changes on disk).
+ */
+export function invalidateFuiSvgCache(projectRelSrc: string): void {
+  _svgCache.delete(projectRelSrc);
 }
 
 export interface FuiCompiled {
@@ -126,6 +181,7 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       rect: absRect,
       style: (node as any).style,
       text: (node as any).text,
+      src: node.type === 'icon' ? (node as FuiIconNode).src : undefined,
       children: [],
     };
 
@@ -255,6 +311,63 @@ export function renderCompiledFuiToCanvas(
       const ty = y + h / 2;
       ctx.fillText(text, tx, ty);
       ctx.restore();
+    }
+
+    else if (n.type === 'icon') {
+      if (n.src) {
+        const entry = _svgCache.get(n.src);
+        if (entry?.state === 'ready') {
+          const fit = n.style?.fit ?? 'contain';
+          const tint: string | undefined = n.style?.color;
+          const opacity = Math.min(1, Math.max(0, withDefaultNumber(n.style?.opacity, 1)));
+
+          // Compute destination rect based on fit mode.
+          let dx = x, dy = y, dw = w, dh = h;
+          if (fit === 'contain') {
+            const scale = Math.min(w / (entry.img.naturalWidth || w), h / (entry.img.naturalHeight || h));
+            dw = entry.img.naturalWidth * scale;
+            dh = entry.img.naturalHeight * scale;
+            dx = x + (w - dw) / 2;
+            dy = y + (h - dh) / 2;
+          } else if (fit === 'cover') {
+            const scale = Math.max(w / (entry.img.naturalWidth || w), h / (entry.img.naturalHeight || h));
+            dw = entry.img.naturalWidth * scale;
+            dh = entry.img.naturalHeight * scale;
+            dx = x + (w - dw) / 2;
+            dy = y + (h - dh) / 2;
+          }
+          // 'fill' uses the full x/y/w/h as-is.
+
+          ctx.save();
+          ctx.globalAlpha = opacity;
+
+          if (tint) {
+            // Draw to an offscreen canvas, apply tint, then draw result.
+            const tmp = document.createElement('canvas');
+            tmp.width = Math.max(1, Math.round(dw));
+            tmp.height = Math.max(1, Math.round(dh));
+            const tc = tmp.getContext('2d')!;
+            tc.drawImage(entry.img, 0, 0, tmp.width, tmp.height);
+            tc.globalCompositeOperation = 'source-in';
+            tc.fillStyle = tint;
+            tc.fillRect(0, 0, tmp.width, tmp.height);
+            ctx.drawImage(tmp, dx, dy, dw, dh);
+          } else {
+            ctx.drawImage(entry.img, dx, dy, dw, dh);
+          }
+
+          ctx.restore();
+        } else if (!entry) {
+          // Image not yet queued — draw a translucent placeholder so the slot is visible.
+          ctx.save();
+          ctx.globalAlpha = 0.15;
+          ctx.fillStyle = '#888888';
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+        }
+        // 'loading' state: draw nothing; onLoaded callback will trigger a re-render.
+        // 'error' state: silently skip.
+      }
     }
 
     for (const c of n.children) drawNode(c);

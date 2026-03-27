@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
-import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
+import { ECSManager, EntityId, System, clearDirty, isDirty, markDirty } from '../core/ECS';
 import { TransformComponent } from '../core/Components';
 import { MouseButton, InputManager } from '../input/InputManager';
 import { FluxionRenderer } from '../renderer/Renderer';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiComponent } from '../core/Components';
-import { compileFui, hitTestFuiButtons, renderCompiledFuiToCanvas } from './FuiRenderer';
+import { compileFui, hitTestFuiButtons, preloadFuiImages, renderCompiledFuiToCanvas } from './FuiRenderer';
 import type { FuiCompiled, FuiCompiledNode } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
@@ -109,6 +109,19 @@ export class FuiRuntimeSystem implements System {
     const doc = parseFuiJson(text);
     const compiled = compileFui(doc);
     return { compiled };
+  }
+
+  /**
+   * Start pre-loading any SVG icon images referenced by `compiled`.
+   * When an image finishes loading, the FUI component is marked dirty so
+   * FuiRuntimeSystem triggers a re-render on the next frame.
+   */
+  private startIconPreload(compiled: FuiCompiled, comp: FuiComponent): void {
+    preloadFuiImages(
+      compiled,
+      (src) => resolveFuiPath(src),
+      () => { markDirty(comp); },
+    );
   }
 
   private ensureScreenEntry(entity: EntityId, comp: FuiComponent, compiled: FuiCompiled): ScreenEntry {
@@ -279,6 +292,7 @@ export class FuiRuntimeSystem implements System {
         if (comp._inlineDoc !== undefined) {
           const doc = comp._inlineDoc as FuiDocument;
           const compiled = compileFui(doc);
+          this.startIconPreload(compiled, comp);
           const prev = this.entries.get(entity);
           if (prev && prev.mode !== comp.mode) {
             this.disposeEntry(entity);
@@ -312,6 +326,8 @@ export class FuiRuntimeSystem implements System {
           if (!ecs.entityExists(entity)) return;
           // Discard stale result if path changed again while we were loading.
           if (comp.fuiPath !== fuiPath) return;
+
+          this.startIconPreload(compiled, comp);
 
           // Clean up old entry if mode changed (screen↔world switch)
           const prev = this.entries.get(entity);

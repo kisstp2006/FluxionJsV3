@@ -1,5 +1,5 @@
 export type FuiMode = 'screen' | 'world';
-export type FuiNodeType = 'panel' | 'label' | 'button';
+export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon';
 
 export interface FuiRect {
   x: number;
@@ -55,7 +55,32 @@ export interface FuiButtonNode extends FuiBaseNode {
   };
 }
 
-export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode;
+export interface FuiIconNode extends FuiBaseNode {
+  type: 'icon';
+  /**
+   * Project-relative path to an SVG file.
+   * @example 'Assets/UI/arrow.svg'
+   */
+  src?: string;
+  style?: {
+    /**
+     * Flat tint colour applied to the icon using CSS `source-in` compositing.
+     * Set to `null` / omit to use the SVG's original colours.
+     * @example '#ffffff'
+     */
+    color?: string;
+    opacity?: number;
+    /**
+     * How the icon fills its rect. Default: `'contain'`.
+     * - `'contain'` — scale uniformly so the icon fits inside the rect (letter-box).
+     * - `'cover'`   — scale uniformly so the icon covers the entire rect (crop).
+     * - `'fill'`    — stretch to exactly fill width and height (may distort).
+     */
+    fit?: 'contain' | 'cover' | 'fill';
+  };
+}
+
+export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiIconNode;
 
 // ── Animation ──
 

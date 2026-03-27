@@ -251,7 +251,7 @@ export class SpriteComponent implements Component {
   entityId: EntityId = 0;
   enabled = true;
 
-  /** Project-relative path to sprite texture image */
+  /** Project-relative path to sprite texture image (.png / .jpg / .svg …) */
   texturePath: string | null = null;
   color = new THREE.Color(1, 1, 1);
   opacity = 1;
@@ -260,6 +260,11 @@ export class SpriteComponent implements Component {
   pixelsPerUnit = 100;
   sortingLayer = 0;
   sortingOrder = 0;
+  /**
+   * For SVG textures: rasterisation resolution in pixels (width = height).
+   * Higher values give sharper results at the cost of VRAM.  Default: 512.
+   */
+  svgRenderSize = 512;
 
   /** Runtime sprite mesh (billboard quad) */
   spriteMesh: THREE.Mesh | null = null;

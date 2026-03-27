@@ -13,6 +13,7 @@ SettingsRegistry.registerCategory('Editor', { label: 'Editor', icon: Icons.setti
 SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: Icons.eye, order: 21 });
 SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: Icons.move, order: 22 });
 SettingsRegistry.registerCategory('Editor/ViewCube', { label: 'ViewCube', icon: Icons.cube, order: 23 });
+SettingsRegistry.registerCategory('Editor/PlayMode', { label: 'Play Mode', icon: Icons.play, order: 24 });
 SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 
 // ── Editor Settings ──
@@ -255,10 +256,25 @@ const audioSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── Play Mode Settings ──
+
+const playModeSettings: SettingDescriptor[] = [
+  {
+    key: 'editor.playMode.restoreSceneOnStop',
+    label: 'Restore Scene on Stop',
+    description: 'When stopping play mode, restore all entities and components to the state they were in before play was started.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Editor/PlayMode',
+    order: 1,
+  },
+];
+
 // ── Register All ──
 
 export function registerDefaultSettings(): void {
   SettingsRegistry.registerMany(editorSettings);
+  SettingsRegistry.registerMany(playModeSettings);
   SettingsRegistry.registerMany(viewCubeSettings);
   SettingsRegistry.registerMany(audioSettings);
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
+import { TransformComponent } from '../core/Components';
 import { MouseButton, InputManager } from '../input/InputManager';
 import { FluxionRenderer } from '../renderer/Renderer';
 import { projectManager } from '../project/ProjectManager';
@@ -9,6 +10,7 @@ import { FuiComponent } from '../core/Components';
 import { compileFui, hitTestFuiButtons, renderCompiledFuiToCanvas } from './FuiRenderer';
 import type { FuiCompiled, FuiCompiledNode } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
+import { applyAnimation } from './FuiAnimator';
 
 type PendingClick = {
   entity: EntityId;
@@ -55,6 +57,9 @@ export class FuiRuntimeSystem implements System {
 
   private entries: Map<EntityId, Entry> = new Map();
   private pendingClick: PendingClick | null = null;
+  private animStates: Map<EntityId, { animId: string; time: number }> = new Map();
+  /** Tracks the fuiPath that was successfully loaded per entity — used to detect path changes without dirty flag */
+  private loadedPaths: Map<EntityId, string> = new Map();
 
   private parentEl: HTMLElement | null = null;
 
@@ -66,17 +71,24 @@ export class FuiRuntimeSystem implements System {
 
   onSceneClear(): void {
     this.pendingClick = null;
-
-    for (const [, entry] of this.entries) {
-      if (entry.mode === 'screen') {
-        entry.screen.overlayCanvas.remove();
-      } else {
-        entry.world.texture.dispose();
-        if (entry.world.mesh.parent) entry.world.mesh.parent.remove(entry.world.mesh);
-      }
-    }
-
+    for (const [entity] of this.entries) this.disposeEntry(entity);
     this.entries.clear();
+    this.animStates.clear();
+    this.loadedPaths.clear();
+  }
+
+  private disposeEntry(entity: EntityId): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    if (entry.mode === 'screen') {
+      entry.screen.overlayCanvas.remove();
+    } else {
+      this.renderer.scene.remove(entry.world.mesh);
+      entry.world.texture.dispose();
+      entry.world.mesh.geometry.dispose();
+      (entry.world.mesh.material as THREE.Material).dispose();
+    }
+    this.loadedPaths.delete(entity);
   }
 
   private ensureParentEl(): HTMLElement {
@@ -104,8 +116,8 @@ export class FuiRuntimeSystem implements System {
     overlayCanvas.style.position = 'absolute';
     overlayCanvas.style.left = `${comp.screenX}px`;
     overlayCanvas.style.top = `${comp.screenY}px`;
-    overlayCanvas.style.width = `${comp.screenWidth}px`;
-    overlayCanvas.style.height = `${comp.screenHeight}px`;
+    overlayCanvas.style.width = `${compiled.doc.canvas.width}px`;
+    overlayCanvas.style.height = `${compiled.doc.canvas.height}px`;
     overlayCanvas.style.pointerEvents = 'none';
     overlayCanvas.style.zIndex = '50';
 
@@ -148,7 +160,9 @@ export class FuiRuntimeSystem implements System {
     const mesh = new THREE.Mesh(geom, mat);
     mesh.renderOrder = 1000;
 
-    this.renderer.addObject(entity, mesh);
+    // Add directly to scene — NOT via renderer.addObject() which would
+    // replace the entity's existing mesh (MeshRenderer, etc.)
+    this.renderer.scene.add(mesh);
 
     const worldEntry: WorldEntry = { offscreenCanvas, offscreenCtx, texture, mesh, compiled };
     this.entries.set(entity, { mode: 'world', world: worldEntry });
@@ -159,17 +173,17 @@ export class FuiRuntimeSystem implements System {
     const { compiled } = entry;
     const { doc } = compiled;
 
-    const w = Math.max(1, comp.screenWidth);
-    const h = Math.max(1, comp.screenHeight);
+    const w = Math.max(1, doc.canvas.width);
+    const h = Math.max(1, doc.canvas.height);
 
     // Resize overlay when needed (avoid clearing/alloc every frame if sizes are stable)
-    if (entry.overlayCanvas.width !== Math.floor(w) || entry.overlayCanvas.height !== Math.floor(h)) {
-      entry.overlayCanvas.width = Math.floor(w);
-      entry.overlayCanvas.height = Math.floor(h);
+    if (entry.overlayCanvas.width !== w || entry.overlayCanvas.height !== h) {
+      entry.overlayCanvas.width = w;
+      entry.overlayCanvas.height = h;
     }
 
-    const scaleX = w / doc.canvas.width;
-    const scaleY = h / doc.canvas.height;
+    const scaleX = 1;
+    const scaleY = 1;
 
     // Draw to offscreen first in doc pixels (so hit-testing stays stable),
     // then scale to overlay canvas.
@@ -207,10 +221,12 @@ export class FuiRuntimeSystem implements System {
     const px = this.input.mousePosition.x - parentRect.left - comp.screenX;
     const py = this.input.mousePosition.y - parentRect.top - comp.screenY;
 
-    if (px < 0 || py < 0 || px > comp.screenWidth || py > comp.screenHeight) return null;
+    const canvasW = compiled.doc.canvas.width;
+    const canvasH = compiled.doc.canvas.height;
+    if (px < 0 || py < 0 || px > canvasW || py > canvasH) return null;
 
-    const docX = px * compiled.doc.canvas.width / Math.max(1, comp.screenWidth);
-    const docY = py * compiled.doc.canvas.height / Math.max(1, comp.screenHeight);
+    const docX = px;
+    const docY = py;
 
     return hitTestFuiButtons(compiled, docX, docY);
   }
@@ -233,24 +249,43 @@ export class FuiRuntimeSystem implements System {
   }
 
   update(entities: Set<EntityId>, ecs: ECSManager, _dt: number): void {
-    // We run asynchronous document loads only when components are dirty.
+    // Clean up entries whose entity was deleted or whose FUI component was removed.
+    for (const eid of [...this.entries.keys()]) {
+      if (!entities.has(eid)) {
+        this.disposeEntry(eid);
+        this.entries.delete(eid);
+        this.animStates.delete(eid);
+      }
+    }
+
+    // We run asynchronous document loads only when components are dirty or the path changed.
     for (const entity of entities) {
       const comp = ecs.getComponent<FuiComponent>(entity, 'Fui');
       if (!comp || !comp.enabled) continue;
       const dirty = isDirty(comp);
 
-      // Document is loaded lazily (and reloaded on property dirty).
+      // Document is loaded lazily (and reloaded on property dirty or fuiPath change).
       const existing = this.entries.get(entity);
+      const pathChanged = existing != null && this.loadedPaths.get(entity) !== comp.fuiPath;
 
-      if (!existing || dirty) {
+      if (!existing || dirty || pathChanged) {
         // Fire-and-forget: load document and rebuild entry on resolve.
         const fuiPath = comp.fuiPath;
         if (!fuiPath) continue;
 
         void this.loadDocument(fuiPath).then(({ compiled }) => {
           if (!ecs.entityExists(entity)) return;
+          // Discard stale result if path changed again while we were loading.
+          if (comp.fuiPath !== fuiPath) return;
 
-          if (compiled.doc.mode === 'screen') {
+          // Clean up old entry if mode changed (screen↔world switch)
+          const prev = this.entries.get(entity);
+          if (prev && prev.mode !== comp.mode) {
+            this.disposeEntry(entity);
+            this.entries.delete(entity);
+          }
+
+          if (comp.mode === 'screen') {
             const screen = this.ensureScreenEntry(entity, comp, compiled);
             screen.compiled = compiled;
             screen.offscreenCanvas.width = compiled.doc.canvas.width;
@@ -268,9 +303,18 @@ export class FuiRuntimeSystem implements System {
             world.offscreenCanvas.width = compiled.doc.canvas.width;
             world.offscreenCanvas.height = compiled.doc.canvas.height;
 
+            // Sync position to entity transform immediately after load.
+            const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
+            if (transform) {
+              world.mesh.position.copy(transform.position);
+              world.mesh.scale.copy(transform.scale);
+              world.mesh.quaternion.copy(transform.quaternion);
+            }
+
             this.renderWorld(world, comp);
           }
           clearDirty(comp);
+          this.loadedPaths.set(entity, fuiPath);
         }).catch(() => {
           // Ignore; will stay uninitialized.
         });
@@ -278,27 +322,66 @@ export class FuiRuntimeSystem implements System {
         const screen = existing.screen;
         // Reposition + redraw only when size changed.
         const overlay = screen.overlayCanvas;
-        const w = Math.max(1, comp.screenWidth);
-        const h = Math.max(1, comp.screenHeight);
+        const docW = screen.compiled.doc.canvas.width;
+        const docH = screen.compiled.doc.canvas.height;
         if (
           overlay.style.left !== `${comp.screenX}px` ||
           overlay.style.top !== `${comp.screenY}px` ||
-          overlay.style.width !== `${comp.screenWidth}px` ||
-          overlay.style.height !== `${comp.screenHeight}px`
+          overlay.style.width !== `${docW}px` ||
+          overlay.style.height !== `${docH}px`
         ) {
           overlay.style.left = `${comp.screenX}px`;
           overlay.style.top = `${comp.screenY}px`;
-          overlay.style.width = `${comp.screenWidth}px`;
-          overlay.style.height = `${comp.screenHeight}px`;
+          overlay.style.width = `${docW}px`;
+          overlay.style.height = `${docH}px`;
         }
-        if (overlay.width !== Math.floor(w) || overlay.height !== Math.floor(h)) {
+        if (overlay.width !== docW || overlay.height !== docH) {
           this.renderScreen(screen, comp);
+        }
+
+        // ── Animation ──
+        if (comp.playAnimation) {
+          const anim = screen.compiled.doc.animations?.find(a => a.id === comp.playAnimation);
+          if (anim) {
+            const state = this.animStates.get(entity) ?? { animId: comp.playAnimation, time: 0 };
+            if (state.animId !== comp.playAnimation) { state.animId = comp.playAnimation; state.time = 0; }
+            state.time += _dt * (comp.animationSpeed || 1);
+            if (anim.loop) state.time = ((state.time % anim.duration) + anim.duration) % anim.duration;
+            else state.time = Math.min(state.time, anim.duration);
+            this.animStates.set(entity, state);
+            const animDoc = applyAnimation(screen.compiled.doc, anim, state.time);
+            const animCompiled = compileFui(animDoc);
+            this.renderScreen({ ...screen, compiled: animCompiled }, comp);
+          }
         }
       } else if (existing.mode === 'world') {
         const world = existing.world;
-        // Billboard update
+        // Sync position and scale from entity transform every frame
+        const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
+        if (transform) {
+          world.mesh.position.copy(transform.position);
+          world.mesh.scale.copy(transform.scale);
+          if (!comp.billboard) world.mesh.quaternion.copy(transform.quaternion);
+        }
+        // Billboard: override rotation to face active camera
         const cam = this.renderer.getActiveCamera();
         if (comp.billboard && cam) world.mesh.quaternion.copy(cam.quaternion);
+
+        // ── Animation ──
+        if (comp.playAnimation) {
+          const anim = world.compiled.doc.animations?.find(a => a.id === comp.playAnimation);
+          if (anim) {
+            const state = this.animStates.get(entity) ?? { animId: comp.playAnimation, time: 0 };
+            if (state.animId !== comp.playAnimation) { state.animId = comp.playAnimation; state.time = 0; }
+            state.time += _dt * (comp.animationSpeed || 1);
+            if (anim.loop) state.time = ((state.time % anim.duration) + anim.duration) % anim.duration;
+            else state.time = Math.min(state.time, anim.duration);
+            this.animStates.set(entity, state);
+            const animDoc = applyAnimation(world.compiled.doc, anim, state.time);
+            const animCompiled = compileFui(animDoc);
+            this.renderWorld({ ...world, compiled: animCompiled }, comp);
+          }
+        }
       }
     }
 

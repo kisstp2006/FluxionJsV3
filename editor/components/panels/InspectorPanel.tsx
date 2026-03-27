@@ -27,6 +27,7 @@ import { TextRendererInspector } from './inspector/TextRendererInspector';
 import { SpriteRendererInspector } from './inspector/SpriteRendererInspector';
 import { LightInspector } from './inspector/LightInspector';
 import { FuiInspector } from './inspector/FuiInspector';
+import { FuiComponentInspector } from './inspector/FuiComponentInspector';
 import { CSGBrushInspector } from './inspector/CSGBrushInspector';
 
 // Register built-in asset inspectors
@@ -47,6 +48,7 @@ const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: (
   TextRenderer: TextRendererInspector,
   Sprite: SpriteRendererInspector,
   CSGBrush: CSGBrushInspector,
+  Fui: FuiComponentInspector,
 };
 
 // ── Add Component Menu ──

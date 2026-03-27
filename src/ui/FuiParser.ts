@@ -1,4 +1,35 @@
-import type { FuiDocument, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+
+const ANIMATABLE_PROPS = new Set<string>(['x', 'y', 'w', 'h', 'opacity', 'fontSize', 'borderWidth']);
+
+function parseAnimations(raw: any): FuiAnimation[] {
+  if (!Array.isArray(raw)) return [];
+  const result: FuiAnimation[] = [];
+  for (const a of raw) {
+    if (!isRecord(a) || typeof a.id !== 'string' || typeof a.name !== 'string') continue;
+    const duration = typeof a.duration === 'number' && a.duration > 0 ? a.duration : 1;
+    const loop = a.loop === true;
+    const tracks: FuiAnimationTrack[] = [];
+    if (Array.isArray(a.tracks)) {
+      for (const t of a.tracks) {
+        if (!isRecord(t) || typeof t.nodeId !== 'string') continue;
+        if (!ANIMATABLE_PROPS.has(t.property)) continue;
+        const keyframes: FuiKeyframe[] = [];
+        if (Array.isArray(t.keyframes)) {
+          for (const k of t.keyframes) {
+            if (!isRecord(k) || typeof k.time !== 'number' || typeof k.value !== 'number') continue;
+            const easing = ['linear','ease-in','ease-out','ease-in-out','step'].includes(k.easing) ? k.easing : 'linear';
+            keyframes.push({ time: k.time, value: k.value, easing });
+          }
+          keyframes.sort((a, b) => a.time - b.time);
+        }
+        tracks.push({ nodeId: t.nodeId, property: t.property as FuiAnimatableProperty, keyframes });
+      }
+    }
+    result.push({ id: a.id, name: a.name, duration, loop, tracks });
+  }
+  return result;
+}
 
 function isRecord(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null;
@@ -101,6 +132,8 @@ export function parseFuiJson(text: string): FuiDocument {
     throw new Error('Invalid .fui: `root.type` must be "panel"');
   }
 
+  const animations = parseAnimations(raw.animations);
+
   return {
     version,
     mode,
@@ -110,6 +143,7 @@ export function parseFuiJson(text: string): FuiDocument {
       rect: root.rect ?? { x: 0, y: 0, w: width, h: height },
       children: root.children ?? [],
     },
+    ...(animations.length > 0 ? { animations } : {}),
   };
 }
 

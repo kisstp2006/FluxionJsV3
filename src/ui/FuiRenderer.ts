@@ -171,6 +171,8 @@ export function renderCompiledFuiToCanvas(
     const w = n.rect.w * scaleX;
     const h = n.rect.h * scaleY;
 
+    const opacity = Math.min(1, Math.max(0, withDefaultNumber(n.style?.opacity, 1)));
+
     if (n.type === 'panel') {
       const bg = resolveBackground(n.style);
       if (bg) {
@@ -180,6 +182,7 @@ export function renderCompiledFuiToCanvas(
         const borderEnabled = borderWidth > 0 && !!borderColor;
 
         ctx.save();
+        ctx.globalAlpha = opacity;
         if (radius > 0) drawRoundedRect(ctx, x, y, w, h, radius);
         else ctx.fillRect(x, y, w, h);
         ctx.fillStyle = bg;
@@ -204,6 +207,7 @@ export function renderCompiledFuiToCanvas(
       const align = resolveAlign(n.style);
 
       ctx.save();
+      ctx.globalAlpha = opacity;
       ctx.fillStyle = color;
       ctx.font = `${fontSize}px sans-serif`;
       ctx.textAlign = align;
@@ -226,20 +230,19 @@ export function renderCompiledFuiToCanvas(
       const align = resolveAlign(n.style);
       const padding = withDefaultNumber(n.style?.padding, 8) * Math.min(scaleX, scaleY);
 
-      // Background + border
       ctx.save();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = opacity;
+
+      // Background + border
       ctx.fillStyle = bg;
       drawRoundedRect(ctx, x, y, w, h, radius);
       ctx.fill();
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = borderWidth;
       ctx.stroke();
-      ctx.restore();
 
       // Text
       const text = n.text ?? '';
-      ctx.save();
       ctx.fillStyle = textColor;
       ctx.font = `${fontSize}px sans-serif`;
       ctx.textAlign = align;

@@ -110,4 +110,26 @@ const vmeWindow = {
   ],
 };
 
-module.exports = [electronMain, electronPreload, editorRenderer, vmeWindow];
+// FUI Editor (separate window)
+const fuiWindow = {
+  entry: './editor/fui-window.tsx',
+  target: 'web',
+  output: {
+    path: path.resolve(__dirname, 'dist/editor'),
+    filename: 'fui-window.bundle.js',
+    globalObject: 'self',
+  },
+  module: { rules: commonRules },
+  resolve,
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './editor/fui-window.html',
+      filename: 'fui-window.html',
+    }),
+    new (require('webpack')).DefinePlugin({
+      'global': 'globalThis',
+    }),
+  ],
+};
+
+module.exports = [electronMain, electronPreload, editorRenderer, vmeWindow, fuiWindow];

@@ -9,6 +9,7 @@ import * as crypto from 'crypto';
 
 let mainWindow: BrowserWindow | null = null;
 let vmeWindow: BrowserWindow | null = null;
+let fuiWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -34,9 +35,11 @@ function createWindow(): void {
   mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
-    // Close VME window when the main editor window closes
+    // Close child windows when the main editor window closes
     if (vmeWindow && !vmeWindow.isDestroyed()) vmeWindow.close();
     vmeWindow = null;
+    if (fuiWindow && !fuiWindow.isDestroyed()) fuiWindow.close();
+    fuiWindow = null;
     mainWindow = null;
   });
 }
@@ -185,6 +188,43 @@ ipcMain.handle('vme:open', async (_, filePath: string) => {
 
   vmeWindow.on('closed', () => {
     vmeWindow = null;
+  });
+});
+
+// ── FUI Editor Window ──
+
+ipcMain.handle('fui:open', async (_, filePath: string) => {
+  // If a FUI window already exists, send the new file as a tab
+  if (fuiWindow && !fuiWindow.isDestroyed()) {
+    fuiWindow.webContents.send('fui:open-tab', filePath);
+    fuiWindow.focus();
+    return;
+  }
+
+  fuiWindow = new BrowserWindow({
+    width: 1100,
+    height: 750,
+    minWidth: 780,
+    minHeight: 500,
+    title: 'FUI Editor',
+    backgroundColor: '#0d1117',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    icon: path.join(__dirname, '../../Data/icon.png'),
+  });
+
+  fuiWindow.setMenuBarVisibility(false);
+
+  fuiWindow.loadFile(path.join(__dirname, '../editor/fui-window.html'), {
+    query: { filePath },
+  });
+
+  fuiWindow.on('closed', () => {
+    fuiWindow = null;
   });
 });
 

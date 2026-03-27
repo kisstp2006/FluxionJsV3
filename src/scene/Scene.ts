@@ -229,8 +229,6 @@ export class Scene {
       fComp.fuiPath = fui.fuiPath;
       fComp.screenX = fui.screenX;
       fComp.screenY = fui.screenY;
-      fComp.screenWidth = fui.screenWidth;
-      fComp.screenHeight = fui.screenHeight;
       fComp.worldWidth = fui.worldWidth;
       fComp.worldHeight = fui.worldHeight;
       fComp.billboard = fui.billboard;

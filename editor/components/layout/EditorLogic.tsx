@@ -643,6 +643,26 @@ export const AssetHotReload: React.FC = () => {
       assets.invalidateCache(changedPath);
     };
 
+    // ── FUI reload: mark all FuiComponents referencing this file as dirty ──
+    // FuiRuntimeSystem detects isDirty(comp) each frame and re-loads the document.
+
+    const reloadFui = async (changedPath: string) => {
+      const { ecs } = getSubsystems();
+      if (!ecs) return;
+      const nChanged = norm(changedPath);
+      const { markDirty } = await import('../../../src/core/ECS');
+      const { projectManager } = await import('../../../src/project/ProjectManager');
+      const fuiComps = ecs.getComponentsOfType<any>('Fui');
+      for (const [, comp] of fuiComps) {
+        if (!comp.fuiPath) continue;
+        let abs = comp.fuiPath;
+        try { abs = projectManager.resolvePath(comp.fuiPath); } catch {}
+        if (norm(abs) === nChanged || norm(comp.fuiPath) === nChanged) {
+          markDirty(comp);
+        }
+      }
+    };
+
     // ── Main handler for 'fluxion:material-changed' (editor UI saves) ──
 
     const materialChangedHandler = async (e: Event) => {
@@ -679,6 +699,9 @@ export const AssetHotReload: React.FC = () => {
           break;
         case 'audio':
           await reloadAudio(path);
+          break;
+        case 'fui':
+          await reloadFui(path);
           break;
         // shader, scene, json, prefab — no live reload needed
       }

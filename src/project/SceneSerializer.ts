@@ -342,8 +342,6 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           fuiPath: fui.fuiPath,
           screenX: fui.screenX,
           screenY: fui.screenY,
-          screenWidth: fui.screenWidth,
-          screenHeight: fui.screenHeight,
           worldWidth: fui.worldWidth,
           worldHeight: fui.worldHeight,
           billboard: fui.billboard,
@@ -761,8 +759,6 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
 
           f.screenX = d.screenX ?? 0;
           f.screenY = d.screenY ?? 0;
-          f.screenWidth = d.screenWidth ?? 800;
-          f.screenHeight = d.screenHeight ?? 600;
 
           f.worldWidth = d.worldWidth ?? 1.6;
           f.worldHeight = d.worldHeight ?? 0.9;

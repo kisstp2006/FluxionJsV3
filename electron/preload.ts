@@ -73,4 +73,14 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   offVmeOpenTab: () => {
     ipcRenderer.removeAllListeners('vme:open-tab');
   },
+
+  // FUI Editor (separate window)
+  openFuiEditor: (filePath: string) => ipcRenderer.invoke('fui:open', filePath),
+  // FUI tab management (main process → FUI window)
+  onFuiOpenTab: (callback: (path: string) => void) => {
+    ipcRenderer.on('fui:open-tab', (_, path) => callback(path));
+  },
+  offFuiOpenTab: () => {
+    ipcRenderer.removeAllListeners('fui:open-tab');
+  },
 });

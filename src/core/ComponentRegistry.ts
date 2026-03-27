@@ -295,8 +295,6 @@ ComponentRegistry.register({
     // Screen
     { key: 'screenX', type: 'number', label: 'Screen X', step: 1, min: 0 },
     { key: 'screenY', type: 'number', label: 'Screen Y', step: 1, min: 0 },
-    { key: 'screenWidth', type: 'number', label: 'Screen Width', step: 1, min: 1 },
-    { key: 'screenHeight', type: 'number', label: 'Screen Height', step: 1, min: 1 },
 
     // World
     { key: 'worldWidth', type: 'number', label: 'World Width', step: 0.1, min: 0.01 },

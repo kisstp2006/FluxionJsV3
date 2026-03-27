@@ -473,8 +473,6 @@ ViewportDropService.register('fui', async (ctx) => {
     const comp = engine.engine.ecs.getComponent<FuiComponent>(target, 'Fui');
     if (comp) {
       comp.mode = doc.mode;
-      comp.screenWidth = doc.canvas.width;
-      comp.screenHeight = doc.canvas.height;
     }
 
     log(`Attached FUI: ${assetPath}`, 'info');

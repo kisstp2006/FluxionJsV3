@@ -44,6 +44,16 @@ export const EditorLayout: React.FC = () => {
     return () => window.removeEventListener('fluxion:open-visual-material-editor', handler);
   }, []);
 
+  // Listen for open-fui-editor events — open in separate OS window
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path;
+      if (path) window.fluxionAPI?.openFuiEditor?.(path);
+    };
+    window.addEventListener('fluxion:open-fui-editor', handler);
+    return () => window.removeEventListener('fluxion:open-fui-editor', handler);
+  }, []);
+
   // Listen for material-changed relay from VME windows (IPC) and re-dispatch as local custom event
   React.useEffect(() => {
     window.fluxionAPI?.onMaterialChangedRelay?.((changedPath: string) => {

@@ -297,13 +297,17 @@ export class FuiComponent implements Component {
   // ── Screen space ──
   screenX = 0;
   screenY = 0;
-  screenWidth = 800;
-  screenHeight = 600;
 
   // ── World space ──
   worldWidth = 1.6;
   worldHeight = 0.9;
   billboard = true;
+
+  // ── Animation ──
+  /** ID of the FuiAnimation to auto-play. Empty string = no animation. */
+  playAnimation = '';
+  /** Playback speed multiplier (1 = normal, 2 = double speed). */
+  animationSpeed = 1.0;
 }
 
 // ── Animation Component (skeletal animation like Nuake) ──

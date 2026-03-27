@@ -395,11 +395,14 @@ class SpriteRendererSystem implements System {
         this.loadSpriteTexture(entity, sprite);
       }
 
-      // Sync material properties
-      const mat = sprite.spriteMesh.material as THREE.MeshBasicMaterial;
-      mat.color.copy(sprite.color);
-      mat.opacity = sprite.opacity;
-      mat.needsUpdate = true;
+      // Sync material properties — only mark needsUpdate when the component is dirty
+      if (isDirty(sprite)) {
+        const mat = sprite.spriteMesh.material as THREE.MeshBasicMaterial;
+        mat.color.copy(sprite.color);
+        mat.opacity = sprite.opacity;
+        mat.needsUpdate = true;
+        clearDirty(sprite);
+      }
 
       // Flip
       sprite.spriteMesh.scale.set(

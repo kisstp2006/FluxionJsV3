@@ -24,6 +24,11 @@ module.exports = (env = {}) => {
       test: /\.glsl$/,
       type: 'asset/source',
     },
+    {
+      // Import .svg files as raw strings — consumed by SvgIcon component
+      test: /\.svg$/,
+      type: 'asset/source',
+    },
   ];
 
   const resolve = {

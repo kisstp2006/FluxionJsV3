@@ -4,7 +4,8 @@
 // ============================================================
 
 import React from 'react';
-import { TabBar } from '../../ui';
+import { TabBar, Icons } from '../../ui';
+import type { TabItem } from '../../ui/layout/TabBar';
 import { useEditor, BottomTab } from '../../core/EditorContext';
 import { ConsolePanel } from '../panels/ConsolePanel';
 import { AssetBrowserPanel } from '../panels/AssetBrowserPanel';
@@ -28,6 +29,13 @@ export const BottomPanel: React.FC = () => {
     history: 'History',
   };
 
+  const TABS: TabItem[] = [
+    { label: 'Console',  icon: Icons.terminal },
+    { label: 'Assets',   icon: Icons.folder },
+    { label: 'Profiler', icon: Icons.activity },
+    { label: 'History',  icon: Icons.clock },
+  ];
+
   return (
     <div style={{
       height: '100%',
@@ -37,7 +45,7 @@ export const BottomPanel: React.FC = () => {
       flexDirection: 'column',
     }}>
       <TabBar
-        tabs={['Console', 'Assets', 'Profiler', 'History']}
+        tabs={TABS}
         activeTab={TAB_LABELS[state.bottomTab]}
         onTabChange={(tab) => dispatch({
           type: 'SET_BOTTOM_TAB',

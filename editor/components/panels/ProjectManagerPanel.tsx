@@ -110,7 +110,9 @@ export const ProjectManagerPanel: React.FC<{
             letterSpacing: '1px',
             marginBottom: '4px',
           }}>
-            ⚡ FluxionJS V2
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            {Icons.zap} FluxionJS V3
+          </span>
           </div>
           <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             Game Engine — Project Manager

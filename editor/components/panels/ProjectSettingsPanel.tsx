@@ -270,8 +270,8 @@ export const ProjectSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
             background: 'var(--bg-secondary)',
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)' }}>
-            📋 Project Settings
+          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            {Icons.clipboard} Project Settings
           </span>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <Tooltip text="Reset all project settings to defaults">
@@ -298,7 +298,9 @@ export const ProjectSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
                   (e.currentTarget as HTMLElement).style.background = 'none';
                 }}
               >
-                ↺ Reset All
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  {Icons.refresh} Reset All
+                </span>
               </button>
             </Tooltip>
             <button

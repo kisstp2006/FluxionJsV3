@@ -7,6 +7,9 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
 import { FuiEditor } from './components/panels/FuiEditor';
+import { SvgIcon } from './ui/SvgIcon';
+import layoutSvg from './ui/icons/layout.svg';
+import xSvg from './ui/icons/x.svg';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
@@ -150,16 +153,16 @@ const App: React.FC = () => {
               }}
               title={tab.filePath}
             >
-              <span style={{ color: '#58a6ff', marginRight: 2, fontSize: 10 }}>&#9679;</span>
+              <SvgIcon svg={layoutSvg} size={12} color="#58a6ff" />
               {tab.label}
               <span
                 onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 3, fontSize: 14, lineHeight: '14px', color: '#6c7086', marginLeft: 4, cursor: 'pointer' }}
-                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = '#45475a'; (e.target as HTMLElement).style.color = '#cdd6f4'; }}
-                onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = '#6c7086'; }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 3, color: '#6c7086', marginLeft: 4, cursor: 'pointer' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#45475a'; (e.currentTarget as HTMLElement).style.color = '#cdd6f4'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#6c7086'; }}
                 title="Close tab"
               >
-                &times;
+                <SvgIcon svg={xSvg} size={10} color="currentColor" />
               </span>
             </div>
           ))}

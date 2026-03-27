@@ -122,8 +122,11 @@ export const Titlebar: React.FC<{
           fontSize: '13px',
           color: 'var(--accent)',
           letterSpacing: '0.5px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
         }}>
-          ⚡ FluxionJS V2
+          {Icons.zap} FluxionJS V3
           {state.projectName && (
             <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>
               {' — '}{state.projectName}
@@ -140,14 +143,17 @@ export const Titlebar: React.FC<{
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}>
           {[
-            { label: 'File', items: fileMenuItems },
-            { label: 'Edit', items: editMenuItems },
-            { label: 'View', items: viewMenuItems },
-          ].map(({ label, items: _items }) => (
+            { label: 'File', icon: Icons.folder,   items: fileMenuItems },
+            { label: 'Edit', icon: Icons.pencil,   items: editMenuItems },
+            { label: 'View', icon: Icons.eye,      items: viewMenuItems },
+          ].map(({ label, icon, items: _items }) => (
             <button
               key={label}
               onClick={(e) => openMenu(label, e)}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
                 background: menuOpen === label ? 'var(--bg-hover)' : 'none',
                 border: 'none',
                 color: 'var(--text-secondary)',
@@ -158,7 +164,7 @@ export const Titlebar: React.FC<{
                 transition: 'all 150ms ease',
               }}
             >
-              {label}
+              {icon}{label}
             </button>
           ))}
 

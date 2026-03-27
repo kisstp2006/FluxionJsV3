@@ -8,6 +8,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import MonacoEditor, { loader } from '@monaco-editor/react';
 import './styles/globals.css';
+import { SvgIcon } from './ui/SvgIcon';
+import terminalSvg from './ui/icons/terminal.svg';
+import xSvg from './ui/icons/x.svg';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
@@ -755,13 +758,14 @@ const App: React.FC = () => {
             style={tabStyle(tab.path === activeTab, tab.dirty)}
             onClick={() => setActiveTab(tab.path)}
           >
+            <SvgIcon svg={terminalSvg} size={11} color={tab.path === activeTab ? '#58a6ff' : '#484f58'} />
             <span>{tab.name}{tab.dirty ? ' •' : ''}</span>
             <button
               style={closeBtnStyle}
               onClick={(e) => { e.stopPropagation(); closeTab(tab.path); }}
               title="Close tab"
             >
-              ✕
+              <SvgIcon svg={xSvg} size={9} color="currentColor" />
             </button>
           </div>
         ))}

@@ -23,7 +23,6 @@ import {
   BackgroundVariant,
   ConnectionLineType,
   type NodeTypes,
-  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -32,7 +31,6 @@ import {
   VisualMaterialGraph,
   VisualMaterialNode as VMNode,
   VisualMaterialConnection,
-  PortDefinition,
   PortType,
   canCoerce,
   generateNodeId,
@@ -47,6 +45,7 @@ import {
 import { compileVisualMaterial } from '../../../src/materials/VisualMaterialCompiler';
 import { getFileSystem } from '../../../src/filesystem';
 import { AssetInput } from '../../ui/inputs/AssetInput';
+import { MaterialPreview } from './MaterialPreview';
 
 // ── Port Color Map ──
 
@@ -171,7 +170,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
       {/* Body */}
       <div style={{ padding: '6px 0' }}>
         {/* Inputs */}
-        {definition.inputs.map((port, i) => (
+        {definition.inputs.map((port, _i) => (
           <div
             key={`in-${port.name}`}
             style={{
@@ -244,7 +243,7 @@ const MaterialNodeComponent: React.FC<NodeProps> = ({ data, selected }) => {
         ))}
 
         {/* Outputs */}
-        {definition.outputs.map((port, i) => (
+        {definition.outputs.map((port, _i) => (
           <div
             key={`out-${port.name}`}
             style={{
@@ -1144,7 +1143,7 @@ const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
           </ReactFlow>
         </div>
 
-        {/* Right sidebar: properties + compile info */}
+        {/* Right sidebar: preview + properties + compile info */}
         <div
           style={{
             width: '220px',
@@ -1156,6 +1155,14 @@ const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
             flexShrink: 0,
           }}
         >
+          {/* Material preview sphere */}
+          <MaterialPreview
+            graph={currentGraph}
+            materialName={materialName}
+            filePath={filePath}
+            size={220}
+          />
+
           <div
             style={{
               padding: '8px 10px',

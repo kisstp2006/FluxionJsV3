@@ -3,7 +3,7 @@
 // Registry of all built-in node types with GLSL compile fns.
 // ============================================================
 
-import { PortDefinition, PortType } from './VisualMaterialGraph';
+import { PortDefinition } from './VisualMaterialGraph';
 
 // ── Compile context ──
 
@@ -132,7 +132,7 @@ NodeRegistry.register({
   category: 'Input',
   inputs: [],
   outputs: [{ name: 'UV', type: 'vec2' }],
-  compile: (ctx) => ({
+  compile: (_ctx) => ({
     code: '',
     outputs: { UV: 'vUv' },
   }),
@@ -148,7 +148,7 @@ NodeRegistry.register({
     { name: 'Sin', type: 'float' },
     { name: 'Cos', type: 'float' },
   ],
-  compile: (ctx) => ({
+  compile: (_ctx) => ({
     code: '',
     outputs: {
       Time: 'u_time',
@@ -165,7 +165,7 @@ NodeRegistry.register({
   category: 'Input',
   inputs: [],
   outputs: [{ name: 'Normal', type: 'vec3' }],
-  compile: (ctx) => ({
+  compile: (_ctx) => ({
     code: '',
     outputs: { Normal: 'vNormal' },
   }),
@@ -177,7 +177,7 @@ NodeRegistry.register({
   category: 'Input',
   inputs: [],
   outputs: [{ name: 'Position', type: 'vec3' }],
-  compile: (ctx) => ({
+  compile: (_ctx) => ({
     code: '',
     outputs: { Position: 'vWorldPosition' },
     varyings: ['varying vec3 vWorldPosition;'],

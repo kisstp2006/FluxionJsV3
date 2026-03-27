@@ -15,7 +15,7 @@ import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
-import { readAssetMeta } from '../../../src/assets/AssetMeta';
+import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
 
 interface DirEntry {
   name: string;
@@ -44,6 +44,118 @@ function getFluxionAPI(): any {
 function metaPath(assetPath: string): string {
   return assetPath + '.fluxmeta';
 }
+
+// ── Model Import Settings ──
+
+interface ModelImportSettings {
+  scale: number;
+  generateCollider: boolean;
+}
+
+const ModelImportSettingsDialog: React.FC<{
+  fileCount: number;
+  onConfirm: (s: ModelImportSettings) => void;
+  onCancel: () => void;
+}> = ({ fileCount, onConfirm, onCancel }) => {
+  const [scale, setScale] = React.useState(1);
+  const [generateCollider, setGenerateCollider] = React.useState(false);
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.4)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 10000,
+    }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        borderRadius: '6px', padding: '16px', minWidth: '260px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>
+          Import {fileCount} model{fileCount > 1 ? 's' : ''} — settings
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            Import Scale
+            <input
+              type="number"
+              value={scale}
+              min={0.001}
+              step={0.1}
+              onChange={(e) => setScale(parseFloat(e.target.value) || 1)}
+              style={{
+                padding: '4px 8px', background: 'var(--bg-input)',
+                border: '1px solid var(--border)', borderRadius: '4px',
+                color: 'var(--text-primary)', fontSize: '12px', outline: 'none',
+              }}
+            />
+          </label>
+
+          <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={generateCollider}
+              onChange={(e) => setGenerateCollider(e.target.checked)}
+            />
+            Generate Collider (future)
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
+          <button onClick={onCancel} style={{
+            padding: '4px 12px', fontSize: '11px', background: 'var(--bg-hover)',
+            border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer',
+          }}>Cancel</button>
+          <button onClick={() => onConfirm({ scale, generateCollider })} style={{
+            padding: '4px 12px', fontSize: '11px', background: 'var(--accent)',
+            border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer',
+          }}>Import</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Module-level cache for texture load failures — avoids retrying known-bad paths
+const _texFailed = new Set<string>();
+
+/** Small texture thumbnail with icon fallback on load error. */
+const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
+  const url = `file:///${path.replace(/\\/g, '/')}`;
+  const [failed, setFailed] = useState(() => _texFailed.has(url));
+  if (failed) return <>{fallback}</>;
+  return (
+    <img
+      src={url}
+      alt=""
+      onError={() => { _texFailed.add(url); setFailed(true); }}
+      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '3px', display: 'block' }}
+    />
+  );
+};
+
+/** Cached sphere thumbnail for .fluxmat / .fluxvismat files. */
+const MaterialThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
+  const [dataUrl, setDataUrl] = useState<string | null>(() => getThumbnail(path));
+
+  useEffect(() => {
+    if (dataUrl) return;
+    requestThumbnail(path, () => {
+      const url = getThumbnail(path);
+      if (url) setDataUrl(url);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
+  if (!dataUrl) return <>{fallback}</>;
+  return (
+    <img
+      src={dataUrl}
+      alt=""
+      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: '3px', display: 'block' }}
+    />
+  );
+};
 
 // ── Folder Tree Item ──
 const FolderTreeItem: React.FC<{
@@ -121,7 +233,7 @@ const FolderTreeItem: React.FC<{
 // ── Main Asset Browser ──
 export const AssetBrowserPanel: React.FC<{
   onOpenScene?: (path: string) => void;
-}> = ({ onOpenScene }) => {
+}> = ({ onOpenScene: _onOpenScene }) => {
   const { state, dispatch, log } = useEditor();
   const [selectedFolder, setSelectedFolder] = useState('');
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -140,10 +252,28 @@ export const AssetBrowserPanel: React.FC<{
   const [importProgress, setImportProgress] = useState<{ percent: number; file: string } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [renamingEntry, setRenamingEntry] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [outdatedPaths, setOutdatedPaths] = useState<Set<string>>(new Set());
+  const [pendingModelImport, setPendingModelImport] = useState<{ fileCount: number } | null>(null);
+  const modelImportResolveRef = useRef<((s: ModelImportSettings | null) => void) | null>(null);
+  type SortMode = 'name-asc' | 'name-desc' | 'type';
+  const [sortMode, setSortMode] = useState<SortMode>('name-asc');
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const lastClickedRef = useRef<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+
+  // Invalidate material thumbnail cache when a material file is saved
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path as string | undefined;
+      if (path) invalidateThumbnail(path);
+    };
+    window.addEventListener('fluxion:material-changed', handler);
+    return () => window.removeEventListener('fluxion:material-changed', handler);
+  }, []);
 
   // Auto-refresh when filesystem changes are detected by the hot-reload watcher
   useEffect(() => {
@@ -177,6 +307,26 @@ export const AssetBrowserPanel: React.FC<{
       setEntries(all.filter(e => !e.name.endsWith('.fluxmeta')));
     }).catch(() => setEntries([]));
   }, [selectedFolder, refreshKey]);
+
+  // Check which entries have an outdated source file (source hash changed since import)
+  useEffect(() => {
+    if (entries.length === 0) { setOutdatedPaths(new Set()); return; }
+    let cancelled = false;
+    const check = async () => {
+      const outdated = new Set<string>();
+      await Promise.allSettled(
+        entries
+          .filter(e => !e.isDirectory)
+          .map(async (e) => {
+            const result = await assetImporter.checkOutdated(e.path).catch(() => null);
+            if (!cancelled && result === true) outdated.add(e.path);
+          }),
+      );
+      if (!cancelled) setOutdatedPaths(outdated);
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [entries]);
 
   const handleDoubleClick = (entry: DirEntry) => {
     if (entry.isDirectory) {
@@ -377,6 +527,21 @@ export const AssetBrowserPanel: React.FC<{
     log(`Copied absolute path`, 'info');
   };
 
+  const reimportEntry = async (entry: DirEntry) => {
+    log(`Reimporting ${entry.name}...`, 'system');
+    try {
+      const result = await assetImporter.reimport(entry.path);
+      if (result.success) {
+        log(`Reimported ${entry.name}`, 'system');
+      } else {
+        log(`Reimport failed: ${result.error}`, 'error');
+      }
+      refresh();
+    } catch (err: any) {
+      log(`Reimport error: ${err.message}`, 'error');
+    }
+  };
+
   // ── Context Menus ──
 
   /** Context menu for the empty grid area (background) */
@@ -412,6 +577,31 @@ export const AssetBrowserPanel: React.FC<{
         { label: 'Import Assets...', icon: Icons.download, onClick: handleImport },
         { label: 'Refresh', icon: Icons.refresh, onClick: refresh },
         { label: '', icon: undefined, onClick: () => {}, separator: true },
+        {
+          label: 'Check Missing References',
+          icon: Icons.file,
+          onClick: async () => {
+            if (!projectManager.projectDir) return;
+            log('Scanning for missing references...', 'system');
+            try {
+              const { scanMissingRefs } = await import('../../../src/assets/MissingRefScanner');
+              const fs = getFileSystem();
+              const missing = await scanMissingRefs(fs, projectManager.projectDir);
+              if (missing.length === 0) {
+                log('No missing references found.', 'system');
+              } else {
+                log(`Found ${missing.length} missing reference(s):`, 'error');
+                for (const ref of missing) {
+                  const relSource = ref.sourceFile.replace(projectManager.projectDir!, '').replace(/^[\\/]+/, '');
+                  log(`  ${relSource} → [${ref.field}] "${ref.referencedPath}" not found`, 'error');
+                }
+              }
+            } catch (err: any) {
+              log(`Reference scan failed: ${err.message}`, 'error');
+            }
+          },
+        },
+        { label: '', icon: undefined, onClick: () => {}, separator: true },
         ...(selectedFolder ? [
           { label: 'Open in File Explorer', icon: Icons.externalLink, onClick: () => showInExplorer(selectedFolder) },
           { label: 'Copy Path', icon: Icons.copy, onClick: () => copyRelativePath(selectedFolder) },
@@ -427,6 +617,11 @@ export const AssetBrowserPanel: React.FC<{
 
     const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
     if (!entry.isDirectory) {
+      // If right-clicking outside the current selection, reset to this item only
+      if (!selectedPaths.has(entry.path)) {
+        setSelectedPaths(new Set([entry.path]));
+        lastClickedRef.current = entry.path;
+      }
       dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
     }
 
@@ -446,6 +641,7 @@ export const AssetBrowserPanel: React.FC<{
 
     if (!entry.isDirectory) {
       items.push({ label: 'Duplicate', icon: Icons.copy, onClick: () => duplicateEntry(entry) });
+      items.push({ label: 'Reimport', icon: Icons.refresh, onClick: () => reimportEntry(entry) });
     }
 
     // Model-specific: extract embedded textures
@@ -461,27 +657,6 @@ export const AssetBrowserPanel: React.FC<{
     items.push({ label: 'Copy Absolute Path', icon: Icons.clipboard, onClick: () => copyAbsolutePath(entry.path) });
 
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
-  };
-
-  const createNewScene = async () => {
-    setInputDialog({
-      label: 'Scene name',
-      defaultValue: 'NewScene',
-      onSubmit: async (name) => {
-        if (!selectedFolder || !name.trim()) return;
-        try {
-          const sceneDef = AssetTypeRegistry.getByType('scene');
-          if (sceneDef?.createDefault) {
-            const fs = getFileSystem();
-            await sceneDef.createDefault(fs, selectedFolder, name.trim());
-            log(`Created scene: ${name.trim()}.fluxscene`, 'system');
-          }
-          refresh();
-        } catch (err: any) {
-          log(`Failed to create scene: ${err.message}`, 'error');
-        }
-      },
-    });
   };
 
   const createNewFolder = async () => {
@@ -504,28 +679,89 @@ export const AssetBrowserPanel: React.FC<{
     });
   };
 
-  // ── Import via dialog ──
-  const handleImport = async () => {
-    if (!selectedFolder) return;
+  // ── Import helpers ──
+
+  /** Show the model settings dialog and return the chosen settings (or null if cancelled). */
+  const promptModelSettings = (fileCount: number): Promise<ModelImportSettings | null> =>
+    new Promise((resolve) => {
+      modelImportResolveRef.current = resolve;
+      setPendingModelImport({ fileCount });
+    });
+
+  /**
+   * Common import runner: if any paths are model files, prompt for settings first,
+   * then call importFiles with per-request importSettings applied.
+   */
+  const runImportWithSettingsCheck = async (paths: string[], targetDir: string, logSuffix = '') => {
+    const modelPaths = paths.filter((p) => isModelFile(p.replace(/\\/g, '/').split('/').pop() ?? ''));
+
+    let modelSettings: ModelImportSettings | null = null;
+    if (modelPaths.length > 0) {
+      modelSettings = await promptModelSettings(modelPaths.length);
+      if (modelSettings === null) return; // user cancelled
+    }
+
+    const requests = paths.map((p) => ({
+      sourcePath: p,
+      targetDir,
+      ...(modelPaths.includes(p) && modelSettings ? { importSettings: { ...modelSettings } } : {}),
+    }));
+
     try {
-      const results = await assetImporter.importWithDialog(selectedFolder, {
+      const results = await assetImporter.importFiles(requests, {
         conflictStrategy: 'rename',
         onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
       });
       setImportProgress(null);
-
-      const ok = results.filter(r => r.success).length;
-      const fail = results.filter(r => !r.success).length;
-      if (ok > 0) log(`Imported ${ok} asset(s)${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
-      if (fail > 0) {
-        for (const r of results.filter(r => !r.success)) {
-          log(`Import failed: ${r.error}`, 'error');
-        }
+      const ok = results.filter((r) => r.success).length;
+      const fail = results.filter((r) => !r.success).length;
+      if (ok > 0) log(`Imported ${ok} asset(s)${logSuffix}${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+      for (const r of results.filter((r) => !r.success)) {
+        log(`Import failed: ${r.error}`, 'error');
       }
       refresh();
     } catch (err: any) {
       setImportProgress(null);
       log(`Import error: ${err.message}`, 'error');
+    }
+  };
+
+  // ── Import via dialog ──
+  const handleImport = async () => {
+    if (!selectedFolder) return;
+    const api = getFluxionAPI();
+    if (api?.openFilesDialog) {
+      // Build filters from registry so we can intercept model files for the settings dialog
+      const importable = AssetTypeRegistry.getImportable();
+      const allExts = importable.flatMap((d) => (d.extensions ?? []).map((e) => e.replace('.', '')));
+      const filters = [
+        { name: 'All Supported Assets', extensions: allExts },
+        ...importable.map((d) => ({
+          name: d.displayName,
+          extensions: (d.extensions ?? []).map((e) => e.replace('.', '')),
+        })),
+        { name: 'All Files', extensions: ['*'] },
+      ];
+      const paths: string[] = (await api.openFilesDialog(filters)) ?? [];
+      if (paths.length === 0) return;
+      await runImportWithSettingsCheck(paths, selectedFolder);
+    } else {
+      // Fallback for non-Electron environments — no settings dialog
+      try {
+        const results = await assetImporter.importWithDialog(selectedFolder, {
+          conflictStrategy: 'rename',
+          onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
+        });
+        setImportProgress(null);
+        const ok = results.filter((r) => r.success).length;
+        const fail = results.filter((r) => !r.success).length;
+        if (ok > 0) log(`Imported ${ok} asset(s)${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
+        for (const r of results.filter((r) => !r.success)) log(`Import failed: ${r.error}`, 'error');
+        refresh();
+      } catch (err: any) {
+        setImportProgress(null);
+        log(`Import error: ${err.message}`, 'error');
+      }
     }
   };
 
@@ -549,41 +785,33 @@ export const AssetBrowserPanel: React.FC<{
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-
     if (!selectedFolder || !e.dataTransfer.files.length) return;
 
-    // Collect file paths from the Electron drag event
     const paths: string[] = [];
     for (let i = 0; i < e.dataTransfer.files.length; i++) {
       const file = e.dataTransfer.files[i];
-      if ((file as any).path) {
-        paths.push((file as any).path);
-      }
+      if ((file as any).path) paths.push((file as any).path);
     }
     if (paths.length === 0) return;
-
-    try {
-      const requests = paths.map(p => ({ sourcePath: p, targetDir: selectedFolder }));
-      const results = await assetImporter.importFiles(requests, {
-        conflictStrategy: 'rename',
-        onProgress: (p) => setImportProgress({ percent: p.percent, file: p.currentFile }),
-      });
-      setImportProgress(null);
-
-      const ok = results.filter(r => r.success).length;
-      const fail = results.filter(r => !r.success).length;
-      if (ok > 0) log(`Imported ${ok} asset(s) via drag-and-drop${fail > 0 ? `, ${fail} failed` : ''}`, 'system');
-      if (fail > 0) {
-        for (const r of results.filter(r => !r.success)) {
-          log(`Import failed: ${r.error}`, 'error');
-        }
-      }
-      refresh();
-    } catch (err: any) {
-      setImportProgress(null);
-      log(`Drop import error: ${err.message}`, 'error');
-    }
+    await runImportWithSettingsCheck(paths, selectedFolder, ' via drag-and-drop');
   };
+
+  const filteredEntries = (() => {
+    const base = searchQuery.trim()
+      ? entries.filter(e => e.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : [...entries];
+    const folders = base.filter(e => e.isDirectory);
+    const files = base.filter(e => !e.isDirectory);
+    const cmp = (a: DirEntry, b: DirEntry): number => {
+      if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+      if (sortMode === 'type') {
+        const ta = getFileType(a.name), tb = getFileType(b.name);
+        return ta !== tb ? ta.localeCompare(tb) : a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name); // name-asc default
+    };
+    return [...folders.sort(cmp), ...files.sort(cmp)];
+  })();
 
   if (!state.projectLoaded) {
     return (
@@ -613,116 +841,240 @@ export const AssetBrowserPanel: React.FC<{
         )}
       </div>
 
-      {/* Asset Grid */}
-      <div
-        ref={gridRef}
-        onContextMenu={handleBackgroundContextMenu}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onKeyDown={(e) => {
-          // Keyboard shortcuts when grid is focused
-          const selected = entries.find(en => en.path === state.selectedAsset?.path);
-          if (!selected) return;
-          if (e.key === 'Delete') { e.preventDefault(); deleteEntry(selected); }
-          if (e.key === 'F2') { e.preventDefault(); renameEntry(selected); }
-        }}
-        tabIndex={0}
-        style={{
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-        gap: '8px',
-        padding: '8px',
-        overflowY: 'auto',
-        alignContent: 'start',
-        position: 'relative',
-        outline: 'none',
-        border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
-        transition: 'border 150ms ease',
-      }}>
-        {entries.map((entry) => {
-          const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
-          const isRenaming = renamingEntry === entry.path;
-          return (
-            <div
-              key={entry.path}
-              draggable={!entry.isDirectory && !isRenaming}
-              onDragStart={(e) => {
-                if (entry.isDirectory) return;
-                const relPath = projectManager.projectDir
-                  ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
-                  : entry.name;
-                e.dataTransfer.setData('application/x-fluxion-asset', relPath);
-                e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
-                const typeDef = AssetTypeRegistry.resolveFile(entry.name);
-                if (typeDef) {
-                  e.dataTransfer.setData('application/x-fluxion-asset-type', typeDef.type);
-                }
-                e.dataTransfer.effectAllowed = 'copyLink';
-              }}
-              onClick={() => {
-                if (!entry.isDirectory) {
-                  dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
-                }
-              }}
-              onDoubleClick={() => handleDoubleClick(entry)}
-              onContextMenu={(e) => handleItemContextMenu(e, entry)}
-              style={{
-                display: 'flex',
-                border: state.selectedAsset?.path === entry.path ? '1px solid var(--accent)' : '1px solid transparent',
-                flexDirection: 'column',
-                alignItems: 'center',
-                padding: '8px 4px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                gap: '4px',
-                transition: 'background 150ms ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
-              {isRenaming ? (
-                <input
-                  ref={renameInputRef}
-                  autoFocus
-                  defaultValue={entry.name}
-                  onBlur={(e) => commitRename(entry, e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitRename(entry, e.currentTarget.value); }
-                    if (e.key === 'Escape') { e.stopPropagation(); setRenamingEntry(null); }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  style={{
+      {/* Asset Grid + Search bar */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Toolbar: Search + Sort */}
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          padding: '4px 8px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search assets..."
+            style={{
+              flex: 1,
+              padding: '4px 8px',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              color: 'var(--text-primary)',
+              fontSize: '11px',
+              outline: 'none',
+              minWidth: 0,
+            }}
+          />
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            style={{
+              padding: '4px 4px',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border)',
+              borderRadius: '4px',
+              color: 'var(--text-secondary)',
+              fontSize: '11px',
+              outline: 'none',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <option value="name-asc">Name A-Z</option>
+            <option value="name-desc">Name Z-A</option>
+            <option value="type">Type</option>
+          </select>
+        </div>
+
+        {/* Grid */}
+        <div
+          ref={gridRef}
+          onContextMenu={handleBackgroundContextMenu}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={(e) => {
+            // Clear selection when clicking empty grid background
+            if (e.target === e.currentTarget) setSelectedPaths(new Set());
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Delete') {
+              e.preventDefault();
+              if (selectedPaths.size > 1) {
+                const toDelete = entries.filter(en => selectedPaths.has(en.path));
+                setConfirmDialog({
+                  message: `Delete ${toDelete.length} items? This cannot be undone.`,
+                  onConfirm: async () => {
+                    const fs = getFileSystem();
+                    for (const en of toDelete) {
+                      try {
+                        await fs.delete(en.path);
+                        if (!en.isDirectory) {
+                          const mp = metaPath(en.path);
+                          if (await fs.exists(mp)) await fs.delete(mp);
+                        }
+                      } catch {}
+                    }
+                    log(`Deleted ${toDelete.length} items`, 'system');
+                    setSelectedPaths(new Set());
+                    refresh();
+                  },
+                });
+              } else {
+                const sel = entries.find(en => selectedPaths.has(en.path));
+                if (sel) deleteEntry(sel);
+              }
+            }
+            if (e.key === 'F2') {
+              e.preventDefault();
+              const sel = entries.find(en => selectedPaths.has(en.path));
+              if (sel) renameEntry(sel);
+            }
+          }}
+          tabIndex={0}
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+            gap: '8px',
+            padding: '8px',
+            overflowY: 'auto',
+            alignContent: 'start',
+            position: 'relative',
+            outline: 'none',
+            border: isDragOver ? '2px dashed var(--accent)' : '2px solid transparent',
+            transition: 'border 150ms ease',
+          }}>
+          {filteredEntries.map((entry) => {
+            const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
+            const isRenaming = renamingEntry === entry.path;
+            const isOutdated = outdatedPaths.has(entry.path);
+            return (
+              <div
+                key={entry.path}
+                draggable={!entry.isDirectory && !isRenaming}
+                onDragStart={(e) => {
+                  if (entry.isDirectory) return;
+                  const relPath = projectManager.projectDir
+                    ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
+                    : entry.name;
+                  e.dataTransfer.setData('application/x-fluxion-asset', relPath);
+                  e.dataTransfer.setData('application/x-fluxion-asset-abs', entry.path);
+                  const typeDef = AssetTypeRegistry.resolveFile(entry.name);
+                  if (typeDef) {
+                    e.dataTransfer.setData('application/x-fluxion-asset-type', typeDef.type);
+                  }
+                  e.dataTransfer.effectAllowed = 'copyLink';
+                }}
+                onClick={(e) => {
+                  if (entry.isDirectory) return;
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedPaths(prev => {
+                      const next = new Set(prev);
+                      if (next.has(entry.path)) next.delete(entry.path);
+                      else { next.add(entry.path); lastClickedRef.current = entry.path; }
+                      return next;
+                    });
+                  } else if (e.shiftKey && lastClickedRef.current) {
+                    const filePaths = filteredEntries.filter(en => !en.isDirectory).map(en => en.path);
+                    const lastIdx = filePaths.indexOf(lastClickedRef.current);
+                    const thisIdx = filePaths.indexOf(entry.path);
+                    const [from, to] = lastIdx <= thisIdx ? [lastIdx, thisIdx] : [thisIdx, lastIdx];
+                    setSelectedPaths(new Set(filePaths.slice(from, to + 1)));
+                  } else {
+                    setSelectedPaths(new Set([entry.path]));
+                    lastClickedRef.current = entry.path;
+                    dispatch({ type: 'SELECT_ASSET', asset: { path: entry.path, type: fileType } });
+                  }
+                }}
+                onDoubleClick={() => handleDoubleClick(entry)}
+                onContextMenu={(e) => handleItemContextMenu(e, entry)}
+                style={{
+                  display: 'flex',
+                  position: 'relative',
+                  border: selectedPaths.has(entry.path) ? '1px solid var(--accent)' : '1px solid transparent',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '8px 4px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  gap: '4px',
+                  transition: 'background 150ms ease',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                {/* Outdated source badge */}
+                {isOutdated && (
+                  <span
+                    title="Source file has changed — right-click to Reimport"
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      right: 3,
+                      fontSize: '11px',
+                      lineHeight: 1,
+                      color: '#f0a832',
+                      pointerEvents: 'none',
+                    }}
+                  >⚠</span>
+                )}
+                {fileType === 'texture' ? (
+                  <TextureThumbnail
+                    path={entry.path}
+                    fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
+                  />
+                ) : fileType === 'material' || fileType === 'visual_material' ? (
+                  <MaterialThumbnail
+                    path={entry.path}
+                    fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
+                  />
+                ) : (
+                  <span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>
+                )}
+                {isRenaming ? (
+                  <input
+                    ref={renameInputRef}
+                    autoFocus
+                    defaultValue={entry.name}
+                    onBlur={(e) => commitRename(entry, e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitRename(entry, e.currentTarget.value); }
+                      if (e.key === 'Escape') { e.stopPropagation(); setRenamingEntry(null); }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    style={{
+                      fontSize: '10px',
+                      color: 'var(--text-primary)',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--accent)',
+                      borderRadius: '3px',
+                      padding: '2px 4px',
+                      textAlign: 'center',
+                      maxWidth: '72px',
+                      width: '72px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <span style={{
                     fontSize: '10px',
-                    color: 'var(--text-primary)',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: '3px',
-                    padding: '2px 4px',
+                    color: 'var(--text-secondary)',
                     textAlign: 'center',
+                    wordBreak: 'break-all',
                     maxWidth: '72px',
-                    width: '72px',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              ) : (
-                <span style={{
-                  fontSize: '10px',
-                  color: 'var(--text-secondary)',
-                  textAlign: 'center',
-                  wordBreak: 'break-all',
-                  maxWidth: '72px',
-                }}>
-                  {entry.name}
-                </span>
-              )}
-            </div>
-          );
-        })}
+                  }}>
+                    {entry.name}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Context Menu */}
@@ -851,6 +1203,21 @@ export const AssetBrowserPanel: React.FC<{
             </div>
           </div>
         </div>
+      )}
+
+      {/* Model Import Settings Dialog */}
+      {pendingModelImport && (
+        <ModelImportSettingsDialog
+          fileCount={pendingModelImport.fileCount}
+          onConfirm={(s) => {
+            setPendingModelImport(null);
+            modelImportResolveRef.current?.(s);
+          }}
+          onCancel={() => {
+            setPendingModelImport(null);
+            modelImportResolveRef.current?.(null);
+          }}
+        />
       )}
 
       {/* Drop overlay */}

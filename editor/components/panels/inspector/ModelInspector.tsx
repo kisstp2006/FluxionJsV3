@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { Section, PropertyRow } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
-import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
 import type { FileInfo } from '../../../../src/filesystem/FileSystem';
 
 function formatBytes(bytes: number): string {
@@ -86,7 +85,6 @@ export const ModelInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => 
     }).catch(() => {});
 
     // Try to load via AssetTypeRegistry loader or built-in
-    const typeDef = AssetTypeRegistry.getByType('model');
     const loadModel = async () => {
       try {
         // Use dynamic import to access the AssetManager loader

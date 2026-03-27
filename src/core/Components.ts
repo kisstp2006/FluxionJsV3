@@ -183,12 +183,18 @@ export class ParticleEmitterComponent implements Component {
   lifetime = new THREE.Vector2(1, 3);
   speed = new THREE.Vector2(1, 5);
   size = new THREE.Vector2(0.1, 0.5);
-  startColor = new THREE.Color(1, 1, 1);
-  endColor = new THREE.Color(1, 1, 1);
-  gravity = -9.81;
-  spread = 0.5;
+  startColor = new THREE.Color(1, 0.5, 0.1);
+  endColor = new THREE.Color(1, 0.1, 0);
+  gravity = -2;
+  spread = 0.3;
   worldSpace = true;
   texture: string | null = null;
+
+  // Soft particles: requires a separate opaque-depth pre-pass to avoid
+  // framebuffer feedback loop — disabled by default until the pipeline
+  // provides a pre-captured depth texture.
+  softParticles = false;
+  softDistance = 1.0;
 
   particleSystem: any = null;
 }
@@ -437,4 +443,45 @@ export class EnvironmentComponent implements Component {
   // ── Shadows (CSM) ──
   shadowCascades = 0;   // 0 = off; set ≥ 2 to enable CSM
   shadowDistance = 200;
+}
+
+// ── CSG Brush (Constructive Solid Geometry for level building) ──
+
+export type CSGBrushShape = 'box' | 'cylinder' | 'sphere' | 'wedge' | 'stairs' | 'arch' | 'cone';
+export type CSGOperation = 'additive' | 'subtractive';
+
+export class CSGBrushComponent implements Component {
+  readonly type = 'CSGBrush';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  /** Brush primitive shape */
+  shape: CSGBrushShape = 'box';
+  /** Boolean operation: additive adds geometry, subtractive carves a hole */
+  operation: CSGOperation = 'additive';
+
+  /** Size of the brush primitive (local space) */
+  size = new THREE.Vector3(1, 1, 1);
+  /** Radius for sphere / cylinder / cone / arch shapes */
+  radius = 0.5;
+  /** Subdivision segments for curved shapes */
+  segments = 16;
+  /** Number of steps (stairs only) */
+  stairSteps = 4;
+  /** Whether the brush generates a physics collider */
+  generateCollision = true;
+  /** Cast shadow */
+  castShadow = true;
+  /** Receive shadow */
+  receiveShadow = true;
+  /** Material asset path (.fluxmat) — if null, uses default gray */
+  materialPath: string | null = null;
+
+  // ── Runtime (managed by CSGSystem) ──
+  /** Cached THREE mesh — set by CSGSystem, not serialized */
+  _mesh: THREE.Mesh | null = null;
+  /** Dirty flag — rebuild needed */
+  _dirty = true;
+  /** Version counter for change detection */
+  _version = 0;
 }

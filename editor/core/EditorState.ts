@@ -8,7 +8,7 @@ import { EntityId } from '../../src/core/ECS';
 // ── Types ──
 export type EditorTool = 'select' | 'move' | 'rotate' | 'scale';
 export type TransformSpace = 'local' | 'world';
-export type BottomTab = 'console' | 'assets' | 'profiler';
+export type BottomTab = 'console' | 'assets' | 'profiler' | 'history';
 
 export interface ConsoleEntry {
   text: string;

@@ -8,7 +8,7 @@ import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useEditor, useEngine, EditorTool } from '../../core/EditorContext';
 import { TransformComponent, CameraComponent } from '../../../src/core/Components';
-import { undoManager, TransformCommand } from '../../core/UndoService';
+import { undoManager, TransformCommand, DeleteEntityCommand, DuplicateEntityCommand } from '../../core/UndoService';
 import { DebugDraw } from '../../../src/renderer/DebugDraw';
 import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
@@ -30,8 +30,13 @@ export const KeyboardHandler: React.FC = () => {
         switch (e.code) {
           case 'KeyZ':
             e.preventDefault();
-            const undone = undoManager.undo();
-            if (undone) log(`Undo: ${undone.label}`, 'info');
+            if (e.shiftKey) {
+              const redoneZ = undoManager.redo();
+              if (redoneZ) log(`Redo: ${redoneZ.label}`, 'info');
+            } else {
+              const undone = undoManager.undo();
+              if (undone) log(`Undo: ${undone.label}`, 'info');
+            }
             return;
           case 'KeyY':
             e.preventDefault();
@@ -59,12 +64,16 @@ export const KeyboardHandler: React.FC = () => {
           case 'KeyD':
             e.preventDefault();
             if (engine && state.selectedEntity !== null) {
-              const clone = engine.scene.cloneEntity(state.selectedEntity);
-              if (clone !== null) {
-                log(`Duplicated: ${engine.engine.ecs.getEntityName(clone)}`, 'info');
-                dispatch({ type: 'SELECT_ENTITY', entity: clone });
-                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-              }
+              const ecs = engine.engine.ecs;
+              undoManager.execute(new DuplicateEntityCommand(
+                () => engine.scene.cloneEntity(state.selectedEntity!),
+                ecs,
+                (clone) => {
+                  log(`Duplicated: ${ecs.getEntityName(clone)}`, 'info');
+                  dispatch({ type: 'SELECT_ENTITY', entity: clone });
+                  dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+                },
+              ));
             }
             return;
           case 'KeyS':
@@ -89,9 +98,19 @@ export const KeyboardHandler: React.FC = () => {
       switch (e.code) {
         case 'Delete':
           if (engine && state.selectedEntity !== null) {
-            const name = engine.engine.ecs.getEntityName(state.selectedEntity);
-            engine.engine.ecs.destroyEntity(state.selectedEntity);
+            const target = state.selectedEntity;
+            const name = engine.engine.ecs.getEntityName(target);
+            undoManager.execute(new DeleteEntityCommand(
+              target,
+              engine.engine.ecs,
+              engine.engine,
+              (newId) => {
+                dispatch({ type: 'SELECT_ENTITY', entity: newId });
+                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+              },
+            ));
             dispatch({ type: 'SELECT_ENTITY', entity: null });
+            dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
             log(`Deleted entity: ${name}`, 'warn');
           }
           break;
@@ -188,8 +207,7 @@ export const TransformSync: React.FC = () => {
             scale: transform.scale.clone(),
           }
         );
-        (undoManager as any).undoStack.push(cmd);
-        (undoManager as any).redoStack.length = 0;
+        undoManager.pushExternal(cmd);
       }
       dragStartRef.current = null;
     };

@@ -1,11 +1,72 @@
 // ============================================================
-// FluxionJS V2 — PBR Material System
+// FluxionJS V3 — PBR Material System + Texture Cache
 // Nuake-inspired physically based rendering materials
 // ============================================================
 
 import * as THREE from 'three';
 import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { buildVisualMaterial, updateVisualMaterialTime } from '../materials/VisualMaterialCompiler';
+
+// ── Texture Cache ──
+
+/**
+ * Global texture cache backed by WeakRef + FinalizationRegistry.
+ * Identical paths return the same THREE.Texture; when all external
+ * references are collected the entry is automatically purged.
+ */
+export class TextureCache {
+  private cache = new Map<string, { ref: WeakRef<THREE.Texture> | null; promise: Promise<THREE.Texture> }>();
+  private registry = new FinalizationRegistry<string>((key) => {
+    const entry = this.cache.get(key);
+    // Only delete if the WeakRef is actually dead
+    if (entry && (!entry.ref || entry.ref.deref() === undefined)) {
+      this.cache.delete(key);
+    }
+  });
+
+  /**
+   * Load a texture through the cache.
+   * @param key     Unique cache key (typically the resolved asset path).
+   * @param loader  The actual async loader — only called on cache miss.
+   */
+  load(key: string, loader: (key: string) => Promise<THREE.Texture>): Promise<THREE.Texture> {
+    const entry = this.cache.get(key);
+    if (entry) {
+      const tex = entry.ref?.deref();
+      if (tex) return Promise.resolve(tex);
+      // Still loading (ref is null) — return the in-flight promise
+      if (!entry.ref) return entry.promise;
+      // WeakRef died but entry lingered — remove stale
+      this.cache.delete(key);
+    }
+
+    const promise = loader(key).then((tex) => {
+      // Store WeakRef now that the texture exists
+      this.cache.set(key, { ref: new WeakRef(tex), promise });
+      this.registry.register(tex, key);
+      return tex;
+    });
+
+    // Store with null ref — promise is in-flight
+    this.cache.set(key, { ref: null, promise });
+    return promise;
+  }
+
+  /** Wrap an existing `loadTexture(relPath)` callback so it goes through the cache. */
+  wrapLoader(loadTexture: (relPath: string) => Promise<THREE.Texture>): (relPath: string) => Promise<THREE.Texture> {
+    return (relPath: string) => this.load(relPath, loadTexture);
+  }
+
+  /** Number of live entries (for diagnostics). */
+  get size(): number {
+    return this.cache.size;
+  }
+
+  /** Drop all entries (does NOT dispose GPU textures — they are owned by materials). */
+  clear(): void {
+    this.cache.clear();
+  }
+}
 
 /** Shape of a parsed .fluxmat JSON file */
 export interface FluxMatData {
@@ -58,6 +119,7 @@ export interface PBRMaterialConfig {
 export class MaterialSystem {
   private materials: Map<string, THREE.MeshStandardMaterial> = new Map();
   private envMap: THREE.CubeTexture | THREE.Texture | null = null;
+  readonly textureCache = new TextureCache();
 
   createPBR(config: PBRMaterialConfig): THREE.MeshStandardMaterial {
     const mat = new THREE.MeshStandardMaterial({
@@ -135,6 +197,7 @@ export class MaterialSystem {
     loadTexture: (relPath: string) => Promise<THREE.Texture>,
     name?: string,
   ): Promise<THREE.MeshStandardMaterial> {
+    const cachedLoader = this.textureCache.wrapLoader(loadTexture);
     const config: PBRMaterialConfig = {
       name,
       albedo: data.color
@@ -179,7 +242,7 @@ export class MaterialSystem {
       const path = data[jsonKey] as string | undefined;
       if (path) {
         texPromises.push(
-          loadTexture(path)
+          cachedLoader(path)
             .then((tex) => {
               // Non-color data textures must use linear color space
               if (NON_COLOR_MAPS.has(configKey)) {
@@ -254,7 +317,8 @@ export class MaterialSystem {
     loadTexture: (relPath: string) => Promise<THREE.Texture>,
     name?: string,
   ): Promise<THREE.MeshPhysicalMaterial> {
-    const { material } = await buildVisualMaterial(data, loadTexture);
+    const cachedLoader = this.textureCache.wrapLoader(loadTexture);
+    const { material } = await buildVisualMaterial(data, cachedLoader);
 
     const matName = name ?? data.name ?? `vismat_${this.visualMaterials.size}`;
     material.name = matName;

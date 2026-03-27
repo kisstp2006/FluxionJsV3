@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
-import { CameraComponent, TransformComponent } from '../../../src/core/Components';
+import { CameraComponent } from '../../../src/core/Components';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
 
@@ -420,7 +420,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
 
   // ── Unified asset drag-and-drop from Asset Browser ──
   const [isAssetDragOver, setIsAssetDragOver] = useState(false);
-  const [dropLabel, setDropLabel] = useState<string | null>(null);
+  const [_dropLabel, setDropLabel] = useState<string | null>(null);
 
   /** Raycast from mouse position — returns world hit point, entity under cursor, and hit object */
   const raycastFromEvent = useCallback((e: React.DragEvent | React.MouseEvent): DropHitInfo => {
@@ -485,8 +485,6 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     }
 
     const hit = raycastFromEvent(e);
-    const label = ViewportDropService.getDropLabel(assetPath);
-
     const result = await ViewportDropService.handleDrop(assetPath, absPath, hit, engine, log);
     if (!result) return;
 

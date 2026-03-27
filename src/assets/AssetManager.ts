@@ -253,6 +253,7 @@ export class AssetManager {
       // Load the actual 3D model
       const modelResult = await this.loadModel(modelUrl);
       const scene = modelResult.scene.clone();
+      if (data.importScale && data.importScale !== 1) scene.scale.setScalar(data.importScale);
 
       // Resolve defaultMaterial paths relative to .fluxmesh directory
       const resolvedSlots = data.materialSlots.map(s => ({

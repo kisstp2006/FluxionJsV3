@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import * as THREE from 'three';
 import { Section, PropertyRow, Checkbox, NumberInput, ColorInput, Slider, TextInput, Select, AssetInput } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';

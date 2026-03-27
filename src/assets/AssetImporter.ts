@@ -21,8 +21,8 @@
 
 import type { IFileSystem } from '../filesystem/FileSystem';
 import { getFileSystem, pathJoin, pathBasename, pathExtension, normalizePath } from '../filesystem';
-import { AssetTypeRegistry, type AssetTypeDefinition } from './AssetTypeRegistry';
-import { createAssetMeta, writeAssetMeta, readAssetMeta, metaPathFor, type AssetMeta } from './AssetMeta';
+import { AssetTypeRegistry } from './AssetTypeRegistry';
+import { createAssetMeta, writeAssetMeta, readAssetMeta, type AssetMeta } from './AssetMeta';
 
 // ── Types ──
 

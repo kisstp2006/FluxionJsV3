@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Checkbox, NumberInput, Button, Icons, Vector2Input } from '../../../ui';
+import { Section, PropertyRow, Checkbox, NumberInput, Icons, Vector2Input } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';

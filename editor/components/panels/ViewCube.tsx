@@ -13,9 +13,7 @@ import { SettingsRegistry } from '../../core/SettingsRegistry';
 
 // ── Constants ──
 
-const CUBE_SIZE_DEFAULT = 120;
 const CAMERA_DISTANCE = 3.7;
-const ANIM_DURATION_DEFAULT = 400; // ms
 const EDGE_THICKNESS = 0.08;
 const CORNER_SIZE = 0.22;
 
@@ -24,8 +22,6 @@ const AXIS_X = 0xf85149;
 const AXIS_Y = 0x3fb950;
 const AXIS_Z = 0x58a6ff;
 
-const FACE_COLOR_DEFAULT = 0x1c2333;
-const FACE_COLOR_HOVER = 0x253249;
 const EDGE_COLOR_DEFAULT = 0x4a5568;
 const EDGE_COLOR_HOVER = 0x6b7fa0;
 const LABEL_COLOR = '#e6edf3';
@@ -339,7 +335,6 @@ export const ViewCube: React.FC = () => {
     stateRef.current = state;
 
     // ── Per-frame sync with editor camera ──
-    const syncQuat = new THREE.Quaternion();
     const camPos = new THREE.Vector3();
 
     const onUpdate = () => {

@@ -6,28 +6,24 @@
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
 import { ECSManager, EntityId, System } from '../core/ECS';
-import { EngineEvents } from '../core/EventSystem';
-import { TransformComponent, AudioSourceComponent, CameraComponent } from '../core/Components';
-import { AssetManager } from '../assets/AssetManager';
+import { TransformComponent, AudioSourceComponent } from '../core/Components';
 
 export class AudioSystem {
   private context: AudioContext;
   private masterGain: GainNode;
   private listener: AudioListener;
   private buffers: Map<string, AudioBuffer> = new Map();
-  private engine: Engine;
 
   masterVolume = 1;
 
-  constructor(engine: Engine) {
-    this.engine = engine;
+  constructor(_engine: Engine) {
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
     this.masterGain.connect(this.context.destination);
     this.listener = this.context.listener;
 
     // Register ECS system
-    engine.ecs.addSystem(new AudioSyncSystem(this));
+    _engine.ecs.addSystem(new AudioSyncSystem(this));
 
     // Resume context on user interaction
     const resume = () => {
@@ -38,7 +34,7 @@ export class AudioSystem {
     document.addEventListener('click', resume, { once: true });
     document.addEventListener('keydown', resume, { once: true });
 
-    engine.registerSubsystem('audio', this);
+    _engine.registerSubsystem('audio', this);
   }
 
   getContext(): AudioContext {

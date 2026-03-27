@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { projectManager } from '../project/ProjectManager';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
 import { EngineEvents } from '../core/EventSystem';
 import {
@@ -15,8 +16,6 @@ import {
   LightComponent,
   EnvironmentComponent,
   ToneMappingMode,
-  CubemapFaces,
-  SkyboxMode,
   SpriteComponent,
   TextRendererComponent,
 } from '../core/Components';
@@ -214,7 +213,7 @@ class TransformNodeSystem implements System {
     this.tracked.clear();
   }
 
-  update(entities: Set<EntityId>, ecs: ECSManager): void {
+  update(entities: Set<EntityId>, _ecs: ECSManager): void {
     // Ensure every Transform entity has a scene node
     for (const entity of entities) {
       if (!this.renderer.getObject(entity)) {
@@ -528,7 +527,7 @@ class TextRendererSystem implements System {
     }
   }
 
-  private rebuildTextMesh(entity: EntityId, textComp: TextRendererComponent): void {
+  private rebuildTextMesh(_entity: EntityId, textComp: TextRendererComponent): void {
     // Dispose old texture
     if (textComp.textTexture) {
       textComp.textTexture.dispose();
@@ -817,7 +816,8 @@ class LightSystem implements System {
         // Cookie / projection texture
         if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
           this.cookieLoading.add(entity);
-          const url = `file:///${lightComp.cookieTexturePath.replace(/\\/g, '/')}`;
+          const absPath = projectManager.resolvePath(lightComp.cookieTexturePath);
+          const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
           new THREE.TextureLoader().load(
             url,
             (tex) => {

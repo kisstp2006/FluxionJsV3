@@ -5,12 +5,12 @@
 // ============================================================
 
 import {
-  type IFileSystem,
   getFileSystem,
   pathJoin,
   pathDirname,
-  pathBasename,
 } from '../filesystem';
+import { ShaderCache } from '../materials/ShaderCache';
+import { ShaderCompileService } from '../renderer/ShaderCompileService';
 
 declare global {
   interface Window {
@@ -213,6 +213,10 @@ export class ProjectManager {
 
     await this.addToRecent(config.name, projectFilePath);
 
+    // Init shader cache for this project and kick off background precompile
+    await ShaderCache.init(fs, this._projectDir);
+    ShaderCompileService.precompileVisualMaterials(this._projectDir).catch(() => {});
+
     return config;
   }
 
@@ -227,6 +231,7 @@ export class ProjectManager {
 
   /** Close the current project */
   closeProject(): void {
+    ShaderCache.close();
     this._config = null;
     this._projectDir = null;
     this._projectFilePath = null;

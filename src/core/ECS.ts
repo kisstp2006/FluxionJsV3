@@ -279,7 +279,7 @@ export class ECSManager {
         components: [],
       };
 
-      for (const [type, store] of this.components) {
+      for (const [_type, store] of this.components) {
         const comp = store.get(entity);
         if (comp) {
           const { entityId, ...rest } = comp as any;

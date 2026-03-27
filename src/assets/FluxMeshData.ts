@@ -35,6 +35,8 @@ export interface FluxMeshData {
   sourceModel: string;
   /** Material slot definitions */
   materialSlots: FluxMeshMaterialSlot[];
+  /** Uniform scale applied to the model scene at load time (from import settings) */
+  importScale?: number;
 }
 
 /** Per-slot override stored on MeshRendererComponent */

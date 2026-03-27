@@ -15,6 +15,7 @@ import { ScriptComponent, ScriptEntry } from './Components';
 import { FluxionScript } from './FluxionScript';
 import { compileScript } from './ScriptCompiler';
 import { DebugDraw } from '../renderer/DebugDraw';
+import { DebugConsole } from './DebugConsole';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiBuilder } from '../ui/FuiBuilder';
@@ -161,7 +162,7 @@ export class ScriptSystem implements System {
           if (!comp._loading.has(entry.path)) {
             comp._loading.add(entry.path);
             this.loadScript(entity, comp, entry, ecs).catch((err) => {
-              console.error(`[ScriptSystem] Failed to load "${entry.path}":`, err);
+              DebugConsole.LogError(`[ScriptSystem] Failed to load "${entry.path}": ${err}`);
               comp._loading.delete(entry.path);
             });
           }
@@ -180,7 +181,7 @@ export class ScriptSystem implements System {
           try {
             inst.onStart?.();
           } catch (err) {
-            console.error(`[ScriptSystem] onStart error in "${entry.path}":`, err);
+            DebugConsole.LogError(`[ScriptSystem] onStart error in "${entry.path}": ${err}`);
           }
         }
 
@@ -190,14 +191,14 @@ export class ScriptSystem implements System {
             inst.onUpdate?.(dt);
             const elapsed = performance.now() - t0;
             if (elapsed > this.updateTimeout) {
-              console.warn(`[ScriptSystem] "${entry.path}" exceeded ${this.updateTimeout}ms in onUpdate (${elapsed.toFixed(1)}ms)`);
+              DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" exceeded ${this.updateTimeout}ms in onUpdate (${elapsed.toFixed(1)}ms)`);
             }
           } else {
             inst.onUpdate?.(dt);
           }
           this.tickCoroutines(inst, dt);
         } catch (err) {
-          console.error(`[ScriptSystem] onUpdate error in "${entry.path}":`, err);
+          DebugConsole.LogError(`[ScriptSystem] onUpdate error in "${entry.path}": ${err}`);
         }
       }
     }
@@ -215,7 +216,7 @@ export class ScriptSystem implements System {
           inst.onFixedUpdate?.(dt);
           this.tickCoroutines(inst, dt);
         } catch (err) {
-          console.error(`[ScriptSystem] onFixedUpdate error in "${entry.path}":`, err);
+          DebugConsole.LogError(`[ScriptSystem] onFixedUpdate error in "${entry.path}": ${err}`);
         }
       }
     }
@@ -260,7 +261,7 @@ export class ScriptSystem implements System {
     try {
       compiled = compileScript(source, absPath);
     } catch (err) {
-      console.error(`[ScriptSystem] Compile error in "${entry.path}":`, err);
+      DebugConsole.LogError(`[ScriptSystem] Compile error in "${entry.path}": ${err}`);
       comp._loading.delete(entry.path);
       return;
     }
@@ -269,13 +270,13 @@ export class ScriptSystem implements System {
     try {
       ScriptClass = loadScriptClass(compiled, FluxionScript);
     } catch (err) {
-      console.error(`[ScriptSystem] Runtime load error in "${entry.path}":`, err);
+      DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
       comp._loading.delete(entry.path);
       return;
     }
 
     if (!ScriptClass) {
-      console.warn(`[ScriptSystem] "${entry.path}" has no default export.`);
+      DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" has no default export.`);
       comp._loading.delete(entry.path);
       return;
     }
@@ -307,7 +308,7 @@ export class ScriptSystem implements System {
     comp._loading.delete(entry.path);
   }
 
-  /** Called when play mode stops — clears coroutines and resets start flags on all instances. */
+  /** Called when play mode stops — clears coroutines, runs cleanup listeners, and resets start flags on all instances. */
   onSimulationStop(): void {
     const ecs = this.engine.ecs;
     for (const entity of ecs.getAllEntities()) {
@@ -315,6 +316,12 @@ export class ScriptSystem implements System {
       if (!comp) continue;
       for (const inst of comp._instances.values()) {
         if (!inst) continue;
+        if (Array.isArray(inst._cleanupFns)) {
+          for (const fn of inst._cleanupFns) {
+            try { fn(); } catch {}
+          }
+          inst._cleanupFns = [];
+        }
         inst._coroutines?.clear();
         inst._started = false;
       }
@@ -330,7 +337,7 @@ export class ScriptSystem implements System {
       try {
         result = state.gen.next();
       } catch (err) {
-        console.error('[ScriptSystem] Coroutine error:', err);
+        DebugConsole.LogError(`[ScriptSystem] Coroutine error: ${err}`);
         inst._coroutines.delete(id);
         continue;
       }
@@ -353,7 +360,7 @@ export class ScriptSystem implements System {
       try {
         inst?.onDestroy?.();
       } catch (err) {
-        console.error(`[ScriptSystem] onDestroy error in "${path}":`, err);
+        DebugConsole.LogError(`[ScriptSystem] onDestroy error in "${path}": ${err}`);
       }
       // Run auto-cleanup listeners registered via this.on()
       if (Array.isArray(inst?._cleanupFns)) {

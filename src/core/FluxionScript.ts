@@ -11,6 +11,7 @@ import type { InputManager } from '../input/InputManager';
 import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
 import type { TransformComponent } from './Components';
+import { DebugConsole } from './DebugConsole';
 
 export { EntityId, ECSManager, Engine, InputManager };
 
@@ -387,14 +388,14 @@ export class FluxionScript {
 
   // ── Debug / Logging ──────────────────────────────────────────
 
-  /** Log to browser console (tagged with script name). */
-  log(...args: any[]): void { console.log(`[${this.constructor.name}]`, ...args); }
+  /** Log an info message to the editor console (tagged with script name). */
+  log(...args: any[]): void { DebugConsole.Log(`[${this.constructor.name}]`, ...args); }
 
-  /** Warn to browser console. */
-  warn(...args: any[]): void { console.warn(`[${this.constructor.name}]`, ...args); }
+  /** Log a warning to the editor console (tagged with script name). */
+  warn(...args: any[]): void { DebugConsole.LogWarning(`[${this.constructor.name}]`, ...args); }
 
-  /** Error to browser console. */
-  error(...args: any[]): void { console.error(`[${this.constructor.name}]`, ...args); }
+  /** Log an error to the editor console (tagged with script name). */
+  error(...args: any[]): void { DebugConsole.LogError(`[${this.constructor.name}]`, ...args); }
 
   // ── Lifecycle hooks (override in subclass) ────────────────────
 

@@ -5,6 +5,7 @@
 // ============================================================
 
 import * as THREE from 'three';
+import { DebugConsole } from '../core/DebugConsole';
 
 export interface DebugLine {
   start: THREE.Vector3;
@@ -355,6 +356,26 @@ export class DebugDraw {
     this.positionsW = newPos;
     this.colorsW = newCol;
   }
+
+  // ── Console logging (delegates to DebugConsole) ──
+
+  /**
+   * Log an informational message to the editor console.
+   * @example Debug.Log('Player spawned at', position);
+   */
+  static Log(...args: any[]): void { DebugConsole.Log(...args); }
+
+  /**
+   * Log a warning message to the editor console.
+   * @example Debug.LogWarning('Texture missing, using fallback');
+   */
+  static LogWarning(...args: any[]): void { DebugConsole.LogWarning(...args); }
+
+  /**
+   * Log an error message to the editor console.
+   * @example Debug.LogError('Failed to load asset: ' + path);
+   */
+  static LogError(...args: any[]): void { DebugConsole.LogError(...args); }
 }
 
 // Shared temp vectors to avoid allocations in hot path

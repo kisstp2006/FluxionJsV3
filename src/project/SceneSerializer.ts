@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { DebugConsole } from '../core/DebugConsole';
 import { EntityId } from '../core/ECS';
 import {
   TransformComponent,
@@ -980,7 +981,7 @@ async function loadDeferredFluxMesh(
 
         return materials.createFromFluxMat(matData, loadTexture, absMatPath);
       } catch (err) {
-        console.warn(`[SceneSerializer] Failed to load material for slot "${slot.name}":`, err);
+        DebugConsole.LogWarning(`[SceneSerializer] Failed to load material for slot "${slot.name}": ${err}`);
         return null;
       }
     });
@@ -990,7 +991,7 @@ async function loadDeferredFluxMesh(
     meshComp.mesh = scene;
     applyComponentUvTransform(meshComp);
   } catch (err) {
-    console.error(`[SceneSerializer] Failed to load .fluxmesh "${fluxmeshPath}":`, err);
+    DebugConsole.LogError(`[SceneSerializer] Failed to load .fluxmesh "${fluxmeshPath}": ${err}`);
   }
 }
 
@@ -1021,7 +1022,7 @@ async function loadDeferredModel(
     meshComp.mesh = scene;
     applyComponentUvTransform(meshComp);
   } catch (err) {
-    console.error(`[SceneSerializer] Failed to load model "${modelPath}":`, err);
+    DebugConsole.LogError(`[SceneSerializer] Failed to load model "${modelPath}": ${err}`);
   }
 }
 
@@ -1097,7 +1098,7 @@ async function loadDeferredMaterial(
     }
     applyComponentUvTransform(meshComp);
   } catch (err) {
-    console.error(`[SceneSerializer] Failed to load material "${materialPath}":`, err);
+    DebugConsole.LogError(`[SceneSerializer] Failed to load material "${materialPath}": ${err}`);
   }
 }
 

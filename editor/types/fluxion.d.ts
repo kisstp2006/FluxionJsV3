@@ -25,10 +25,66 @@ declare const Mat4: typeof _THREE.Matrix4;
 declare const Mat3: typeof _THREE.Matrix3;
 
 // ─────────────────────────────────────────────────────────────
+// Mathf — common math helpers injected into every script's scope
+// ─────────────────────────────────────────────────────────────
+
+declare const Mathf: {
+  /** π */
+  readonly PI: number;
+  /** 2π */
+  readonly TAU: number;
+  /** Multiply degrees by this to convert to radians. */
+  readonly Deg2Rad: number;
+  /** Multiply radians by this to convert to degrees. */
+  readonly Rad2Deg: number;
+  /** Linear interpolation between `a` and `b` by factor `t`. */
+  lerp(a: number, b: number, t: number): number;
+  /** Clamps `v` between `min` and `max`. */
+  clamp(v: number, min: number, max: number): number;
+  /** Clamps `v` between 0 and 1. */
+  clamp01(v: number): number;
+  /** Smooth Hermite interpolation between 0 and 1. */
+  smoothstep(edge0: number, edge1: number, x: number): number;
+  /** Returns true if `|a - b| < 1e-6`. */
+  approximately(a: number, b: number): boolean;
+  /** Moves `current` towards `target` by at most `maxDelta`. */
+  moveTowards(current: number, target: number, maxDelta: number): number;
+  /** Loops `t` so it never exceeds `length`. */
+  repeat(t: number, length: number): number;
+  /** Shortest signed difference between two angles (degrees). */
+  deltaAngle(a: number, b: number): number;
+  /** Ping-pongs `t` between 0 and `length`. */
+  pingPong(t: number, length: number): number;
+};
+
+// ─────────────────────────────────────────────────────────────
 // Debug — immediate-mode debug drawing (DebugDraw static class)
 // ─────────────────────────────────────────────────────────────
 
 declare namespace Debug {
+  // ── Console logging ──────────────────────────────────────────────────────────
+
+  /**
+   * Log an informational message to the editor console.
+   * Accepts any number of arguments (converted to strings and joined with spaces).
+   * @example Debug.Log('Player spawned', entity);
+   */
+  function Log(...args: any[]): void;
+
+  /**
+   * Log a warning to the editor console (shown in yellow).
+   * @example Debug.LogWarning('Texture missing, using fallback');
+   */
+  function LogWarning(...args: any[]): void;
+
+  /**
+   * Log an error to the editor console (shown in red).
+   * @example Debug.LogError('Failed to load asset: ' + path);
+   */
+  function LogError(...args: any[]): void;
+
+  // ── Debug drawing (gizmos) ───────────────────────────────────────────────────
+
   /** Draw an overlay line (always on top, no depth test). */
   function drawLine(start: _THREE.Vector3, end: _THREE.Vector3, color?: _THREE.Color): void;
   /** Draw an overlay line with per-vertex colors. */

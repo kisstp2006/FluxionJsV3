@@ -23,6 +23,7 @@ import { PostProcessingPipeline } from './PostProcessing';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
+import { DebugConsole } from '../core/DebugConsole';
 
 // Module-level scratch — avoids per-frame Vector3 allocations in LightSystem
 const _lightForward = new THREE.Vector3();
@@ -460,7 +461,7 @@ class SpriteRendererSystem implements System {
         }
       }
     } catch (err) {
-      console.error(`[SpriteRendererSystem] Failed to load texture for entity ${entity}:`, err);
+      DebugConsole.LogError(`[SpriteRendererSystem] Failed to load texture for entity ${entity}: ${err}`);
     } finally {
       this.loadingTextures.delete(entity);
     }
@@ -656,7 +657,7 @@ class TextRendererSystem implements System {
         }
       }
     } catch (err) {
-      console.error(`[TextRendererSystem] Failed to load font "${fontPath}":`, err);
+      DebugConsole.LogError(`[TextRendererSystem] Failed to load font "${fontPath}": ${err}`);
     } finally {
       this.loadingFonts.delete(fontPath);
     }
@@ -835,7 +836,7 @@ class LightSystem implements System {
             },
             undefined,
             (err) => {
-              console.warn('[LightSystem] Failed to load cookie texture:', url, err);
+              DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
               this.cookieLoading.delete(entity);
             },
           );
@@ -1205,7 +1206,7 @@ class EnvironmentSystem implements System {
         },
         undefined,
         () => {
-          console.warn('[EnvironmentSystem] Failed to load panorama:', env.skyboxPath);
+          DebugConsole.LogWarning(`[EnvironmentSystem] Failed to load panorama: ${env.skyboxPath}`);
           this.skyboxLoading = false;
         },
       );
@@ -1225,7 +1226,7 @@ class EnvironmentSystem implements System {
           },
           undefined,
           () => {
-            console.warn('[EnvironmentSystem] Failed to load cubemap faces');
+            DebugConsole.LogWarning('[EnvironmentSystem] Failed to load cubemap faces');
             this.skyboxLoading = false;
           },
         );

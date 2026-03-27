@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GizmoService } from './GizmoService';
 
 import { Engine } from '../../src/core/Engine';
+import { DebugConsole } from '../../src/core/DebugConsole';
 import { FluxionRenderer } from '../../src/renderer/Renderer';
 import { MaterialSystem } from '../../src/renderer/MaterialSystem';
 import { ParticleRenderSystem } from '../../src/renderer/ParticleSystem';
@@ -43,6 +44,7 @@ export async function initEditorEngine(
   canvas: HTMLCanvasElement,
   log: LogFn,
 ): Promise<EngineSubsystems> {
+  DebugConsole.setSink(log);
   log('FluxionJS V3 Engine initializing...', 'system');
 
   const container = canvas.parentElement!;

@@ -366,18 +366,16 @@ export const ScriptInspector: React.FC<{ entity: EntityId; onRemoved: () => void
     if (!entry) return;
 
     const pathChanged = partial.path !== undefined && partial.path !== entry.path;
+    const oldPath = entry.path;
 
     Object.assign(entry, partial);
 
     // If the path changed, drop the old instance so ScriptSystem reloads it
     if (pathChanged) {
-      const oldPath = partial.path !== undefined ? entry.path : (partial as any)._prevPath;
-      comp._instances.delete(entry.path);
-      comp._loading.delete(entry.path);
-      // Also clear the stale loaded path
-      for (const [p] of comp._instances) {
-        if (p === entry.path) comp._instances.delete(p);
-      }
+      const inst = comp._instances.get(oldPath);
+      try { inst?.onDestroy?.(); } catch {}
+      comp._instances.delete(oldPath);
+      comp._loading.delete(oldPath);
     }
 
     persist();

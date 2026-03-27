@@ -4,9 +4,10 @@ interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
-export const SearchInput: React.FC<SearchInputProps> = ({ value, onChange, placeholder = 'Search...' }) => (
+export const SearchInput: React.FC<SearchInputProps> = ({ value, onChange, placeholder = 'Search...', autoFocus }) => (
   <div style={{
     padding: '6px 8px',
     borderBottom: '1px solid var(--border)',
@@ -16,6 +17,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({ value, onChange, place
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      autoFocus={autoFocus}
       style={{
         width: '100%',
         background: 'var(--bg-input)',

@@ -1,10 +1,20 @@
 // ============================================================
-// FluxionJS V3 — Component Registry & Property Metadata
-// Declarative property descriptors + central component registry.
-// Adding a new component = define class + register here. Done.
+// FluxionJS V3 — Component Registry
+// Single source of truth for all registered component classes.
+//
+// Features:
+//   · O(1) lookup by typeId (Map-backed)
+//   · Freeze after Engine.init() — no late registration
+//   · Plugin support via registerExternal()
+//   · FNV-32a hash collision detection (binary format safety)
+//   · getAddableByCategory(), getHierarchyIconRules()
 // ============================================================
 
-import { Component } from './ECS';
+import { BaseComponent } from './BaseComponent';
+import { getComponentMeta, getFieldsForClass } from './ComponentDecorators';
+import type { FieldMeta, ComponentMeta } from './ComponentDecorators';
+import { fnv32a } from './BinaryUtils';
+
 import {
   TransformComponent,
   MeshRendererComponent,
@@ -13,386 +23,210 @@ import {
   RigidbodyComponent,
   ColliderComponent,
   CharacterControllerComponent,
+  ScriptComponent,
   ParticleEmitterComponent,
   AudioSourceComponent,
   SpriteComponent,
-  FuiComponent,
-  EnvironmentComponent,
   TextRendererComponent,
+  FuiComponent,
+  AnimationComponent,
+  EnvironmentComponent,
   CSGBrushComponent,
-  ScriptComponent,
   FogVolumeComponent,
 } from './Components';
 
-// ── Property Descriptor ──────────────────────────────────────
+// ── Public API types ──────────────────────────────────────────────────────────
 
-export type PropertyType =
-  | 'number'
-  | 'slider'
-  | 'boolean'
-  | 'string'
-  | 'select'
-  | 'color'
-  | 'vector3';
-
-export interface PropertyDescriptor {
-  /** Property key on the component instance */
-  key: string;
-  /** Display label in the inspector (defaults to key) */
-  label?: string;
-  /** Widget type for the inspector */
-  type: PropertyType;
-  /** Min value (number/slider) */
-  min?: number;
-  /** Max value (number/slider) */
-  max?: number;
-  /** Step increment (number/slider) */
-  step?: number;
-  /** Options list (select) */
-  options?: { value: string; label: string }[];
+export interface ComponentRegistration {
+  meta: ComponentMeta;
+  ctor: new () => BaseComponent;
+  /** All @field metadata for this component class, frozen at registration. */
+  fields: readonly FieldMeta[];
 }
 
-// ── Component Definition ─────────────────────────────────────
-
-export interface ComponentDefinition {
-  /** Matches Component.type — unique identifier */
-  type: string;
-  /** Human-readable name shown in inspector header */
-  displayName?: string;
-  /** Icon character for inspector header */
-  icon?: string;
-  /** Whether the component can be removed from an entity (default: true) */
-  removable?: boolean;
-  /** Whether the component appears in the Add Component menu (default: true) */
-  addable?: boolean;
-  /** Property descriptors drive the auto-inspector UI */
-  properties: PropertyDescriptor[];
-  /** Factory — creates a default instance */
-  create: () => Component;
-}
-
-// ── Registry Implementation ──────────────────────────────────
+// ── Registry Implementation ───────────────────────────────────────────────────
 
 class ComponentRegistryImpl {
-  private definitions = new Map<string, ComponentDefinition>();
+  private map     = new Map<string, ComponentRegistration>(); // typeId → registration
+  private hashes  = new Map<number, string>();               // hash → typeId (collision tracking)
+  private _frozen = false;
 
-  register(definition: ComponentDefinition): void {
-    this.definitions.set(definition.type, definition);
+  // ── Registration ────────────────────────────────────────────────────────────
+
+  /** Register a built-in component class. */
+  register(ctor: new () => BaseComponent): void {
+    this._register(ctor);
   }
 
-  get(type: string): ComponentDefinition | undefined {
-    return this.definitions.get(type);
+  /**
+   * Register an external / plugin component class.
+   * Same behaviour as register() — exists as a named entry point for plugins.
+   * Throws if called after the registry has been frozen.
+   */
+  registerExternal(ctor: new () => BaseComponent): void {
+    this._register(ctor);
   }
 
-  getAll(): ComponentDefinition[] {
-    return [...this.definitions.values()];
+  private _register(ctor: new () => BaseComponent): void {
+    if (this._frozen) {
+      throw new Error(
+        `[ComponentRegistry] Registry is frozen — cannot register "${(ctor as any).name}" after engine init.`
+      );
+    }
+    const meta = getComponentMeta(ctor as unknown as Function);
+    if (!meta) {
+      throw new Error(
+        `[ComponentRegistry] "${(ctor as any).name}" is missing the @component decorator.`
+      );
+    }
+    if (this.map.has(meta.typeId)) {
+      throw new Error(
+        `[ComponentRegistry] Duplicate typeId "${meta.typeId}" — already registered by another class.`
+      );
+    }
+
+    const fields = getFieldsForClass(ctor as unknown as Function);
+    this.map.set(meta.typeId, { meta, ctor, fields });
+
+    // Track FNV-32a hash for binary format safety
+    const hash = fnv32a(meta.typeId);
+    const existing = this.hashes.get(hash);
+    if (existing !== undefined) {
+      console.warn(
+        `[ComponentRegistry] Hash collision: "${meta.typeId}" ↔ "${existing}" ` +
+        `(hash 0x${hash.toString(16).padStart(8, '0')}). ` +
+        `Binary format will use string fallback for both.`
+      );
+    } else {
+      this.hashes.set(hash, meta.typeId);
+    }
   }
 
-  /** Components that can be added via the Add Component menu */
-  getAddable(): ComponentDefinition[] {
-    return this.getAll().filter((d) => d.addable !== false);
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
+
+  /** Freeze the registry — called by Engine.init() after all components are registered. */
+  freeze(): void {
+    this._frozen = true;
   }
 
-  /** Create a new default instance of a registered component */
-  create(type: string): Component | undefined {
-    return this.definitions.get(type)?.create();
+  get isFrozen(): boolean {
+    return this._frozen;
   }
 
-  has(type: string): boolean {
-    return this.definitions.has(type);
+  // ── Lookup ───────────────────────────────────────────────────────────────────
+
+  get(typeId: string): ComponentRegistration | undefined {
+    return this.map.get(typeId);
+  }
+
+  has(typeId: string): boolean {
+    return this.map.has(typeId);
+  }
+
+  getAll(): ComponentRegistration[] {
+    return [...this.map.values()];
+  }
+
+  /** Components whose meta.showInAddMenu !== false. */
+  getAddable(): ComponentRegistration[] {
+    return this.getAll().filter(r => r.meta.showInAddMenu !== false);
+  }
+
+  /** Create a fresh default instance of the given typeId, or undefined if not found. */
+  create(typeId: string): BaseComponent | undefined {
+    const r = this.map.get(typeId);
+    return r ? new r.ctor() : undefined;
+  }
+
+  // ── Editor helpers ───────────────────────────────────────────────────────────
+
+  /**
+   * Returns a map of category name → registrations for all addable components.
+   * Components without a category fall under "General".
+   * Computed on demand (call once and cache via useMemo in the UI).
+   */
+  getAddableByCategory(): Map<string, ComponentRegistration[]> {
+    const result = new Map<string, ComponentRegistration[]>();
+    for (const r of this.getAddable()) {
+      const cat = r.meta.category ?? 'General';
+      let arr = result.get(cat);
+      if (!arr) { arr = []; result.set(cat, arr); }
+      arr.push(r);
+    }
+    return result;
+  }
+
+  /**
+   * Returns hierarchy icon rules sorted by priority descending.
+   * Cache with useMemo in HierarchyPanel — never changes after freeze().
+   */
+  getHierarchyIconRules(): Array<{
+    typeId: string;
+    icon: string;
+    color?: string;
+    priority: number;
+  }> {
+    const rules: Array<{ typeId: string; icon: string; color?: string; priority: number }> = [];
+    for (const r of this.map.values()) {
+      if (r.meta.hierarchyIcon) {
+        rules.push({
+          typeId:   r.meta.typeId,
+          icon:     r.meta.hierarchyIcon.icon,
+          color:    r.meta.hierarchyIcon.color,
+          priority: r.meta.hierarchyIconPriority ?? 0,
+        });
+      }
+    }
+    return rules.sort((a, b) => b.priority - a.priority);
+  }
+
+  // ── Binary format helpers ────────────────────────────────────────────────────
+
+  /**
+   * Resolve a typeId from its FNV-32a hash.
+   * Returns null if the hash is unknown or if it is a colliding hash
+   * (caller must fall back to the embedded string).
+   */
+  resolveHash(hash: number): string | null {
+    if (this.isHashColliding(hash)) return null;
+    return this.hashes.get(hash) ?? null;
+  }
+
+  /**
+   * Returns true when more than one registered typeId produces the same FNV-32a hash.
+   * In that case the binary format writes the typeId string verbatim instead.
+   */
+  isHashColliding(hash: number): boolean {
+    const id = this.hashes.get(hash);
+    if (id === undefined) return false;
+    let count = 0;
+    for (const k of this.map.keys()) {
+      if (fnv32a(k) === hash) { count++; if (count > 1) return true; }
+    }
+    return false;
   }
 }
 
 export const ComponentRegistry = new ComponentRegistryImpl();
 
-// ── Built-in Registrations ───────────────────────────────────
+// ── Auto-register all built-in components ────────────────────────────────────
 
-ComponentRegistry.register({
-  type: 'Transform',
-  displayName: 'Transform',
-  icon: '✥',
-  removable: false,
-  addable: false,
-  properties: [
-    { key: 'position', type: 'vector3', label: 'Position' },
-    { key: 'rotation', type: 'vector3', label: 'Rotation' },
-    { key: 'scale', type: 'vector3', label: 'Scale' },
-  ],
-  create: () => new TransformComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'MeshRenderer',
-  displayName: 'Mesh Renderer',
-  icon: '▣',
-  addable: false, // created via scene primitives, not the add-component menu
-  properties: [
-    { key: 'castShadow', type: 'boolean', label: 'Cast Shadow' },
-    { key: 'receiveShadow', type: 'boolean', label: 'Receive Shadow' },
-    { key: 'layer', type: 'number', label: 'Layer', step: 1 },
-  ],
-  create: () => new MeshRendererComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Camera',
-  displayName: 'Camera',
-  icon: '📷',
-  properties: [
-    { key: 'fov', type: 'number', label: 'FOV', min: 1, max: 179, step: 1 },
-    { key: 'near', type: 'number', label: 'Near', min: 0.001, step: 0.01 },
-    { key: 'far', type: 'number', label: 'Far', min: 1, step: 1 },
-    { key: 'priority', type: 'number', label: 'Priority', step: 1 },
-  ],
-  create: () => new CameraComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Light',
-  displayName: 'Light',
-  icon: '☀',
-  properties: [
-    {
-      key: 'lightType', type: 'select', label: 'Type',
-      options: [
-        { value: 'directional', label: 'Directional' },
-        { value: 'point', label: 'Point' },
-        { value: 'spot', label: 'Spot' },
-        { value: 'ambient', label: 'Ambient' },
-      ],
-    },
-    { key: 'color', type: 'color', label: 'Color' },
-    { key: 'intensity', type: 'slider', label: 'Intensity', min: 0, max: 10, step: 0.1 },
-    { key: 'range', type: 'number', label: 'Range', step: 1 },
-    { key: 'castShadow', type: 'boolean', label: 'Shadows' },
-  ],
-  create: () => new LightComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Rigidbody',
-  displayName: 'Rigidbody',
-  icon: '⊛',
-  properties: [
-    {
-      key: 'bodyType', type: 'select', label: 'Type',
-      options: [
-        { value: 'dynamic', label: 'Dynamic' },
-        { value: 'static', label: 'Static' },
-        { value: 'kinematic', label: 'Kinematic' },
-      ],
-    },
-    { key: 'mass', type: 'number', label: 'Mass', step: 0.1 },
-    { key: 'friction', type: 'slider', label: 'Friction', min: 0, max: 2, step: 0.1 },
-    { key: 'restitution', type: 'slider', label: 'Bounce', min: 0, max: 1, step: 0.05 },
-  ],
-  create: () => new RigidbodyComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Collider',
-  displayName: 'Collider',
-  icon: '🔲',
-  properties: [
-    {
-      key: 'shape', type: 'select', label: 'Shape',
-      options: [
-        { value: 'box', label: 'Box' },
-        { value: 'sphere', label: 'Sphere' },
-        { value: 'capsule', label: 'Capsule' },
-        { value: 'cylinder', label: 'Cylinder' },
-        { value: 'mesh', label: 'Mesh' },
-      ],
-    },
-    { key: 'isTrigger', type: 'boolean', label: 'Is Trigger' },
-    { key: 'size', type: 'vector3', label: 'Size' },
-    { key: 'offset', type: 'vector3', label: 'Offset' },
-  ],
-  create: () => new ColliderComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'CharacterController',
-  displayName: 'Character Controller',
-  icon: '🧍',
-  properties: [
-    { key: 'radius',         type: 'number', label: 'Radius',       step: 0.05 },
-    { key: 'height',         type: 'number', label: 'Height',       step: 0.1 },
-    { key: 'crouchHeight',   type: 'number', label: 'Crouch Height',step: 0.1 },
-    { key: 'walkSpeed',      type: 'number', label: 'Walk Speed',   step: 0.5 },
-    { key: 'runSpeed',       type: 'number', label: 'Run Speed',    step: 0.5 },
-    { key: 'jumpImpulse',    type: 'number', label: 'Jump Impulse', step: 0.5 },
-    { key: 'maxJumps',       type: 'number', label: 'Max Jumps',    step: 1   },
-    { key: 'maxSlopeAngle',  type: 'slider', label: 'Max Slope °',  min: 0, max: 89, step: 1 },
-    { key: 'gravityScale',   type: 'number', label: 'Gravity Scale',step: 0.1 },
-  ],
-  create: () => new CharacterControllerComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'ParticleEmitter',
-  displayName: 'Particle Emitter',
-  icon: '✦',
-  properties: [
-    { key: 'maxParticles', type: 'number', label: 'Max Particles', step: 100 },
-    { key: 'emissionRate', type: 'number', label: 'Rate', step: 10 },
-    { key: 'gravity', type: 'number', label: 'Gravity', step: 0.1 },
-    { key: 'spread', type: 'slider', label: 'Spread', min: 0, max: Math.PI, step: 0.1 },
-    { key: 'startColor', type: 'color', label: 'Start Color' },
-    { key: 'endColor', type: 'color', label: 'End Color' },
-    { key: 'worldSpace', type: 'boolean', label: 'World Space' },
-  ],
-  create: () => new ParticleEmitterComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'AudioSource',
-  displayName: 'Audio Source',
-  icon: '🔊',
-  properties: [
-    { key: 'clip', type: 'string', label: 'Clip' },
-    { key: 'volume', type: 'slider', label: 'Volume', min: 0, max: 1, step: 0.01 },
-    { key: 'pitch', type: 'slider', label: 'Pitch', min: 0.1, max: 3, step: 0.1 },
-    { key: 'loop', type: 'boolean', label: 'Loop' },
-    { key: 'playOnStart', type: 'boolean', label: 'Play On Start' },
-    { key: 'spatial', type: 'boolean', label: 'Spatial' },
-    { key: 'minDistance', type: 'number', label: 'Min Distance', step: 1 },
-    { key: 'maxDistance', type: 'number', label: 'Max Distance', step: 1 },
-  ],
-  create: () => new AudioSourceComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Sprite',
-  displayName: 'Sprite',
-  icon: '🖼',
-  properties: [
-    { key: 'color', type: 'color', label: 'Color' },
-    { key: 'opacity', type: 'slider', label: 'Opacity', min: 0, max: 1, step: 0.01 },
-    { key: 'flipX', type: 'boolean', label: 'Flip X' },
-    { key: 'flipY', type: 'boolean', label: 'Flip Y' },
-    { key: 'pixelsPerUnit', type: 'number', label: 'Pixels/Unit', step: 1, min: 1 },
-    { key: 'sortingLayer', type: 'number', label: 'Sorting Layer', step: 1 },
-    { key: 'sortingOrder', type: 'number', label: 'Sorting Order', step: 1 },
-  ],
-  create: () => new SpriteComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'TextRenderer',
-  displayName: 'Text Renderer',
-  icon: '𝐓',
-  properties: [],  // Custom inspector handles the UI
-  create: () => new TextRendererComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Environment',
-  displayName: 'Environment',
-  icon: '🌍',
-  // Only one per scene — users add it manually via Add Component
-  addable: true,
-  properties: [],  // Custom inspector handles the UI
-  create: () => new EnvironmentComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Fui',
-  displayName: 'UI (FUI)',
-  icon: '▦',
-  addable: true,
-  properties: [
-    {
-      key: 'mode',
-      type: 'select',
-      label: 'Space',
-      options: [
-        { value: 'screen', label: 'Screen Space' },
-        { value: 'world', label: 'World Space' },
-      ],
-    },
-    { key: 'fuiPath', type: 'string', label: 'FUI Path' },
-
-    // Screen
-    { key: 'screenX', type: 'number', label: 'Screen X', step: 1, min: 0 },
-    { key: 'screenY', type: 'number', label: 'Screen Y', step: 1, min: 0 },
-
-    // World
-    { key: 'worldWidth', type: 'number', label: 'World Width', step: 0.1, min: 0.01 },
-    { key: 'worldHeight', type: 'number', label: 'World Height', step: 0.1, min: 0.01 },
-
-    { key: 'billboard', type: 'boolean', label: 'Billboard (face camera)' },
-  ],
-  create: () => new FuiComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'CSGBrush',
-  displayName: 'CSG Brush',
-  icon: '🧊',
-  addable: true,
-  properties: [
-    {
-      key: 'shape', type: 'select', label: 'Shape',
-      options: [
-        { value: 'box', label: 'Box' },
-        { value: 'cylinder', label: 'Cylinder' },
-        { value: 'cone', label: 'Cone' },
-        { value: 'sphere', label: 'Sphere' },
-        { value: 'wedge', label: 'Wedge' },
-        { value: 'stairs', label: 'Stairs' },
-        { value: 'arch', label: 'Arch' },
-      ],
-    },
-    {
-      key: 'operation', type: 'select', label: 'Operation',
-      options: [
-        { value: 'additive', label: 'Additive' },
-        { value: 'subtractive', label: 'Subtractive' },
-      ],
-    },
-    { key: 'size', type: 'vector3', label: 'Size' },
-    { key: 'radius', type: 'number', label: 'Radius', min: 0.01, step: 0.1 },
-    { key: 'segments', type: 'number', label: 'Segments', min: 3, max: 64, step: 1 },
-    { key: 'stairSteps', type: 'number', label: 'Stair Steps', min: 1, max: 32, step: 1 },
-    { key: 'generateCollision', type: 'boolean', label: 'Generate Collision' },
-    { key: 'castShadow', type: 'boolean', label: 'Cast Shadow' },
-    { key: 'receiveShadow', type: 'boolean', label: 'Receive Shadow' },
-    { key: 'materialPath', type: 'string', label: 'Material' },
-  ],
-  create: () => new CSGBrushComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'Script',
-  displayName: 'Script',
-  icon: '⌨',
-  addable: true,
-  removable: true,
-  // Properties are dynamically shown by ScriptInspector — no static metadata needed.
-  properties: [],
-  create: () => new ScriptComponent(),
-});
-
-ComponentRegistry.register({
-  type: 'FogVolume',
-  displayName: 'Fog Volume',
-  icon: '🌫',
-  addable: true,
-  properties: [
-    {
-      key: 'shape', type: 'select', label: 'Shape',
-      options: [
-        { value: 'box', label: 'Box' },
-        { value: 'ellipsoid', label: 'Ellipsoid' },
-        { value: 'world', label: 'World (Global)' },
-      ],
-    },
-    { key: 'density',        type: 'slider',  label: 'Density',          min: 0, max: 1,  step: 0.01 },
-    { key: 'albedo',         type: 'color',   label: 'Albedo' },
-    { key: 'emission',       type: 'color',   label: 'Emission' },
-    { key: 'emissionEnergy', type: 'number',  label: 'Emission Energy',  min: 0, step: 0.1 },
-    { key: 'negative',       type: 'boolean', label: 'Negative (Clear Fog)' },
-  ],
-  create: () => new FogVolumeComponent(),
-});
+[
+  TransformComponent,
+  MeshRendererComponent,
+  CameraComponent,
+  LightComponent,
+  RigidbodyComponent,
+  ColliderComponent,
+  CharacterControllerComponent,
+  ScriptComponent,
+  ParticleEmitterComponent,
+  AudioSourceComponent,
+  SpriteComponent,
+  TextRendererComponent,
+  FuiComponent,
+  AnimationComponent,
+  EnvironmentComponent,
+  CSGBrushComponent,
+  FogVolumeComponent,
+].forEach(ctor => ComponentRegistry.register(ctor));

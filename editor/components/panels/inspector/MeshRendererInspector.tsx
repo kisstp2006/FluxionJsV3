@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { Section, PropertyRow, Checkbox, NumberInput, Icons, Vector2Input } from '../../../ui';
+import { PropertyRow, Checkbox, NumberInput, Vector2Input } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
-import { RemoveComponentButton } from './RemoveComponentButton';
+import { ComponentSection } from './ComponentSection';
+import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
 import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
@@ -418,7 +419,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
   };
 
   return (
-    <Section title="Mesh Renderer" icon={Icons.cube} actions={<RemoveComponentButton entity={entity} componentType="MeshRenderer" onRemoved={onRemoved} />}>
+    <ComponentSection entity={entity} componentType="MeshRenderer" onRemoved={onRemoved}>
       {mr.modelPath ? (
         <PropertyRow label="Model">
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: 0 }}>
@@ -706,6 +707,8 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           </div>
         </div>
       )}
-    </Section>
+    </ComponentSection>
   );
 };
+
+ComponentInspectorRegistry.register('MeshRenderer', MeshRendererInspector);

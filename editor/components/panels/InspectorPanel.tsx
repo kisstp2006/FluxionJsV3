@@ -7,31 +7,25 @@
 import React, { useState, useCallback } from 'react';
 import {
   PanelHeader, Section, PropertyRow,
-  TextInput, ContextMenu,
+  TextInput,
 } from '../../ui';
+import { AddComponentPopup } from './inspector/AddComponentPopup';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { EntityId } from '../../../src/core/ECS';
 import { ComponentRegistry } from '../../../src/core/ComponentRegistry';
-import { TransformInspector } from './inspector/TransformInspector';
-import { MeshRendererInspector } from './inspector/MeshRendererInspector';
 import { AutoInspector } from './inspector/AutoInspector';
 import { AssetInspectorRegistry } from '../../core/AssetInspectorRegistry';
+import { ComponentInspectorRegistry } from '../../core/ComponentInspectorRegistry';
 import { GenericAssetInspector } from './inspector/GenericAssetInspector';
 import { TextureInspector } from './inspector/TextureInspector';
 import { AudioInspector } from './inspector/AudioInspector';
 import { MaterialInspector } from './inspector/MaterialInspector';
 import { ModelInspector } from './inspector/ModelInspector';
 import { VisualMaterialInspector } from './inspector/VisualMaterialInspector';
-import { EnvironmentInspector } from './inspector/EnvironmentInspector';
-import { TextRendererInspector } from './inspector/TextRendererInspector';
-import { SpriteRendererInspector } from './inspector/SpriteRendererInspector';
-import { LightInspector } from './inspector/LightInspector';
 import { FuiInspector } from './inspector/FuiInspector';
-import { FuiComponentInspector } from './inspector/FuiComponentInspector';
-import { CSGBrushInspector } from './inspector/CSGBrushInspector';
-import { FogVolumeInspector } from './inspector/FogVolumeInspector';
-import { ScriptInspector } from './inspector/ScriptInspector';
-import { RigidbodyInspector, ColliderInspector, CharacterControllerInspector } from './inspector/PhysicsInspector';
+// Import custom component inspectors to trigger self-registration
+import './inspector/MeshRendererInspector';
+import './inspector/ScriptInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);
@@ -41,44 +35,19 @@ AssetInspectorRegistry.register('model', ModelInspector);
 AssetInspectorRegistry.register('visual_material', VisualMaterialInspector);
 AssetInspectorRegistry.register('fui', FuiInspector);
 
-// Component types that have hand-written inspectors (complex UI needs).
-// Everything else is auto-generated from ComponentRegistry metadata.
-const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: () => void }>> = {
-  Transform: ({ entity }) => <TransformInspector entity={entity} />,
-  MeshRenderer: MeshRendererInspector,
-  Light: LightInspector,
-  Environment: EnvironmentInspector,
-  TextRenderer: TextRendererInspector,
-  Sprite: SpriteRendererInspector,
-  CSGBrush: CSGBrushInspector,
-  FogVolume: FogVolumeInspector,
-  Fui: FuiComponentInspector,
-  Script: ScriptInspector,
-  Rigidbody: RigidbodyInspector,
-  Collider: ColliderInspector,
-  CharacterController: CharacterControllerInspector,
-};
 
-// ── Add Component Menu ──
-const AddComponentMenu: React.FC<{ entity: EntityId }> = ({ entity }) => {
-  const engine = useEngine();
-  const { log, dispatch } = useEditor();
-  const [showMenu, setShowMenu] = useState(false);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
-
-  if (!engine) return null;
-
-  const existing = engine.engine.ecs.getAllComponents(entity).map((c) => c.type);
-  const components = ComponentRegistry.getAddable()
-    .filter((def) => !existing.includes(def.type));
+// ── Add Component Button ──
+const AddComponentButton: React.FC<{ entity: EntityId; onAdded: () => void }> = ({ entity, onAdded }) => {
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
 
   return (
     <>
       <button
         onClick={(e) => {
-          const rect = (e.target as HTMLElement).getBoundingClientRect();
-          setMenuPos({ x: rect.left, y: rect.bottom });
-          setShowMenu(true);
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          setPopupPos({ x: rect.left, y: rect.bottom + 4 });
+          setShowPopup(true);
         }}
         style={{
           width: '100%',
@@ -96,21 +65,12 @@ const AddComponentMenu: React.FC<{ entity: EntityId }> = ({ entity }) => {
         + Add Component
       </button>
 
-      {showMenu && components.length > 0 && (
-        <ContextMenu
-          position={menuPos}
-          onClose={() => setShowMenu(false)}
-          items={components.map((def) => ({
-            label: def.displayName || def.type,
-            onClick: () => {
-              const comp = ComponentRegistry.create(def.type);
-              if (comp) {
-                engine.engine.ecs.addComponent(entity, comp);
-                log(`Added ${def.displayName || def.type} component`, 'info');
-                dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-              }
-            },
-          }))}
+      {showPopup && (
+        <AddComponentPopup
+          entity={entity}
+          onClose={() => setShowPopup(false)}
+          onAdded={onAdded}
+          position={popupPos}
         />
       )}
     </>
@@ -204,9 +164,9 @@ export const InspectorPanel: React.FC = () => {
           </PropertyRow>
         </Section>
 
-        {/* Component inspectors — registry-driven with custom overrides */}
+        {/* Component inspectors — custom inspectors self-register; rest auto-generated */}
         {engine.engine.ecs.getAllComponents(entity).map((comp) => {
-          const Custom = customInspectors[comp.type];
+          const Custom = ComponentInspectorRegistry.get(comp.type);
           if (Custom) {
             return <Custom key={comp.type} entity={entity} onRemoved={refreshInspector} />;
           }
@@ -218,7 +178,7 @@ export const InspectorPanel: React.FC = () => {
 
         {/* Add Component */}
         <div style={{ padding: '4px 12px' }}>
-          <AddComponentMenu entity={entity} />
+          <AddComponentButton entity={entity} onAdded={refreshInspector} />
         </div>
       </div>
     </div>

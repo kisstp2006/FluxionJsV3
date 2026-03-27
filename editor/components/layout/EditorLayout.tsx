@@ -3,7 +3,7 @@
 // Pure layout + scene lifecycle wiring
 // ============================================================
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { SplitPane } from '../../ui';
 import { Titlebar } from './Titlebar';
 import { Toolbar } from './Toolbar';
@@ -20,6 +20,8 @@ import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene } from '../../core/SceneService';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { serializeScene } from '../../../src/project/SceneSerializer';
+import { serializeSceneBinary } from '../../../src/project/BinarySceneSerializer';
+import { NewSceneDialog, SceneFormat } from './NewSceneDialog';
 import { SettingsService } from '../../core/SettingsService';
 import { ProjectSettingsService } from '../../core/ProjectSettingsService';
 import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
@@ -32,6 +34,7 @@ export const EditorLayout: React.FC = () => {
   const [canvasReady, setCanvasReady] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
   const [showProjectSettings, setShowProjectSettings] = React.useState(false);
+  const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
   const engineRef = useRef<EngineSubsystems | null>(null);
 
   // Listen for open-visual-material-editor events — open in separate OS window
@@ -196,37 +199,49 @@ export const EditorLayout: React.FC = () => {
     log('Project closed', 'system');
   }, [dispatch, log]);
 
-  // New scene
-  const handleNewScene = useCallback(async () => {
+  // New scene — step 1: open format dialog
+  const handleNewScene = useCallback(() => {
     if (!state.projectLoaded) return;
+    setShowNewSceneDialog(true);
+  }, [state.projectLoaded]);
+
+  // New scene — step 2: format chosen, open native save dialog and write file
+  const handleNewSceneConfirm = useCallback(async (format: SceneFormat) => {
+    setShowNewSceneDialog(false);
     const api = window.fluxionAPI;
     if (!api) return;
 
+    const isBinary = format === 'binary';
+    const ext = isBinary ? 'fluxsceneb' : 'fluxscene';
     const savePath = await api.saveFileDialog?.([
-      { name: 'FluxionJS Scene', extensions: ['fluxscene'] },
+      { name: isBinary ? 'FluxionJS Binary Scene' : 'FluxionJS Scene', extensions: [ext] },
     ]);
     if (!savePath) return;
 
     const eng = engineRef.current;
-    if (eng) {
-      eng.scene.clear();
-      eng.scene.name = savePath.split(/[\\/]/).pop()?.replace('.fluxscene', '') || 'New Scene';
-      eng.scene.path = savePath;
+    if (!eng) return;
 
-      // Create default content
-      eng.scene.createLight('Ambient Light', 'ambient', 0x4466aa, 0.4);
-      eng.scene.createLight('Directional Light', 'directional', 0xffeedd, 2.0);
+    eng.scene.clear();
+    eng.scene.name = savePath.split(/[\\/]/).pop()?.replace(`.${ext}`, '') || 'New Scene';
+    eng.scene.path = savePath;
 
-      // Save it
+    // Default content
+    eng.scene.createLight('Ambient Light', 'ambient', 0x4466aa, 0.4);
+    eng.scene.createLight('Directional Light', 'directional', 0xffeedd, 2.0);
+
+    if (isBinary) {
+      const buffer = serializeSceneBinary(eng.scene, eng.engine);
+      await api.writeFileBinary?.(savePath, buffer);
+    } else {
       const data = serializeScene(eng.scene, eng.engine, eng.editorCamera, eng.orbitControls.target);
       await api.writeFile(savePath, JSON.stringify(data, null, 2));
-
-      const relPath = projectManager.relativePath(savePath);
-      dispatch({ type: 'SET_SCENE_PATH', path: relPath });
-      dispatch({ type: 'SET_SCENE_DIRTY', dirty: false });
-      log(`New scene created: ${eng.scene.name}`, 'system');
     }
-  }, [state.projectLoaded, dispatch, log]);
+
+    const relPath = projectManager.relativePath(savePath);
+    dispatch({ type: 'SET_SCENE_PATH', path: relPath });
+    dispatch({ type: 'SET_SCENE_DIRTY', dirty: false });
+    log(`New scene created: ${eng.scene.name} (${format})`, 'system');
+  }, [dispatch, log]);
 
   // Open scene
   const handleOpenScene = useCallback(async () => {
@@ -371,6 +386,14 @@ export const EditorLayout: React.FC = () => {
 
       {/* Project Settings Modal */}
       {showProjectSettings && <ProjectSettingsPanel onClose={() => setShowProjectSettings(false)} />}
+
+      {/* New Scene Dialog */}
+      {showNewSceneDialog && (
+        <NewSceneDialog
+          onConfirm={handleNewSceneConfirm}
+          onCancel={() => setShowNewSceneDialog(false)}
+        />
+      )}
     </EngineProvider>
   );
 };

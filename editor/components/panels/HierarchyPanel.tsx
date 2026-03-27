@@ -7,9 +7,10 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { PanelHeader, SearchInput, Button, Icons, ContextMenu } from '../../ui';
+import { AddEntityPopup } from './hierarchy/AddEntityPopup';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { EntityId } from '../../../src/core/ECS';
-import { ParticleEmitterComponent } from '../../../src/core/Components';
+import { ComponentRegistry } from '../../../src/core/ComponentRegistry';
 import * as THREE from 'three';
 import { undoManager, CreateEntityCommand, DeleteEntityCommand, DuplicateEntityCommand, ReparentEntityCommand } from '../../core/UndoService';
 
@@ -52,16 +53,17 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   const name = ecs.getEntityName(entity);
   const isEditing = editingEntity === entity;
 
-  // Determine icon from components
+  // Determine icon from components — registry-driven, priority-sorted
+  const iconRules = useMemo(() => ComponentRegistry.getHierarchyIconRules(), []);
   let icon: React.ReactNode = Icons.entity;
   let iconColor = 'var(--text-muted)';
-  if (ecs.hasComponent(entity, 'MeshRenderer')) { icon = Icons.cube; iconColor = 'var(--accent-purple)'; }
-  if (ecs.hasComponent(entity, 'Light')) { icon = Icons.light; iconColor = 'var(--accent-yellow)'; }
-  if (ecs.hasComponent(entity, 'Camera')) { icon = Icons.camera; iconColor = 'var(--accent)'; }
-  if (ecs.hasComponent(entity, 'Rigidbody')) { icon = Icons.physics; iconColor = 'var(--accent-red)'; }
-  if (ecs.hasComponent(entity, 'ParticleEmitter')) { icon = Icons.particle; iconColor = 'var(--accent-yellow)'; }
-  if (ecs.hasComponent(entity, 'TextRenderer')) { icon = '𝐓'; iconColor = 'var(--accent)'; }
-  if (ecs.hasComponent(entity, 'Sprite')) { icon = '🖼'; iconColor = 'var(--accent-purple)'; }
+  for (const rule of iconRules) {
+    if (ecs.hasComponent(entity, rule.typeId)) {
+      icon = (Icons as any)[rule.icon] ?? rule.icon;
+      iconColor = rule.color ?? iconColor;
+      break;
+    }
+  }
 
   const children = [...ecs.getChildren(entity)];
 
@@ -168,122 +170,6 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   );
 };
 
-// ── Add Entity Dropdown Menu ──
-interface AddEntityMenuProps {
-  position: { x: number; y: number };
-  onClose: () => void;
-  onAdd: (category: string, type: string) => void;
-}
-
-const AddEntityMenu: React.FC<AddEntityMenuProps> = ({ position, onClose, onAdd }) => {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  const categories = [
-    {
-      label: 'Primitives',
-      items: [
-        { type: 'empty', label: 'Empty', icon: Icons.entity },
-        { type: 'cube', label: 'Cube', icon: Icons.cube },
-        { type: 'sphere', label: 'Sphere', icon: Icons.sphere },
-        { type: 'cylinder', label: 'Cylinder', icon: Icons.cube },
-        { type: 'cone', label: 'Cone', icon: Icons.cone },
-        { type: 'plane', label: 'Plane', icon: Icons.plane },
-        { type: 'capsule', label: 'Capsule', icon: Icons.capsule },
-        { type: 'torus', label: 'Torus', icon: Icons.torus },
-      ],
-    },
-    {
-      label: 'Lights',
-      items: [
-        { type: 'directional', label: 'Directional Light', icon: Icons.light },
-        { type: 'point', label: 'Point Light', icon: Icons.pointLight },
-        { type: 'spot', label: 'Spot Light', icon: Icons.light },
-        { type: 'ambient', label: 'Ambient Light', icon: Icons.light },
-      ],
-    },
-    {
-      label: '3D',
-      items: [
-        { type: 'camera', label: 'Camera', icon: Icons.camera },
-        { type: 'particle', label: 'Particle System', icon: Icons.particle },
-        { type: 'text3d', label: '3D Text', icon: '𝐓' },
-        { type: 'sprite', label: 'Sprite', icon: '🖼' },
-      ],
-    },
-    {
-      label: 'Physics',
-      items: [
-        { type: 'physics_box', label: 'Physics Box', icon: Icons.physics },
-        { type: 'physics_sphere', label: 'Physics Sphere', icon: Icons.physics },
-      ],
-    },
-  ];
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        left: position.x,
-        top: position.y,
-        zIndex: 10000,
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        borderRadius: '6px',
-        padding: '4px 0',
-        minWidth: '200px',
-        maxHeight: '400px',
-        overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-      }}
-    >
-      {categories.map((cat, ci) => (
-        <div key={cat.label}>
-          {ci > 0 && <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />}
-          <div style={{
-            padding: '4px 12px',
-            fontSize: '10px',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-          }}>
-            {cat.label}
-          </div>
-          {cat.items.map((item) => (
-            <div
-              key={item.type}
-              onClick={() => { onAdd(cat.label, item.type); onClose(); }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '5px 12px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                color: 'var(--text-primary)',
-                gap: '8px',
-                transition: 'background 100ms',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <span style={{ width: '16px', textAlign: 'center', opacity: 0.7 }}>{item.icon}</span>
-              {item.label}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-};
 
 // ── Main Hierarchy Panel ──
 export const HierarchyPanel: React.FC = () => {
@@ -351,8 +237,9 @@ export const HierarchyPanel: React.FC = () => {
         case 'camera':      return scene.createCamera('Camera');
         case 'particle': {
           const e = scene.createEmpty('Particle System');
-          const pe = new ParticleEmitterComponent(); pe.maxParticles = 200; pe.emissionRate = 30;
-          ecs.addComponent(e, pe); return e;
+          const pe = ComponentRegistry.create('ParticleEmitter');
+          if (pe) { (pe as any).maxParticles = 200; (pe as any).emissionRate = 30; ecs.addComponent(e, pe); }
+          return e;
         }
         case 'text3d':  return scene.createText('3D Text');
         case 'sprite':  return scene.createSprite('Sprite');
@@ -463,9 +350,9 @@ export const HierarchyPanel: React.FC = () => {
         ))}
       </div>
 
-      {/* Add Entity Menu */}
+      {/* Add Entity Popup */}
       {addMenu && (
-        <AddEntityMenu
+        <AddEntityPopup
           position={addMenu}
           onClose={() => setAddMenu(null)}
           onAdd={handleAddEntity}

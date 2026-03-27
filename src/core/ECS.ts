@@ -190,6 +190,12 @@ export class ECSManager {
     component.entityId = entity;
     store.set(entity, component);
     this.dirty = true;
+
+    // Lifecycle hooks
+    const bc = component as any;
+    bc.onCreate?.();
+    if (component.enabled) bc.onEnable?.();
+
     return component;
   }
 
@@ -202,6 +208,14 @@ export class ECSManager {
   }
 
   removeComponent(entity: EntityId, type: string): void {
+    const comp = this.components.get(type)?.get(entity);
+    if (comp) {
+      // Lifecycle hooks
+      const bc = comp as any;
+      if (comp.enabled) bc.onDisable?.();
+      bc.onDestroy?.();
+      comp.entityId = 0 as EntityId;
+    }
     this.components.get(type)?.delete(entity);
     this.dirty = true;
   }

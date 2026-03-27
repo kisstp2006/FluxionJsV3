@@ -6,6 +6,7 @@
 import { ECSManager } from './ECS';
 import { EventSystem, EngineEvents } from './EventSystem';
 import { Time } from './Time';
+import { ComponentRegistry } from './ComponentRegistry';
 
 export interface EngineConfig {
   canvas?: HTMLCanvasElement;
@@ -61,6 +62,9 @@ export class Engine {
   /** Initialize and start the engine loop */
   async start(): Promise<void> {
     if (this.running) return;
+
+    // Lock the component registry — no new components can be registered after this point
+    ComponentRegistry.freeze();
 
     this.events.emit(EngineEvents.INIT);
 

@@ -6,14 +6,15 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Section, PropertyRow, NumberInput, Checkbox, AssetInput } from '../../../ui';
+import { PropertyRow, NumberInput, Checkbox, AssetInput } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
 import { FluxionScript } from '../../../../src/core/FluxionScript';
 import { EntityRef } from '../../../../src/core/EntityRef';
 import { compileScript } from '../../../../src/core/ScriptCompiler';
-import { RemoveComponentButton } from './RemoveComponentButton';
+import { ComponentSection } from './ComponentSection';
+import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
 import { projectManager } from '../../../../src/project/ProjectManager';
 
@@ -399,7 +400,7 @@ export const ScriptInspector: React.FC<{ entity: EntityId; onRemoved: () => void
   };
 
   return (
-    <Section title="⌨  Script" defaultOpen icon="⌨">
+    <ComponentSection entity={entity} componentType="Script" onRemoved={onRemoved}>
       {comp.scripts.map((entry, i) => (
         <ScriptEntryRow
           key={i}
@@ -427,10 +428,8 @@ export const ScriptInspector: React.FC<{ entity: EntityId; onRemoved: () => void
       >
         + Add Script
       </button>
-
-      <div style={{ marginTop: 6 }}>
-        <RemoveComponentButton entity={entity} componentType="Script" onRemoved={onRemoved} />
-      </div>
-    </Section>
+    </ComponentSection>
   );
 };
+
+ComponentInspectorRegistry.register('Script', ScriptInspector);

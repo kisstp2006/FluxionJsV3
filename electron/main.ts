@@ -12,6 +12,11 @@ let vmeWindow: BrowserWindow | null = null;
 let fuiWindow: BrowserWindow | null = null;
 let scriptWindow: BrowserWindow | null = null;
 
+// Persisted script editor window bounds (restored on next open)
+let scriptWindowBounds = { width: 1000, height: 700, x: undefined as number | undefined, y: undefined as number | undefined };
+// Cached scripting settings for the script window (updated by main renderer)
+let cachedScriptSettings: object = {};
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -241,8 +246,10 @@ ipcMain.handle('script:open', async (_, filePath: string) => {
   }
 
   scriptWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
+    width: scriptWindowBounds.width,
+    height: scriptWindowBounds.height,
+    x: scriptWindowBounds.x,
+    y: scriptWindowBounds.y,
     minWidth: 600,
     minHeight: 400,
     title: 'Script Editor',
@@ -260,7 +267,26 @@ ipcMain.handle('script:open', async (_, filePath: string) => {
   scriptWindow.loadFile(path.join(__dirname, '../editor/script-window.html'), {
     query: { filePath },
   });
+
+  const saveBounds = () => {
+    if (!scriptWindow || scriptWindow.isDestroyed()) return;
+    const b = scriptWindow.getBounds();
+    scriptWindowBounds = { width: b.width, height: b.height, x: b.x, y: b.y };
+  };
+  scriptWindow.on('resize', saveBounds);
+  scriptWindow.on('move', saveBounds);
   scriptWindow.on('closed', () => { scriptWindow = null; });
+});
+
+ipcMain.on('script:settings-update', (_, settings: object) => {
+  cachedScriptSettings = settings;
+  if (scriptWindow && !scriptWindow.isDestroyed()) {
+    scriptWindow.webContents.send('script:settings-update', settings);
+  }
+});
+
+ipcMain.handle('script:get-settings', async () => {
+  return cachedScriptSettings;
 });
 
 ipcMain.handle('vme:materialChanged', async (_event, filePath: string) => {

@@ -18,6 +18,9 @@ ProjectSettingsRegistry.registerCategory('Physics', { label: 'Physics', icon: Ic
 ProjectSettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 ProjectSettingsRegistry.registerCategory('Scene', { label: 'Scene Defaults', icon: Icons.globe, order: 50 });
 ProjectSettingsRegistry.registerCategory('Build', { label: 'Build / Export', icon: Icons.prefab, order: 60 });
+ProjectSettingsRegistry.registerCategory('Scripting', { label: 'Scripting', icon: Icons.script, order: 75 });
+ProjectSettingsRegistry.registerCategory('Scripting/Editor', { label: 'Editor', icon: Icons.file, order: 76 });
+ProjectSettingsRegistry.registerCategory('Scripting/Runtime', { label: 'Runtime', icon: Icons.play, order: 77 });
 
 // ── General ──
 
@@ -589,6 +592,94 @@ const buildSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── Scripting ──
+
+const scriptingSettings: SettingDescriptor[] = [
+  {
+    key: 'scripting.editor.fontSize',
+    label: 'Font Size',
+    description: 'Script editor font size in pixels.',
+    type: 'number',
+    defaultValue: 13,
+    category: 'Scripting/Editor',
+    order: 1,
+    min: 10,
+    max: 28,
+    step: 1,
+  },
+  {
+    key: 'scripting.editor.theme',
+    label: 'Theme',
+    description: 'Color theme for the script editor.',
+    type: 'select',
+    defaultValue: 'vs-dark',
+    category: 'Scripting/Editor',
+    order: 2,
+    options: [
+      { value: 'vs-dark', label: 'Dark' },
+      { value: 'vs', label: 'Light' },
+      { value: 'hc-black', label: 'High Contrast' },
+    ],
+  },
+  {
+    key: 'scripting.editor.fontFamily',
+    label: 'Font Family',
+    description: 'Comma-separated list of font families for the editor.',
+    type: 'string',
+    defaultValue: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+    category: 'Scripting/Editor',
+    order: 3,
+  },
+  {
+    key: 'scripting.editor.minimap',
+    label: 'Show Minimap',
+    description: 'Show the minimap overview on the right side of the editor.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Scripting/Editor',
+    order: 4,
+  },
+  {
+    key: 'scripting.editor.wordWrap',
+    label: 'Word Wrap',
+    description: 'Wrap long lines in the editor.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Scripting/Editor',
+    order: 5,
+  },
+  {
+    key: 'scripting.editor.autoSave',
+    label: 'Auto Save',
+    description: 'Automatically save the file 500ms after the last edit.',
+    type: 'boolean',
+    defaultValue: false,
+    category: 'Scripting/Editor',
+    order: 6,
+  },
+  {
+    key: 'scripting.runtime.hotReload',
+    label: 'Hot Reload',
+    description: 'Automatically reload script instances when the source file is saved.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Scripting/Runtime',
+    order: 1,
+  },
+  {
+    key: 'scripting.runtime.timeout',
+    label: 'Update Timeout (ms)',
+    description: 'Log a warning if onUpdate exceeds this duration in milliseconds. 0 = disabled.',
+    type: 'number',
+    defaultValue: 0,
+    category: 'Scripting/Runtime',
+    order: 2,
+    min: 0,
+    max: 10000,
+    step: 100,
+  },
+];
+
 // ── Register All ──
 
 export function registerDefaultProjectSettings(): void {
@@ -599,4 +690,5 @@ export function registerDefaultProjectSettings(): void {
   ProjectSettingsRegistry.registerMany(audioSettings);
   ProjectSettingsRegistry.registerMany(sceneDefaults);
   ProjectSettingsRegistry.registerMany(buildSettings);
+  ProjectSettingsRegistry.registerMany(scriptingSettings);
 }

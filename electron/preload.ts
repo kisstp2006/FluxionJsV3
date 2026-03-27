@@ -93,4 +93,13 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   offScriptOpenTab: () => {
     ipcRenderer.removeAllListeners('script:open-tab');
   },
+  // Script editor settings (main renderer → Script window relay)
+  sendScriptSettings: (settings: object) => ipcRenderer.send('script:settings-update', settings),
+  onScriptSettingsUpdate: (callback: (settings: object) => void) => {
+    ipcRenderer.on('script:settings-update', (_, settings) => callback(settings));
+  },
+  offScriptSettingsUpdate: () => {
+    ipcRenderer.removeAllListeners('script:settings-update');
+  },
+  getScriptSettings: () => ipcRenderer.invoke('script:get-settings'),
 });

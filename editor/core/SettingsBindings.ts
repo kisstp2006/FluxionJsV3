@@ -10,6 +10,7 @@ import { SettingsRegistry } from './SettingsRegistry';
 import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 import { EngineSubsystems } from './EditorEngine';
 import { undoManager } from './UndoService';
+import { ScriptSystem } from '../../src/core/ScriptSystem';
 
 const TONE_MAP: Record<string, THREE.ToneMapping> = {
   None: THREE.NoToneMapping,
@@ -102,6 +103,10 @@ function applyAll(sys: EngineSubsystems): void {
 
   // ── Editor (from Editor Settings) ──
   undoManager.maxHistory = ed<number>('editor.undoHistorySize');
+
+  // ── Scripting runtime (from Project Settings) ──
+  const scriptSys = sys.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
+  if (scriptSys) scriptSys.updateTimeout = proj<number>('scripting.runtime.timeout');
 
   // ── Gizmos (from Editor Settings) ──
   sys.gizmoService.setTranslationSnap(ed<number>('editor.gizmos.snapTranslation'));
@@ -245,6 +250,35 @@ function applyProjectSetting(sys: EngineSubsystems, key: string, value: unknown)
     case 'project.rendering.chromaticAberration':
       if (!pp.environmentOverride) pp.config.chromaticAberration = value as number;
       break;
+
+    // ── Scripting ── (relay editor settings to the script editor window)
+    case 'scripting.editor.fontSize':
+    case 'scripting.editor.theme':
+    case 'scripting.editor.fontFamily':
+    case 'scripting.editor.minimap':
+    case 'scripting.editor.wordWrap':
+    case 'scripting.editor.autoSave':
+    case 'scripting.runtime.hotReload':
+    case 'scripting.runtime.timeout': {
+      const proj = <T>(k: string) => ProjectSettingsRegistry.get<T>(k);
+      const settings = {
+        fontSize:    proj<number>('scripting.editor.fontSize'),
+        theme:       proj<string>('scripting.editor.theme'),
+        fontFamily:  proj<string>('scripting.editor.fontFamily'),
+        minimap:     proj<boolean>('scripting.editor.minimap'),
+        wordWrap:    proj<boolean>('scripting.editor.wordWrap'),
+        autoSave:    proj<boolean>('scripting.editor.autoSave'),
+        hotReload:   proj<boolean>('scripting.runtime.hotReload'),
+        timeout:     proj<number>('scripting.runtime.timeout'),
+      };
+      (window as any).fluxionAPI?.sendScriptSettings(settings);
+      // Apply runtime timeout directly to ScriptSystem
+      if (key === 'scripting.runtime.timeout') {
+        const scriptSys = sys.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
+        if (scriptSys) scriptSys.updateTimeout = value as number;
+      }
+      break;
+    }
 
     // ── Physics ──
     case 'project.physics.gravityX':

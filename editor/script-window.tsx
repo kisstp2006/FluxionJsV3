@@ -58,6 +58,26 @@ declare const Euler: new (x?: number, y?: number, z?: number, order?: string) =>
 declare const Mat4: new () => { elements: number[]; identity(): this; compose(p:any,q:any,s:any): this; decompose(p:any,q:any,s:any): this; clone(): this };
 declare const Mat3: new () => { elements: number[]; identity(): this; clone(): this };
 
+// ── Mathf — common math utilities ────────────────────────────
+declare const Mathf: {
+  PI: number; TAU: number; Deg2Rad: number; Rad2Deg: number;
+  lerp(a: number, b: number, t: number): number;
+  clamp(v: number, min: number, max: number): number;
+  clamp01(v: number): number;
+  smoothstep(edge0: number, edge1: number, x: number): number;
+  approximately(a: number, b: number): boolean;
+  moveTowards(current: number, target: number, maxDelta: number): number;
+  repeat(t: number, length: number): number;
+  deltaAngle(a: number, b: number): number;
+  pingPong(t: number, length: number): number;
+  abs(x: number): number; ceil(x: number): number; floor(x: number): number;
+  round(x: number): number; sin(x: number): number; cos(x: number): number;
+  atan2(y: number, x: number): number; sqrt(x: number): number;
+  sign(x: number): number; pow(x: number, y: number): number;
+  log(x: number): number; exp(x: number): number;
+  min(...values: number[]): number; max(...values: number[]): number;
+};
+
 // ── Debug draw ───────────────────────────────────────────────
 declare namespace Debug {
   function drawLine(start: { x:number;y:number;z:number }, end: { x:number;y:number;z:number }, color?: { r:number;g:number;b:number }): void;
@@ -162,11 +182,27 @@ declare class FluxionScript {
   /** The Transform component of this entity (shortcut). */
   readonly transform: TransformComponent | null;
 
+  /** Physics world access. */
+  readonly physics: {
+    raycast(origin: InstanceType<typeof Vec3>, direction: InstanceType<typeof Vec3>, maxDist?: number): { entity: number; point: InstanceType<typeof Vec3>; normal: InstanceType<typeof Vec3>; distance: number } | null;
+    setGravity(x: number, y: number, z: number): void;
+  };
+
+  /** Scene management. */
+  readonly scene: {
+    getName(): string;
+    load(path: string): void;
+  };
+
+  /** Application info. */
+  readonly application: {
+    readonly fps: number;
+    readonly isEditor: boolean;
+    readonly platform: string;
+    quit(): void;
+  };
+
   // Component access
-  /**
-   * Get a component from this entity.
-   * Common types: 'Transform', 'MeshRenderer', 'Rigidbody', 'Collider', 'Light', 'AudioSource', 'Camera', 'Script', 'Particle'
-   */
   getComponent<T>(type: string): T | null;
   getComponentOf<T>(entity: number, type: string): T | null;
   hasComponent(type: string): boolean;
@@ -201,6 +237,10 @@ declare class FluxionScript {
   // Audio
   playSound(audioComp: AudioSourceComponent, position?: InstanceType<typeof Vec3>): void;
 
+  // Coroutines
+  startCoroutine(gen: Generator): symbol;
+  stopCoroutine(id: symbol): void;
+
   // Logging
   log(...args: any[]): void;
   warn(...args: any[]): void;
@@ -225,11 +265,27 @@ interface ScriptTab {
   dirty: boolean;
 }
 
+interface ScriptEditorSettings {
+  fontSize: number;
+  theme: string;
+  fontFamily: string;
+  minimap: boolean;
+  wordWrap: boolean;
+  autoSave: boolean;
+  hotReload: boolean;
+  timeout: number;
+}
+
 declare const window: Window & {
   fluxionAPI: {
     readFile: (path: string) => Promise<string>;
     writeFile: (path: string, data: string) => Promise<void>;
     openPath: (path: string) => Promise<void>;
+    getScriptSettings: () => Promise<ScriptEditorSettings | null>;
+    onScriptSettingsUpdate: (cb: (s: ScriptEditorSettings) => void) => void;
+    offScriptSettingsUpdate: () => void;
+    onScriptOpenTab: (cb: (path: string) => void) => void;
+    offScriptOpenTab: () => void;
   };
 };
 
@@ -245,12 +301,25 @@ function getLanguage(path: string): string {
 
 // ── App ───────────────────────────────────────────────────────
 
+const DEFAULT_SETTINGS: ScriptEditorSettings = {
+  fontSize: 13,
+  theme: 'vs-dark',
+  fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+  minimap: true,
+  wordWrap: true,
+  autoSave: false,
+  hotReload: true,
+  timeout: 0,
+};
+
 const App: React.FC = () => {
   const [tabs, setTabs] = useState<ScriptTab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [editorSettings, setEditorSettings] = useState<ScriptEditorSettings>(DEFAULT_SETTINGS);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const libRegistered = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Register FluxionScript type declarations once Monaco is loaded
   const handleMonacoMount = useCallback((editor: any, monaco: any) => {
@@ -263,11 +332,16 @@ const App: React.FC = () => {
         FLUXION_DTS,
         'ts:fluxion/fluxion.d.ts',
       );
+      monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+      });
       monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
         target: monaco.languages.typescript.ScriptTarget.ES2020,
-        module: monaco.languages.typescript.ModuleKind.CommonJS,
+        allowNonTsExtensions: true,
+        moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+        noEmit: true,
         strict: false,
-        noEmitOnError: false,
       });
     }
 
@@ -276,6 +350,36 @@ const App: React.FC = () => {
       saveActive();
     });
   }, []);
+
+  // Apply settings object to Monaco editor
+  const applySettings = useCallback((s: ScriptEditorSettings) => {
+    setEditorSettings(s);
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        fontSize: s.fontSize,
+        fontFamily: s.fontFamily,
+        minimap: { enabled: s.minimap },
+        wordWrap: s.wordWrap ? 'on' : 'off',
+      });
+    }
+  }, []);
+
+  // Fetch settings from main process on mount
+  useEffect(() => {
+    const api = (window as any).fluxionAPI;
+    if (!api?.getScriptSettings) return;
+    api.getScriptSettings().then((s: ScriptEditorSettings | null) => {
+      if (s && Object.keys(s).length > 0) applySettings(s);
+    }).catch(() => {});
+  }, [applySettings]);
+
+  // Listen for live settings updates from the main renderer
+  useEffect(() => {
+    const api = (window as any).fluxionAPI;
+    if (!api?.onScriptSettingsUpdate) return;
+    api.onScriptSettingsUpdate((s: ScriptEditorSettings) => applySettings(s));
+    return () => api.offScriptSettingsUpdate?.();
+  }, [applySettings]);
 
   // Open a file (called on initial load and when main process sends open-tab)
   const openFile = useCallback(async (filePath: string) => {
@@ -310,13 +414,15 @@ const App: React.FC = () => {
     return () => api.offScriptOpenTab?.();
   }, [openFile]);
 
-  const saveActive = useCallback(async () => {
-    if (!activeTab) return;
-    const tab = tabs.find((t) => t.path === activeTab);
-    if (!tab) return;
+  const saveActive = useCallback(async (tabPath?: string, tabContent?: string) => {
+    const path = tabPath ?? activeTab;
+    if (!path) return;
+    const tab = tabs.find((t) => t.path === path);
+    const content = tabContent ?? tab?.content;
+    if (!tab || content === undefined) return;
     try {
-      await window.fluxionAPI.writeFile(tab.path, tab.content);
-      setTabs((prev) => prev.map((t) => t.path === activeTab ? { ...t, dirty: false } : t));
+      await window.fluxionAPI.writeFile(tab.path, content);
+      setTabs((prev) => prev.map((t) => t.path === path ? { ...t, dirty: false } : t));
       document.title = `Script Editor — ${tab.name}`;
     } catch (err) {
       console.error('[ScriptEditor] Failed to save:', err);
@@ -325,10 +431,19 @@ const App: React.FC = () => {
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (!activeTab) return;
+    const newContent = value ?? '';
     setTabs((prev) => prev.map((t) =>
-      t.path === activeTab ? { ...t, content: value ?? '', dirty: true } : t,
+      t.path === activeTab ? { ...t, content: newContent, dirty: true } : t,
     ));
-  }, [activeTab]);
+
+    // Auto-save debounce
+    if (editorSettings.autoSave) {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(() => {
+        saveActive(activeTab, newContent);
+      }, 500);
+    }
+  }, [activeTab, editorSettings.autoSave, saveActive]);
 
   const closeTab = useCallback((path: string) => {
     setTabs((prev) => {
@@ -432,18 +547,18 @@ const App: React.FC = () => {
           height="100%"
           language={getLanguage(activeTabData.path)}
           value={activeTabData.content}
-          theme="vs-dark"
+          theme={editorSettings.theme}
           onMount={handleMonacoMount}
           onChange={handleEditorChange}
           options={{
-            fontSize: 13,
-            fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+            fontSize: editorSettings.fontSize,
+            fontFamily: editorSettings.fontFamily,
             fontLigatures: true,
-            minimap: { enabled: true },
+            minimap: { enabled: editorSettings.minimap },
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 2,
-            wordWrap: 'on',
+            wordWrap: editorSettings.wordWrap ? 'on' : 'off',
           }}
         />
       ) : (

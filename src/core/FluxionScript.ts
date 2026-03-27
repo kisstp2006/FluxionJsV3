@@ -37,6 +37,7 @@ export class FluxionScript {
   /** @internal */ _renderer!: FluxionRenderer;
   /** @internal */ _audio!: AudioSystem | null;
   /** @internal */ _cleanupFns: (() => void)[] = [];
+  /** @internal */ _coroutines: Map<symbol, { gen: Generator; waitUntil: number }> = new Map();
 
   // ── Convenience getters ──────────────────────────────────────
 
@@ -52,6 +53,36 @@ export class FluxionScript {
   /** The Transform component of this entity (shortcut). */
   get transform(): TransformComponent | null {
     return this._ecs.getComponent<TransformComponent>(this.entity, 'Transform') ?? null;
+  }
+
+  /** Physics world access — raycast, gravity. */
+  get physics() {
+    const world = (this._engine as any).getSubsystem?.('physics') as any;
+    return {
+      raycast: (origin: import('three').Vector3, direction: import('three').Vector3, maxDist = 100) =>
+        world?.raycast(origin, direction, maxDist) ?? null,
+      setGravity: (x: number, y: number, z: number) =>
+        world?.setGravity(x, y, z),
+    };
+  }
+
+  /** Scene management — load scenes, get current name. */
+  get scene() {
+    return {
+      getName: (): string => (this._engine as any).currentSceneName ?? '',
+      load: (path: string) => this._engine.events.emit('scene:load-request', path),
+    };
+  }
+
+  /** Application info and control. */
+  get application() {
+    const eng = this._engine as any;
+    return {
+      get fps()      { return eng?.time?.fps ?? 0; },
+      get isEditor() { return true; },
+      get platform() { return 'electron'; },
+      quit:          () => { (window as any).fluxionAPI?.close?.(); },
+    };
   }
 
   // ── Component access ─────────────────────────────────────────
@@ -197,6 +228,27 @@ export class FluxionScript {
    */
   emit<T = any>(event: string, data?: T): void {
     this._engine.events.emit<T>(event, data);
+  }
+
+  // ── Coroutines ───────────────────────────────────────────────
+
+  /**
+   * Start a generator-based coroutine.
+   * Supported yield values:
+   *   yield;                // resume next frame
+   *   yield { seconds: 2 }; // wait 2 real seconds
+   *   yield { frames: 10 }; // wait N frames
+   * @returns A symbol handle that can be passed to stopCoroutine().
+   */
+  startCoroutine(gen: Generator): symbol {
+    const id = Symbol();
+    this._coroutines.set(id, { gen, waitUntil: 0 });
+    return id;
+  }
+
+  /** Stop a coroutine by the handle returned from startCoroutine(). */
+  stopCoroutine(id: symbol): void {
+    this._coroutines.delete(id);
   }
 
   // ── Audio ────────────────────────────────────────────────────

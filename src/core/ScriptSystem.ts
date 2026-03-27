@@ -32,6 +32,37 @@ const MATH_SHORTCUTS = {
   Mat3: THREE.Matrix3,
 };
 
+/** Mathf — common math helpers injected into every script's scope. */
+const Mathf = {
+  PI: Math.PI,
+  TAU: Math.PI * 2,
+  Deg2Rad: Math.PI / 180,
+  Rad2Deg: 180 / Math.PI,
+  lerp:         (a: number, b: number, t: number) => a + (b - a) * t,
+  clamp:        (v: number, min: number, max: number) => Math.max(min, Math.min(max, v)),
+  clamp01:      (v: number) => Math.max(0, Math.min(1, v)),
+  smoothstep:   (e0: number, e1: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  },
+  approximately: (a: number, b: number) => Math.abs(a - b) < 1e-6,
+  moveTowards:  (cur: number, tgt: number, d: number) =>
+    Math.abs(tgt - cur) <= d ? tgt : cur + Math.sign(tgt - cur) * d,
+  repeat:       (t: number, len: number) => t - Math.floor(t / len) * len,
+  deltaAngle:   (a: number, b: number) => {
+    const d = (b - a) % 360;
+    return d > 180 ? d - 360 : d < -180 ? d + 360 : d;
+  },
+  pingPong:     (t: number, len: number) => {
+    const r = (t % (len * 2) + len * 2) % (len * 2);
+    return len - Math.abs(r - len);
+  },
+  abs:   Math.abs,  ceil:  Math.ceil,  floor: Math.floor, round: Math.round,
+  sin:   Math.sin,  cos:   Math.cos,   atan2: Math.atan2,  sqrt:  Math.sqrt,
+  sign:  Math.sign, pow:   Math.pow,   log:   Math.log,    exp:   Math.exp,
+  min:   Math.min,  max:   Math.max,
+};
+
 // ── Helpers ──────────────────────────────────────────────────
 
 /**
@@ -57,6 +88,7 @@ function loadScriptClass(
     'THREE',
     'Debug',
     'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat4', 'Mat3',
+    'Mathf',
     'console',
     compiledJs,
   )(
@@ -72,6 +104,7 @@ function loadScriptClass(
     MATH_SHORTCUTS.Euler,
     MATH_SHORTCUTS.Mat4,
     MATH_SHORTCUTS.Mat3,
+    Mathf,
     console,
   );
   return mod.default;
@@ -84,6 +117,9 @@ export class ScriptSystem implements System {
   readonly requiredComponents = ['Script'];
   priority = 100;
   enabled = true;
+
+  /** Max ms allowed per onUpdate call (0 = disabled). Set from project settings. */
+  updateTimeout = 0;
 
   private engine: Engine;
   private input: InputManager;
@@ -129,7 +165,17 @@ export class ScriptSystem implements System {
         const inst = comp._instances.get(entry.path);
         if (!inst) continue;
         try {
-          inst.onUpdate?.(dt);
+          if (this.updateTimeout > 0) {
+            const t0 = performance.now();
+            inst.onUpdate?.(dt);
+            const elapsed = performance.now() - t0;
+            if (elapsed > this.updateTimeout) {
+              console.warn(`[ScriptSystem] "${entry.path}" exceeded ${this.updateTimeout}ms in onUpdate (${elapsed.toFixed(1)}ms)`);
+            }
+          } else {
+            inst.onUpdate?.(dt);
+          }
+          this.tickCoroutines(inst, dt);
         } catch (err) {
           console.error(`[ScriptSystem] onUpdate error in "${entry.path}":`, err);
         }
@@ -147,6 +193,7 @@ export class ScriptSystem implements System {
         if (!inst) continue;
         try {
           inst.onFixedUpdate?.(dt);
+          this.tickCoroutines(inst, dt);
         } catch (err) {
           console.error(`[ScriptSystem] onFixedUpdate error in "${entry.path}":`, err);
         }
@@ -239,6 +286,33 @@ export class ScriptSystem implements System {
     }
   }
 
+  private tickCoroutines(inst: FluxionScript, _dt: number): void {
+    if (!inst._coroutines.size) return;
+    const now = performance.now() / 1000;
+    for (const [id, state] of inst._coroutines) {
+      if (now < state.waitUntil) continue;
+      let result: IteratorResult<any>;
+      try {
+        result = state.gen.next();
+      } catch (err) {
+        console.error('[ScriptSystem] Coroutine error:', err);
+        inst._coroutines.delete(id);
+        continue;
+      }
+      if (result.done) {
+        inst._coroutines.delete(id);
+        continue;
+      }
+      const yv = result.value;
+      if (yv?.seconds) {
+        state.waitUntil = now + (yv.seconds as number);
+      } else if (yv?.frames) {
+        state.waitUntil = now + (yv.frames as number) / 60;
+      }
+      // plain yield → resume next frame (waitUntil stays at 0)
+    }
+  }
+
   private destroyAll(comp: ScriptComponent): void {
     for (const [path, inst] of comp._instances) {
       try {
@@ -252,6 +326,8 @@ export class ScriptSystem implements System {
           try { fn(); } catch {}
         }
       }
+      // Clear any running coroutines
+      inst?._coroutines?.clear();
     }
     comp._instances.clear();
     comp._loading.clear();

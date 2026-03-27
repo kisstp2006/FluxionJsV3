@@ -24,6 +24,7 @@ import {
   TextRendererComponent,
   FuiComponent,
   CSGBrushComponent,
+  FogVolumeComponent,
 } from '../core/Components';
 import { Scene, SceneSettings, SerializedEntity, SerializedComponent } from '../scene/Scene';
 import { AssetManager } from '../assets/AssetManager';
@@ -442,6 +443,18 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           dofMaxBlur: env.dofMaxBlur,
           shadowCascades: env.shadowCascades,
           shadowDistance: env.shadowDistance,
+          vfogEnabled: env.vfogEnabled,
+          vfogDensity: env.vfogDensity,
+          vfogAlbedo: [env.vfogAlbedo.r, env.vfogAlbedo.g, env.vfogAlbedo.b],
+          vfogScatter: env.vfogScatter,
+          vfogAbsorption: env.vfogAbsorption,
+          vfogHeightBase: env.vfogHeightBase,
+          vfogHeightFalloff: env.vfogHeightFalloff,
+          vfogEmission: [env.vfogEmission.r, env.vfogEmission.g, env.vfogEmission.b],
+          vfogEmissionEnergy: env.vfogEmissionEnergy,
+          vfogAffectSky: env.vfogAffectSky,
+          vfogSteps: env.vfogSteps,
+          vfogMaxDistance: env.vfogMaxDistance,
         },
       });
     }
@@ -462,6 +475,22 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
           castShadow: csgBrush.castShadow,
           receiveShadow: csgBrush.receiveShadow,
           materialPath: csgBrush.materialPath,
+        },
+      });
+    }
+
+    const fogVol = engine.ecs.getComponent<FogVolumeComponent>(entityId, 'FogVolume');
+    if (fogVol) {
+      components.push({
+        type: 'FogVolume',
+        data: {
+          enabled: fogVol.enabled,
+          shape: fogVol.shape,
+          density: fogVol.density,
+          albedo: [fogVol.albedo.r, fogVol.albedo.g, fogVol.albedo.b],
+          emission: [fogVol.emission.r, fogVol.emission.g, fogVol.emission.b],
+          emissionEnergy: fogVol.emissionEnergy,
+          negative: fogVol.negative,
         },
       });
     }
@@ -910,6 +939,18 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           e.dofMaxBlur = d.dofMaxBlur ?? 10;
           e.shadowCascades = d.shadowCascades ?? 4;
           e.shadowDistance = d.shadowDistance ?? 200;
+          e.vfogEnabled = d.vfogEnabled ?? false;
+          e.vfogDensity = d.vfogDensity ?? 0.05;
+          if (d.vfogAlbedo) e.vfogAlbedo.setRGB(d.vfogAlbedo[0], d.vfogAlbedo[1], d.vfogAlbedo[2]);
+          e.vfogScatter = d.vfogScatter ?? 0.2;
+          e.vfogAbsorption = d.vfogAbsorption ?? 1;
+          e.vfogHeightBase = d.vfogHeightBase ?? 0;
+          e.vfogHeightFalloff = d.vfogHeightFalloff ?? 0.1;
+          if (d.vfogEmission) e.vfogEmission.setRGB(d.vfogEmission[0], d.vfogEmission[1], d.vfogEmission[2]);
+          e.vfogEmissionEnergy = d.vfogEmissionEnergy ?? 0;
+          e.vfogAffectSky = d.vfogAffectSky ?? 0.5;
+          e.vfogSteps = d.vfogSteps ?? 32;
+          e.vfogMaxDistance = d.vfogMaxDistance ?? 200;
           engine.ecs.addComponent(entityId, e);
           break;
         }
@@ -930,6 +971,20 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
           b.materialPath = d.materialPath ?? null;
           b._dirty = true;
           engine.ecs.addComponent(entityId, b);
+          break;
+        }
+
+        case 'FogVolume': {
+          const fv = new FogVolumeComponent();
+          const d = comp.data;
+          fv.enabled = d.enabled ?? true;
+          fv.shape = d.shape ?? 'box';
+          fv.density = d.density ?? 0.1;
+          if (d.albedo) fv.albedo.setRGB(d.albedo[0], d.albedo[1], d.albedo[2]);
+          if (d.emission) fv.emission.setRGB(d.emission[0], d.emission[1], d.emission[2]);
+          fv.emissionEnergy = d.emissionEnergy ?? 0;
+          fv.negative = d.negative ?? false;
+          engine.ecs.addComponent(entityId, fv);
           break;
         }
       }
@@ -1350,6 +1405,13 @@ function _serializeEntityComponents(entityId: EntityId, engine: Engine): Seriali
     chromaticAberration: env.chromaticAberration, filmGrain: env.filmGrain,
     dofEnabled: env.dofEnabled, dofFocusDistance: env.dofFocusDistance, dofAperture: env.dofAperture, dofMaxBlur: env.dofMaxBlur,
     shadowCascades: env.shadowCascades, shadowDistance: env.shadowDistance,
+    vfogEnabled: env.vfogEnabled, vfogDensity: env.vfogDensity,
+    vfogAlbedo: [env.vfogAlbedo.r, env.vfogAlbedo.g, env.vfogAlbedo.b],
+    vfogScatter: env.vfogScatter, vfogAbsorption: env.vfogAbsorption,
+    vfogHeightBase: env.vfogHeightBase, vfogHeightFalloff: env.vfogHeightFalloff,
+    vfogEmission: [env.vfogEmission.r, env.vfogEmission.g, env.vfogEmission.b],
+    vfogEmissionEnergy: env.vfogEmissionEnergy, vfogAffectSky: env.vfogAffectSky,
+    vfogSteps: env.vfogSteps, vfogMaxDistance: env.vfogMaxDistance,
   }});
 
   const csg = engine.ecs.getComponent<CSGBrushComponent>(entityId, 'CSGBrush');
@@ -1522,12 +1584,27 @@ export function restoreEntitySubtree(
           e.chromaticAberration = d.chromaticAberration ?? 0; e.filmGrain = d.filmGrain ?? 0;
           e.dofEnabled = d.dofEnabled ?? false; e.dofFocusDistance = d.dofFocusDistance ?? 10; e.dofAperture = d.dofAperture ?? 0.025; e.dofMaxBlur = d.dofMaxBlur ?? 10;
           e.shadowCascades = d.shadowCascades ?? 3; e.shadowDistance = d.shadowDistance ?? 100;
+          e.vfogEnabled = d.vfogEnabled ?? false; e.vfogDensity = d.vfogDensity ?? 0.05;
+          if (d.vfogAlbedo) e.vfogAlbedo.setRGB(d.vfogAlbedo[0], d.vfogAlbedo[1], d.vfogAlbedo[2]);
+          e.vfogScatter = d.vfogScatter ?? 0.2; e.vfogAbsorption = d.vfogAbsorption ?? 1;
+          e.vfogHeightBase = d.vfogHeightBase ?? 0; e.vfogHeightFalloff = d.vfogHeightFalloff ?? 0.1;
+          if (d.vfogEmission) e.vfogEmission.setRGB(d.vfogEmission[0], d.vfogEmission[1], d.vfogEmission[2]);
+          e.vfogEmissionEnergy = d.vfogEmissionEnergy ?? 0; e.vfogAffectSky = d.vfogAffectSky ?? 0.5;
+          e.vfogSteps = d.vfogSteps ?? 32; e.vfogMaxDistance = d.vfogMaxDistance ?? 200;
           engine.ecs.addComponent(entityId, e); break;
         }
         case 'CSGBrush': {
           const b = new CSGBrushComponent(); const d = comp.data;
           b.enabled = d.enabled ?? true; b.shape = d.shape || 'box'; b.operation = d.operation || 'additive'; if (d.size) b.size.set(d.size[0], d.size[1], d.size[2]); b.radius = d.radius ?? 0.5; b.segments = d.segments ?? 16; b.stairSteps = d.stairSteps ?? 4; b.generateCollision = d.generateCollision ?? false; b.castShadow = d.castShadow ?? true; b.receiveShadow = d.receiveShadow ?? true; b.materialPath = d.materialPath ?? null;
           engine.ecs.addComponent(entityId, b); break;
+        }
+        case 'FogVolume': {
+          const fv = new FogVolumeComponent(); const d = comp.data;
+          fv.enabled = d.enabled ?? true; fv.shape = d.shape ?? 'box'; fv.density = d.density ?? 0.1;
+          if (d.albedo) fv.albedo.setRGB(d.albedo[0], d.albedo[1], d.albedo[2]);
+          if (d.emission) fv.emission.setRGB(d.emission[0], d.emission[1], d.emission[2]);
+          fv.emissionEnergy = d.emissionEnergy ?? 0; fv.negative = d.negative ?? false;
+          engine.ecs.addComponent(entityId, fv); break;
         }
       }
     }

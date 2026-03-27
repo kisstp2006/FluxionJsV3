@@ -15,11 +15,12 @@ import {
   CameraComponent,
   LightComponent,
   EnvironmentComponent,
+  FogVolumeComponent,
   ToneMappingMode,
   SpriteComponent,
   TextRendererComponent,
 } from '../core/Components';
-import { PostProcessingPipeline } from './PostProcessing';
+import { PostProcessingPipeline, FogVolumeData, FogLightData } from './PostProcessing';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
@@ -121,6 +122,7 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new CameraSystem(this));
     engine.ecs.addSystem(new LightSystem(this));
     engine.ecs.addSystem(new EnvironmentSystem(this));
+    engine.ecs.addSystem(new FogVolumeSystem(this));
 
     // Debug drawing: overlay (gizmoScene) + world (main scene for depth test)
     DebugDraw.init(this.gizmoScene, this.scene);
@@ -1138,6 +1140,22 @@ class EnvironmentSystem implements System {
     pp.config.chromaticAberration = env.chromaticAberration;
     pp.config.filmGrain = env.filmGrain;
 
+    pp.config.volumetricFog = {
+      enabled: env.vfogEnabled,
+      density: env.vfogDensity,
+      albedo: env.vfogAlbedo,
+      scatter: env.vfogScatter,
+      absorption: env.vfogAbsorption,
+      heightBase: env.vfogHeightBase,
+      heightFalloff: env.vfogHeightFalloff,
+      emission: env.vfogEmission,
+      emissionEnergy: env.vfogEmissionEnergy,
+      affectSky: env.vfogAffectSky,
+      steps: env.vfogSteps,
+      maxDistance: env.vfogMaxDistance,
+      volumes: pp.config.volumetricFog?.volumes ?? [],
+    };
+
     // ── CSM (Cascaded Shadow Maps) ──
     this.updateCSM(env, ecs);
   }
@@ -1396,5 +1414,100 @@ class EnvironmentSystem implements System {
 
   destroy(): void {
     this.cleanup();
+  }
+}
+
+// ── FogVolume System ──
+// Collects all active FogVolumeComponents each frame and feeds them to the
+// PostProcessingPipeline's volumetricFog.volumes array so the shader can use them.
+
+class FogVolumeSystem implements System {
+  readonly name = 'FogVolume';
+  readonly requiredComponents = ['FogVolume', 'Transform'];
+  priority = 0;
+  enabled = true;
+
+  private _renderer: FluxionRenderer;
+
+  constructor(renderer: FluxionRenderer) {
+    this._renderer = renderer;
+  }
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    const pp = this._renderer.postProcessing;
+    if (!pp.config.volumetricFog) return;
+
+    // ── FogVolume instances ──────────────────────────────────
+    const volumes: FogVolumeData[] = [];
+    for (const eid of entities) {
+      const fv = ecs.getComponent<FogVolumeComponent>(eid, 'FogVolume');
+      const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
+      if (!fv || !t || !fv.enabled) continue;
+      volumes.push({
+        position: t.position.clone(),
+        size: t.scale.clone(),
+        shape: fv.shape === 'box' ? 0 : fv.shape === 'ellipsoid' ? 1 : 2,
+        density: fv.density,
+        albedo: fv.albedo.clone(),
+        emission: fv.emission.clone(),
+        emissionEnergy: fv.emissionEnergy,
+        negative: fv.negative,
+      });
+    }
+    pp.config.volumetricFog.volumes = volumes;
+
+    // ── Light sources ────────────────────────────────────────
+    const lights: FogLightData[] = [];
+    const lightEntities = ecs.getAllEntities();
+    const DEG2RAD = Math.PI / 180;
+
+    for (const eid of lightEntities) {
+      if (lights.length >= 8) break;
+      const lc = ecs.getComponent<LightComponent>(eid, 'Light');
+      const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
+      if (!lc || !t || !lc.enabled) continue;
+      if (lc.lightType === 'ambient') continue; // ambient light ≠ volumetric scattering source
+
+      // Forward direction of the light fixture (local -Z rotated by entity quaternion)
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(t.quaternion).normalize();
+
+      if (lc.lightType === 'directional') {
+        lights.push({
+          type: 0,
+          position: new THREE.Vector3(),  // unused for directional
+          direction: dir,
+          color: lc.color.clone(),
+          intensity: lc.intensity,
+          range: 0,
+          outerCos: 0,
+          innerCos: 0,
+        });
+      } else if (lc.lightType === 'point') {
+        lights.push({
+          type: 1,
+          position: t.position.clone(),
+          direction: new THREE.Vector3(),  // unused
+          color: lc.color.clone(),
+          intensity: lc.intensity,
+          range: lc.range,
+          outerCos: 0,
+          innerCos: 0,
+        });
+      } else if (lc.lightType === 'spot') {
+        const outerAngle = lc.spotAngle * DEG2RAD;
+        const innerAngle = outerAngle * Math.max(0, 1 - lc.spotPenumbra);
+        lights.push({
+          type: 2,
+          position: t.position.clone(),
+          direction: dir,
+          color: lc.color.clone(),
+          intensity: lc.intensity,
+          range: lc.range,
+          outerCos: Math.cos(outerAngle),
+          innerCos: Math.cos(innerAngle),
+        });
+      }
+    }
+    pp.config.volumetricFog.lights = lights;
   }
 }

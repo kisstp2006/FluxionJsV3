@@ -4,6 +4,8 @@ uniform sampler2D tSSAO;
 uniform sampler2D tSSR;
 uniform sampler2D tSSGI;
 uniform sampler2D tClouds;
+uniform sampler2D tVolumetricFog;
+uniform bool volumetricFogEnabled;
 uniform float bloomStrength;
 uniform float bloomRadius;
 uniform float vignetteIntensity;
@@ -63,6 +65,13 @@ void main() {
   if (cloudsEnabled) {
     vec4 clouds = texture2D(tClouds, vUv);
     scene = mix(scene, clouds.rgb, 1.0 - clouds.a);
+  }
+
+  // Volumetric fog (inscattered light over scene, transmittance blends)
+  if (volumetricFogEnabled) {
+    vec4 fog = texture2D(tVolumetricFog, vUv);
+    // fog.rgb = inscattered light, fog.a = transmittance (1=clear, 0=full fog)
+    scene = scene * fog.a + fog.rgb;
   }
 
   // Depth of Field — mix sharp scene with bokeh blur based on CoC

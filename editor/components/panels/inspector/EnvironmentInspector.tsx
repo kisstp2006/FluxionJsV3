@@ -385,6 +385,53 @@ export const EnvironmentInspector: React.FC<{ entity: EntityId; onRemoved: () =>
         )}
       </Section>
 
+      {/* ── Volumetric Fog ── */}
+      <Section title="Volumetric Fog" defaultOpen={false}>
+        <PropertyRow label="Enabled">
+          <Checkbox checked={env.vfogEnabled} onChange={(v) => { setProperty(undoManager, env, 'vfogEnabled', v); update(); }} />
+        </PropertyRow>
+        {env.vfogEnabled && (
+          <>
+            <PropertyRow label="Density">
+              <Slider value={env.vfogDensity} min={0} max={1} step={0.005} onChange={(v) => { setProperty(undoManager, env, 'vfogDensity', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Albedo">
+              <ColorInput value={`#${env.vfogAlbedo.getHexString()}`} onChange={(v) => { setColorProperty(undoManager, env, 'vfogAlbedo', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Scatter (HG)">
+              <Slider value={env.vfogScatter} min={-1} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'vfogScatter', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Absorption">
+              <Slider value={env.vfogAbsorption} min={0.1} max={5} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'vfogAbsorption', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Height Base">
+              <NumberInput value={env.vfogHeightBase} step={1} onChange={(v) => { setProperty(undoManager, env, 'vfogHeightBase', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Height Falloff">
+              <Slider value={env.vfogHeightFalloff} min={0} max={1} step={0.01} onChange={(v) => { setProperty(undoManager, env, 'vfogHeightFalloff', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Emission">
+              <ColorInput value={`#${env.vfogEmission.getHexString()}`} onChange={(v) => { setColorProperty(undoManager, env, 'vfogEmission', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Emission Energy">
+              <Slider value={env.vfogEmissionEnergy} min={0} max={10} step={0.1} onChange={(v) => { setProperty(undoManager, env, 'vfogEmissionEnergy', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Affect Sky">
+              <Slider value={env.vfogAffectSky} min={0} max={1} step={0.05} onChange={(v) => { setProperty(undoManager, env, 'vfogAffectSky', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Max Distance">
+              <NumberInput value={env.vfogMaxDistance} min={1} step={10} onChange={(v) => { setProperty(undoManager, env, 'vfogMaxDistance', v); update(); }} />
+            </PropertyRow>
+            <PropertyRow label="Steps">
+              <Slider value={env.vfogSteps} min={8} max={64} step={4} onChange={(v) => { setProperty(undoManager, env, 'vfogSteps', Math.round(v)); update(); }} />
+            </PropertyRow>
+            <div style={{ padding: '2px 12px 6px', color: 'var(--text-muted)', fontSize: '11px', fontStyle: 'italic' }}>
+              Light color &amp; intensity come from scene Light components.
+            </div>
+          </>
+        )}
+      </Section>
+
       {/* ── Chromatic Aberration & Film Grain ── */}
       <Section title="Effects" defaultOpen={false}>
         <PropertyRow label="Chromatic Aberration">

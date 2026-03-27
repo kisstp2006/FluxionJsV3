@@ -21,6 +21,7 @@ import {
   TextRendererComponent,
   CSGBrushComponent,
   ScriptComponent,
+  FogVolumeComponent,
 } from './Components';
 
 // ── Property Descriptor ──────────────────────────────────────
@@ -371,4 +372,27 @@ ComponentRegistry.register({
   // Properties are dynamically shown by ScriptInspector — no static metadata needed.
   properties: [],
   create: () => new ScriptComponent(),
+});
+
+ComponentRegistry.register({
+  type: 'FogVolume',
+  displayName: 'Fog Volume',
+  icon: '🌫',
+  addable: true,
+  properties: [
+    {
+      key: 'shape', type: 'select', label: 'Shape',
+      options: [
+        { value: 'box', label: 'Box' },
+        { value: 'ellipsoid', label: 'Ellipsoid' },
+        { value: 'world', label: 'World (Global)' },
+      ],
+    },
+    { key: 'density',        type: 'slider',  label: 'Density',          min: 0, max: 1,  step: 0.01 },
+    { key: 'albedo',         type: 'color',   label: 'Albedo' },
+    { key: 'emission',       type: 'color',   label: 'Emission' },
+    { key: 'emissionEnergy', type: 'number',  label: 'Emission Energy',  min: 0, step: 0.1 },
+    { key: 'negative',       type: 'boolean', label: 'Negative (Clear Fog)' },
+  ],
+  create: () => new FogVolumeComponent(),
 });

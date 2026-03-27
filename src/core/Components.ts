@@ -560,6 +560,20 @@ export class EnvironmentComponent implements Component {
   chromaticAberration = 0;
   filmGrain = 0;
 
+  // ── Volumetric Fog ──
+  vfogEnabled = false;
+  vfogDensity = 0.05;
+  vfogAlbedo = new THREE.Color(0.8, 0.85, 0.9);
+  vfogScatter = 0.2;
+  vfogAbsorption = 1.0;
+  vfogHeightBase = 0;
+  vfogHeightFalloff = 0.1;
+  vfogEmission = new THREE.Color(0, 0, 0);
+  vfogEmissionEnergy = 0;
+  vfogAffectSky = 0.5;
+  vfogSteps = 32;
+  vfogMaxDistance = 200;
+
   // ── Shadows (CSM) ──
   shadowCascades = 0;   // 0 = off; set ≥ 2 to enable CSM
   shadowDistance = 200;
@@ -604,4 +618,30 @@ export class CSGBrushComponent implements Component {
   _dirty = true;
   /** Version counter for change detection */
   _version = 0;
+}
+
+// ── Fog Volume (Godot FogVolume-style local volumetric fog) ──
+
+export type FogVolumeShape = 'box' | 'ellipsoid' | 'world';
+
+export class FogVolumeComponent implements Component {
+  readonly type = 'FogVolume';
+  entityId: EntityId = 0;
+  enabled = true;
+
+  /** Shape of the volume */
+  shape: FogVolumeShape = 'box';
+  /** Density of the fog inside this volume (additive with environment fog) */
+  density = 0.1;
+  /** Scattering albedo color */
+  albedo = new THREE.Color(0.8, 0.85, 0.9);
+  /** Self-emission color */
+  emission = new THREE.Color(0, 0, 0);
+  /** Emission brightness multiplier */
+  emissionEnergy = 0;
+  /**
+   * If true, this volume removes fog (like Godot's negative density).
+   * Useful for clearing fog inside rooms while exterior stays foggy.
+   */
+  negative = false;
 }

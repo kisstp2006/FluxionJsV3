@@ -19,6 +19,7 @@ import ssgiSrc          from './shaders/ssgi.frag.glsl';
 import ssgiBlurSrc      from './shaders/ssgi_blur.frag.glsl';
 import ssgiUpscaleSrc   from './shaders/ssgi_upscale.frag.glsl';
 import cloudSrc         from './shaders/cloud.frag.glsl';
+import volumetricFogSrc from './shaders/volumetric_fog.frag.glsl';
 
 // Shared full-screen quad geometry — all passes reuse one PlaneGeometry
 const _sharedFSQGeometry = new THREE.PlaneGeometry(2, 2);
@@ -63,6 +64,7 @@ const SSGI_FRAG          = ssgiSrc;
 const SSGI_BLUR_FRAG     = ssgiBlurSrc;
 const SSGI_UPSCALE_FRAG  = ssgiUpscaleSrc;
 const CLOUD_FRAG         = cloudSrc;
+const VOLUMETRIC_FOG_FRAG = volumetricFogSrc;
 
 // ── Post-Processing Pipeline ──
 
@@ -127,9 +129,49 @@ export interface PostProcessConfig {
     aperture?: number;
     maxBlur?: number;
   };
+  volumetricFog?: {
+    enabled?: boolean;
+    density?: number;
+    albedo?: THREE.Color;
+    scatter?: number;
+    absorption?: number;
+    heightBase?: number;
+    heightFalloff?: number;
+    emission?: THREE.Color;
+    emissionEnergy?: number;
+    affectSky?: number;
+    steps?: number;
+    maxDistance?: number;
+    /** Active FogVolume instances passed from FogVolumeSystem */
+    volumes?: FogVolumeData[];
+    /** Active lights passed from FogVolumeSystem (collected from LightComponents) */
+    lights?: FogLightData[];
+  };
   exposure?: number;
   chromaticAberration?: number;
   filmGrain?: number;
+}
+
+export interface FogVolumeData {
+  position: THREE.Vector3;
+  size: THREE.Vector3;
+  shape: 0 | 1 | 2;         // 0=box 1=ellipsoid 2=world
+  density: number;
+  albedo: THREE.Color;
+  emission: THREE.Color;
+  emissionEnergy: number;
+  negative: boolean;
+}
+
+export interface FogLightData {
+  type: 0 | 1 | 2;           // 0=directional 1=point 2=spot
+  position: THREE.Vector3;   // point/spot
+  direction: THREE.Vector3;  // directional/spot — FROM the fixture, normalized
+  color: THREE.Color;
+  intensity: number;
+  range: number;             // point/spot falloff radius
+  outerCos: number;          // cos(outerHalfAngle) for spot
+  innerCos: number;          // cos(innerHalfAngle) for spot
 }
 
 export class PostProcessingPipeline {
@@ -152,6 +194,7 @@ export class PostProcessingPipeline {
   private dofCocRT: THREE.WebGLRenderTarget | null = null;
   private dofBlurRT: THREE.WebGLRenderTarget | null = null;
   private cloudRT: THREE.WebGLRenderTarget | null = null;
+  private vfogRT: THREE.WebGLRenderTarget | null = null;
   // Stored for lazy RT creation
   private _rtParams!: THREE.RenderTargetOptions;
   private _w = 1;
@@ -171,6 +214,7 @@ export class PostProcessingPipeline {
   private dofCocPass: FullScreenPass;
   private dofBlurPass: FullScreenPass;
   private cloudPass: FullScreenPass;
+  private volumetricFogPass: FullScreenPass;
   private compositePass: FullScreenPass;
 
   // Reusable matrices
@@ -200,6 +244,7 @@ export class PostProcessingPipeline {
     ssr: { enabled: false, maxDistance: 50, thickness: 0.5, stride: 0.3, fresnel: 1.0, opacity: 0.5, resolutionScale: 0.5, infiniteThick: false, distanceAttenuation: true },
     ssgi: { enabled: false, sliceCount: 3, stepCount: 12, radius: 12, thickness: 1, expFactor: 2, aoIntensity: 1, giIntensity: 10, backfaceLighting: 0, useLinearThickness: false, screenSpaceSampling: true },
     clouds: { enabled: false, minHeight: 200, maxHeight: 400, coverage: 0.5, density: 0.3, absorption: 1.0, scatter: 1.0, color: new THREE.Color(1, 1, 1), speed: 1.0, sunDirection: new THREE.Vector3(0.5, 1, 0.3).normalize() },
+    volumetricFog: { enabled: false, density: 0.05, albedo: new THREE.Color(0.8, 0.85, 0.9), scatter: 0.2, absorption: 1.0, heightBase: 0, heightFalloff: 0.1, emission: new THREE.Color(0, 0, 0), emissionEnergy: 0, affectSky: 0.5, steps: 32, maxDistance: 200, volumes: [], lights: [] },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
     dof: { enabled: false, focusDistance: 10, aperture: 0.025, maxBlur: 10 },
     exposure: 1.0,
@@ -455,6 +500,53 @@ export class PostProcessingPipeline {
       },
     }));
 
+    // ── Volumetric Fog pass ──
+    const _vfEmpty = new Array(8).fill(null);
+    this.volumetricFogPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: VOLUMETRIC_FOG_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: {
+        tDepth:           { value: null },
+        resolution:       { value: new THREE.Vector2(halfW, halfH) },
+        invProjMatrix:    { value: new THREE.Matrix4() },
+        invViewMatrix:    { value: new THREE.Matrix4() },
+        cameraPos:        { value: new THREE.Vector3() },
+        cameraNear:       { value: 0.1 },
+        cameraFar:        { value: 1000 },
+        fogDensity:       { value: 0.05 },
+        fogAlbedo:        { value: new THREE.Color(0.8, 0.85, 0.9) },
+        fogScatter:       { value: 0.2 },
+        fogAbsorption:    { value: 1.0 },
+        fogHeightBase:    { value: 0 },
+        fogHeightFalloff: { value: 0.1 },
+        fogEmission:      { value: new THREE.Color(0, 0, 0) },
+        fogEmissionEnergy:{ value: 0 },
+        fogAffectSky:     { value: 0.5 },
+        fogSteps:         { value: 32 },
+        fogMaxDistance:   { value: 200 },
+        fogLightCount:    { value: 0 },
+        fogLightType:     { value: new Array(8).fill(0) },
+        fogLightPos:      { value: new Array(8).fill(null).map(() => new THREE.Vector3()) },
+        fogLightDir:      { value: new Array(8).fill(null).map(() => new THREE.Vector3(0, -1, 0)) },
+        fogLightColor:    { value: new Array(8).fill(null).map(() => new THREE.Color(1, 1, 1)) },
+        fogLightIntensity:{ value: new Array(8).fill(0) },
+        fogLightRange:    { value: new Array(8).fill(10) },
+        fogLightOuterCos: { value: new Array(8).fill(0) },
+        fogLightInnerCos: { value: new Array(8).fill(0) },
+        fogVolumeCount:   { value: 0 },
+        fogVolumePos:     { value: _vfEmpty.map(() => new THREE.Vector3()) },
+        fogVolumeSize:    { value: _vfEmpty.map(() => new THREE.Vector3(1, 1, 1)) },
+        fogVolumeShape:   { value: _vfEmpty.map(() => 0) },
+        fogVolumeDensity: { value: _vfEmpty.map(() => 0) },
+        fogVolumeAlbedo:  { value: _vfEmpty.map(() => new THREE.Color(1, 1, 1)) },
+        fogVolumeEmission:{ value: _vfEmpty.map(() => new THREE.Color(0, 0, 0)) },
+        fogVolumeEmissionEnergy: { value: _vfEmpty.map(() => 0) },
+        fogVolumeNegative:{ value: _vfEmpty.map(() => 0) },
+      },
+    }));
+
     // ── Composite pass ──
     this.compositePass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -466,6 +558,8 @@ export class PostProcessingPipeline {
         tSSR: { value: null },
         tSSGI: { value: null },
         tClouds: { value: null },
+        tVolumetricFog: { value: null },
+        volumetricFogEnabled: { value: false },
         bloomStrength: { value: 0.5 },
         bloomRadius: { value: 0.4 },
         vignetteIntensity: { value: 0.3 },
@@ -475,7 +569,7 @@ export class PostProcessingPipeline {
         ssrEnabled: { value: false },
         ssgiEnabled: { value: false },
         cloudsEnabled: { value: false },
-        tDof: { value: null },
+        tDof:  { value: null },
         tDofCoC: { value: null },
         dofEnabled: { value: false },
         dofMaxBlur: { value: 10 },
@@ -510,7 +604,8 @@ export class PostProcessingPipeline {
     wire('ssgi',          [this.ssgiPass]);
     wire('ssgi_blur',     [this.ssgiBlurHPass, this.ssgiBlurVPass]);
     wire('ssgi_upscale',  [this.ssgiUpscalePass]);
-    wire('cloud',         [this.cloudPass]);
+    wire('cloud',          [this.cloudPass]);
+    wire('volumetric_fog', [this.volumetricFogPass]);
   }
 
   setCamera(camera: THREE.Camera): void {
@@ -578,6 +673,11 @@ export class PostProcessingPipeline {
       this.cloudPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
       this.cloudPass.material.uniforms['cameraNear'].value = near;
       this.cloudPass.material.uniforms['cameraFar'].value = far;
+
+      // Volumetric Fog
+      this.volumetricFogPass.material.uniforms['invProjMatrix'].value.copy(this._invProjMatrix);
+      this.volumetricFogPass.material.uniforms['cameraNear'].value = near;
+      this.volumetricFogPass.material.uniforms['cameraFar'].value = far;
     }
 
     // Per-frame: texture bindings + view matrix (changes every frame with camera movement)
@@ -590,12 +690,16 @@ export class PostProcessingPipeline {
     this.ssgiBlurVPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.dofCocPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
     this.cloudPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
+    this.volumetricFogPass.material.uniforms['tDepth'].value = this.sceneRT.depthTexture;
 
     this._invViewMatrix.copy(this.camera.matrixWorld);
     this.cloudPass.material.uniforms['invViewMatrix'].value.copy(this._invViewMatrix);
     this.cloudPass.material.uniforms['cameraPos'].value.copy(this.camera.position);
     this.cloudPass.material.uniforms['cameraNear'].value = near;
     this.cloudPass.material.uniforms['cameraFar'].value = far;
+
+    this.volumetricFogPass.material.uniforms['invViewMatrix'].value.copy(this._invViewMatrix);
+    this.volumetricFogPass.material.uniforms['cameraPos'].value.copy(this.camera.position);
   }
 
   private makeRT(w: number, h: number): THREE.WebGLRenderTarget {
@@ -746,6 +850,63 @@ export class PostProcessingPipeline {
       this.renderer.autoClear = savedAutoClear;
     }
 
+    // 4.5 Volumetric Fog (after SSR, before Bloom — fog sits on top of reflections)
+    const vfog = this.config.volumetricFog;
+    const doVFog = !!vfog?.enabled;
+    if (doVFog) {
+      if (!this.vfogRT) this.vfogRT = this.makeRT(Math.floor(this._w / 2), Math.floor(this._h / 2));
+      const fu = this.volumetricFogPass.material.uniforms;
+      fu['fogDensity'].value        = vfog!.density ?? 0.05;
+      fu['fogAlbedo'].value.copy(vfog!.albedo ?? new THREE.Color(0.8, 0.85, 0.9));
+      fu['fogScatter'].value        = vfog!.scatter ?? 0.2;
+      fu['fogAbsorption'].value     = vfog!.absorption ?? 1.0;
+      fu['fogHeightBase'].value     = vfog!.heightBase ?? 0;
+      fu['fogHeightFalloff'].value  = vfog!.heightFalloff ?? 0.1;
+      fu['fogEmission'].value.copy(vfog!.emission ?? new THREE.Color(0, 0, 0));
+      fu['fogEmissionEnergy'].value = vfog!.emissionEnergy ?? 0;
+      fu['fogAffectSky'].value      = vfog!.affectSky ?? 0.5;
+      fu['fogSteps'].value          = vfog!.steps ?? 32;
+      fu['fogMaxDistance'].value    = vfog!.maxDistance ?? 200;
+      // Lights
+      const lights = vfog!.lights ?? [];
+      fu['fogLightCount'].value = Math.min(lights.length, 8);
+      for (let i = 0; i < 8; i++) {
+        const l = lights[i];
+        if (l) {
+          fu['fogLightType'].value[i] = l.type;
+          fu['fogLightPos'].value[i].copy(l.position);
+          fu['fogLightDir'].value[i].copy(l.direction);
+          fu['fogLightColor'].value[i].copy(l.color);
+          fu['fogLightIntensity'].value[i] = l.intensity;
+          fu['fogLightRange'].value[i] = l.range;
+          fu['fogLightOuterCos'].value[i] = l.outerCos;
+          fu['fogLightInnerCos'].value[i] = l.innerCos;
+        } else {
+          fu['fogLightIntensity'].value[i] = 0;
+        }
+      }
+      // FogVolume instances
+      const vols = vfog!.volumes ?? [];
+      fu['fogVolumeCount'].value = Math.min(vols.length, 8);
+      for (let i = 0; i < 8; i++) {
+        const v = vols[i];
+        if (v) {
+          fu['fogVolumePos'].value[i].copy(v.position);
+          fu['fogVolumeSize'].value[i].copy(v.size);
+          fu['fogVolumeShape'].value[i]    = v.shape;
+          fu['fogVolumeDensity'].value[i]  = v.density;
+          fu['fogVolumeAlbedo'].value[i].copy(v.albedo);
+          fu['fogVolumeEmission'].value[i].copy(v.emission);
+          fu['fogVolumeEmissionEnergy'].value[i] = v.emissionEnergy;
+          fu['fogVolumeNegative'].value[i] = v.negative ? 1.0 : 0.0;
+        } else {
+          fu['fogVolumeDensity'].value[i] = 0;
+          fu['fogVolumeNegative'].value[i] = 0;
+        }
+      }
+      this.volumetricFogPass.render(this.renderer, this.vfogRT);
+    }
+
     // 6. Volumetric Clouds
     const doClouds = !!clouds?.enabled;
     if (doClouds) {
@@ -794,6 +955,8 @@ export class PostProcessingPipeline {
     cu['ssgiEnabled'].value = doSSGI;
     cu['tClouds'].value = this.cloudRT?.texture ?? null;
     cu['cloudsEnabled'].value = doClouds;
+    cu['tVolumetricFog'].value = this.vfogRT?.texture ?? null;
+    cu['volumetricFogEnabled'].value = doVFog;
     cu['tDof'].value = this.dofBlurRT?.texture ?? null;
     cu['tDofCoC'].value = this.dofCocRT?.texture ?? null;
     cu['dofEnabled'].value = doDof;
@@ -844,7 +1007,7 @@ export class PostProcessingPipeline {
     this.dofCocRT?.setSize(width, height);
     this.dofBlurRT?.setSize(width, height);
     this.cloudRT?.setSize(halfW, halfH);
-
+    this.vfogRT?.setSize(halfW, halfH);
 
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
     this.ssaoBlurPass.material.uniforms['resolution'].value.set(width, height);
@@ -857,6 +1020,7 @@ export class PostProcessingPipeline {
     this.ssgiUpscalePass.material.uniforms['hiResolution'].value.set(width, height);
     this.dofBlurPass.material.uniforms['resolution'].value.set(width, height);
     this.cloudPass.material.uniforms['resolution'].value.set(halfW, halfH);
+    this.volumetricFogPass.material.uniforms['resolution'].value.set(halfW, halfH);
   }
 
   dispose(): void {
@@ -872,6 +1036,7 @@ export class PostProcessingPipeline {
     this.dofCocRT?.dispose();
     this.dofBlurRT?.dispose();
     this.cloudRT?.dispose();
+    this.vfogRT?.dispose();
     this.bloomBrightPass.dispose();
     this.bloomDownPass.dispose();
     this.bloomUpPass.dispose();
@@ -885,6 +1050,7 @@ export class PostProcessingPipeline {
     this.dofCocPass.dispose();
     this.dofBlurPass.dispose();
     this.cloudPass.dispose();
+    this.volumetricFogPass.dispose();
     this.compositePass.dispose();
     for (const unsub of this._shaderUnsubs) unsub();
     this._shaderUnsubs = [];

@@ -29,6 +29,7 @@ import { LightInspector } from './inspector/LightInspector';
 import { FuiInspector } from './inspector/FuiInspector';
 import { FuiComponentInspector } from './inspector/FuiComponentInspector';
 import { CSGBrushInspector } from './inspector/CSGBrushInspector';
+import { FogVolumeInspector } from './inspector/FogVolumeInspector';
 import { ScriptInspector } from './inspector/ScriptInspector';
 import { RigidbodyInspector, ColliderInspector, CharacterControllerInspector } from './inspector/PhysicsInspector';
 
@@ -50,6 +51,7 @@ const customInspectors: Record<string, React.FC<{ entity: EntityId; onRemoved: (
   TextRenderer: TextRendererInspector,
   Sprite: SpriteRendererInspector,
   CSGBrush: CSGBrushInspector,
+  FogVolume: FogVolumeInspector,
   Fui: FuiComponentInspector,
   Script: ScriptInspector,
   Rigidbody: RigidbodyInspector,

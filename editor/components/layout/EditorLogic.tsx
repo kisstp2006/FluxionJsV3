@@ -7,7 +7,7 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useEditor, useEngine, EditorTool } from '../../core/EditorContext';
-import { TransformComponent, CameraComponent } from '../../../src/core/Components';
+import { TransformComponent, CameraComponent, ColliderComponent, LightComponent, AudioSourceComponent, ParticleEmitterComponent } from '../../../src/core/Components';
 import { undoManager, TransformCommand, DeleteEntityCommand, DuplicateEntityCommand } from '../../core/UndoService';
 import { DebugDraw } from '../../../src/renderer/DebugDraw';
 import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
@@ -763,6 +763,117 @@ export const AssetHotReload: React.FC = () => {
       window.removeEventListener('fluxion:asset-changed', assetChangedHandler);
     };
   }, [engine]);
+
+  return null;
+};
+
+// ── Collider Gizmo Sync ──
+export const ColliderGizmoSync: React.FC = () => {
+  const { state } = useEditor();
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const ecs = engine.engine.ecs;
+      for (const eid of ecs.getAllEntities()) {
+        const col = ecs.getComponent<ColliderComponent>(eid, 'Collider');
+        if (!col || !col.enabled) continue;
+        const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
+        if (!t) continue;
+        GizmoRenderer.drawColliderGizmo(
+          t.position, t.quaternion,
+          col.shape, col.size, col.radius, col.height, col.offset,
+          col.isTrigger, state.selectedEntity === eid,
+        );
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine, state.selectedEntity]);
+
+  return null;
+};
+
+// ── Light Gizmo Sync ──
+export const LightGizmoSync: React.FC = () => {
+  const { state } = useEditor();
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const ecs = engine.engine.ecs;
+      for (const eid of ecs.getAllEntities()) {
+        const light = ecs.getComponent<LightComponent>(eid, 'Light');
+        if (!light || !light.enabled) continue;
+        const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
+        if (!t) continue;
+        GizmoRenderer.drawLightGizmo(
+          t.position, t.quaternion,
+          light.lightType, light.range, light.spotAngle, light.color,
+          state.selectedEntity === eid,
+        );
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine, state.selectedEntity]);
+
+  return null;
+};
+
+// ── Audio Source Gizmo Sync ──
+export const AudioGizmoSync: React.FC = () => {
+  const { state } = useEditor();
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const ecs = engine.engine.ecs;
+      for (const eid of ecs.getAllEntities()) {
+        const audio = ecs.getComponent<AudioSourceComponent>(eid, 'AudioSource');
+        if (!audio || !audio.enabled) continue;
+        const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
+        if (!t) continue;
+        GizmoRenderer.drawAudioGizmo(
+          t.position,
+          audio.minDistance, audio.maxDistance, audio.spatial,
+          state.selectedEntity === eid,
+        );
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine, state.selectedEntity]);
+
+  return null;
+};
+
+// ── Particle Emitter Gizmo Sync ──
+export const ParticleGizmoSync: React.FC = () => {
+  const { state } = useEditor();
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const ecs = engine.engine.ecs;
+      for (const eid of ecs.getAllEntities()) {
+        const emitter = ecs.getComponent<ParticleEmitterComponent>(eid, 'ParticleEmitter');
+        if (!emitter || !emitter.enabled) continue;
+        const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
+        if (!t) continue;
+        GizmoRenderer.drawParticleGizmo(
+          t.position, t.quaternion, emitter.spread,
+          state.selectedEntity === eid,
+        );
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine, state.selectedEntity]);
 
   return null;
 };

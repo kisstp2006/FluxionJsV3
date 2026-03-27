@@ -318,6 +318,13 @@ export class FuiComponent implements Component {
   playAnimation = '';
   /** Playback speed multiplier (1 = normal, 2 = double speed). */
   animationSpeed = 1.0;
+
+  /**
+   * @internal — Set by FuiScriptApi.create() when the document is built in code
+   * (via FuiBuilder) instead of loaded from a .fui file. Takes priority over fuiPath.
+   * Typed as `unknown` to keep the core module free of ui/ imports.
+   */
+  _inlineDoc: unknown = undefined;
 }
 
 // ── Animation Component (skeletal animation like Nuake) ──

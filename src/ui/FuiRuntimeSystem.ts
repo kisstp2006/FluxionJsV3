@@ -11,6 +11,7 @@ import { compileFui, hitTestFuiButtons, renderCompiledFuiToCanvas } from './FuiR
 import type { FuiCompiled, FuiCompiledNode } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
+import type { FuiDocument, FuiNode, FuiPanelNode } from './FuiTypes';
 
 type PendingClick = {
   entity: EntityId;
@@ -60,6 +61,8 @@ export class FuiRuntimeSystem implements System {
   private animStates: Map<EntityId, { animId: string; time: number }> = new Map();
   /** Tracks the fuiPath that was successfully loaded per entity — used to detect path changes without dirty flag */
   private loadedPaths: Map<EntityId, string> = new Map();
+  /** Tracks the _inlineDoc reference that was compiled per entity — detect reference changes */
+  private loadedInlineDocs: Map<EntityId, unknown> = new Map();
 
   private parentEl: HTMLElement | null = null;
 
@@ -75,6 +78,7 @@ export class FuiRuntimeSystem implements System {
     this.entries.clear();
     this.animStates.clear();
     this.loadedPaths.clear();
+    this.loadedInlineDocs.clear();
   }
 
   private disposeEntry(entity: EntityId): void {
@@ -267,9 +271,40 @@ export class FuiRuntimeSystem implements System {
       // Document is loaded lazily (and reloaded on property dirty or fuiPath change).
       const existing = this.entries.get(entity);
       const pathChanged = existing != null && this.loadedPaths.get(entity) !== comp.fuiPath;
+      const inlineDocChanged = comp._inlineDoc !== undefined &&
+        this.loadedInlineDocs.get(entity) !== comp._inlineDoc;
 
-      if (!existing || dirty || pathChanged) {
-        // Fire-and-forget: load document and rebuild entry on resolve.
+      if (!existing || dirty || pathChanged || inlineDocChanged) {
+        // ── Inline document (synchronous — built via FuiBuilder) ──
+        if (comp._inlineDoc !== undefined) {
+          const doc = comp._inlineDoc as FuiDocument;
+          const compiled = compileFui(doc);
+          const prev = this.entries.get(entity);
+          if (prev && prev.mode !== comp.mode) {
+            this.disposeEntry(entity);
+            this.entries.delete(entity);
+          }
+          if (comp.mode === 'screen') {
+            const screen = this.ensureScreenEntry(entity, comp, compiled);
+            screen.compiled = compiled;
+            screen.offscreenCanvas.width = compiled.doc.canvas.width;
+            screen.offscreenCanvas.height = compiled.doc.canvas.height;
+            this.renderScreen(screen, comp);
+          } else {
+            const world = this.ensureWorldEntry(entity, comp, compiled);
+            world.compiled = compiled;
+            world.mesh.geometry.dispose();
+            world.mesh.geometry = new THREE.PlaneGeometry(comp.worldWidth, comp.worldHeight);
+            world.offscreenCanvas.width = compiled.doc.canvas.width;
+            world.offscreenCanvas.height = compiled.doc.canvas.height;
+            this.renderWorld(world, comp);
+          }
+          this.loadedInlineDocs.set(entity, comp._inlineDoc);
+          clearDirty(comp);
+          continue;
+        }
+
+        // ── File-based document (async) ──
         const fuiPath = comp.fuiPath;
         if (!fuiPath) continue;
 
@@ -444,6 +479,41 @@ export class FuiRuntimeSystem implements System {
       }
       this.pendingClick = null;
     }
+  }
+
+  /**
+   * Mutate the text of a label or button node and immediately re-render.
+   * Called from scripts via `this.ui.setText(nodeId, value)`.
+   */
+  setNodeText(entity: EntityId, nodeId: string, text: string): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    node.text = text;
+    // Also patch the source document so animation recompilation doesn't overwrite.
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeText(comp._inlineDoc as FuiDocument, nodeId, text);
+    if (entry.mode === 'screen') this.renderScreen(entry.screen, comp);
+    else this.renderWorld(entry.world, comp);
+  }
+
+  private _patchDocNodeText(doc: FuiDocument, nodeId: string, text: string): void {
+    const walk = (node: FuiNode): boolean => {
+      if (node.id === nodeId) {
+        (node as FuiPanelNode & { text?: string }).text = text;
+        return true;
+      }
+      if (node.type === 'panel') {
+        for (const child of (node as FuiPanelNode).children ?? []) {
+          if (walk(child)) return true;
+        }
+      }
+      return false;
+    };
+    walk(doc.root);
   }
 }
 

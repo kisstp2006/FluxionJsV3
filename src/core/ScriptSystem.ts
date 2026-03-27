@@ -17,6 +17,7 @@ import { compileScript } from './ScriptCompiler';
 import { DebugDraw } from '../renderer/DebugDraw';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
+import { FuiBuilder } from '../ui/FuiBuilder';
 
 // ── Script execution scope extras ────────────────────────────
 
@@ -89,6 +90,7 @@ function loadScriptClass(
     'Debug',
     'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat4', 'Mat3',
     'Mathf',
+    'FuiBuilder',
     'console',
     compiledJs,
   )(
@@ -105,6 +107,7 @@ function loadScriptClass(
     MATH_SHORTCUTS.Mat4,
     MATH_SHORTCUTS.Mat3,
     Mathf,
+    FuiBuilder,
     console,
   );
   return mod.default;

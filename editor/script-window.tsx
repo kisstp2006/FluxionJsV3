@@ -241,6 +241,32 @@ declare class FluxionScript {
   startCoroutine(gen: Generator): symbol;
   stopCoroutine(id: symbol): void;
 
+  // FUI (Fluxion UI)
+  readonly ui: {
+    /** Load a .fui file onto the FuiComponent. */
+    load(path: string): void;
+    /** Attach an inline FuiDocument (built with FuiBuilder). */
+    create(doc: FuiDocument): void;
+    /** Update the text of a label or button node by ID. Re-renders immediately. */
+    setText(nodeId: string, text: string): void;
+    /** Show the FUI (enable the FuiComponent). */
+    show(): void;
+    /** Hide the FUI (disable the FuiComponent). */
+    hide(): void;
+    /** Toggle FUI visibility. */
+    setVisible(visible: boolean): void;
+    /** Start a named animation defined in the FUI document. */
+    playAnimation(id: string): void;
+    /** Stop the currently playing animation. */
+    stopAnimation(): void;
+    /** Move a screen-space FUI to the given pixel position. */
+    setScreenPosition(x: number, y: number): void;
+    /** Subscribe to a specific button click. Auto-cleaned on script destroy. */
+    onButtonClick(elementId: string, callback: () => void): void;
+    /** Subscribe to any button click on this entity's FUI. */
+    onAnyClick(callback: (elementId: string) => void): void;
+  };
+
   // Logging
   log(...args: any[]): void;
   warn(...args: any[]): void;
@@ -251,6 +277,53 @@ declare class FluxionScript {
   onUpdate?(dt: number): void;
   onFixedUpdate?(dt: number): void;
   onDestroy?(): void;
+}
+
+// ── FUI types (available in scripts via FuiBuilder) ──────────────────────────
+
+interface FuiRect { x: number; y: number; w: number; h: number; }
+type FuiNodeType = 'panel' | 'label' | 'button';
+type FuiMode = 'screen' | 'world';
+type FuiAlign = 'left' | 'center' | 'right';
+type FuiAnimatableProperty = 'opacity' | 'x' | 'y' | 'w' | 'h' | 'fontSize';
+
+interface FuiDocument {
+  version: number;
+  mode: FuiMode;
+  canvas: { width: number; height: number };
+  root: any;
+  animations?: any[];
+}
+
+interface FuiPanelOpts {
+  bg?: string; border?: string; borderWidth?: number;
+  radius?: number; opacity?: number; parent?: string;
+}
+interface FuiLabelOpts {
+  color?: string; fontSize?: number; align?: FuiAlign;
+  opacity?: number; parent?: string;
+}
+interface FuiButtonOpts {
+  bg?: string; border?: string; borderWidth?: number;
+  textColor?: string; fontSize?: number; radius?: number;
+  padding?: number; opacity?: number; parent?: string;
+}
+interface FuiAnimTrackSpec {
+  nodeId: string;
+  property: FuiAnimatableProperty;
+  keyframes: Array<{ time: number; value: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'step' }>;
+}
+
+declare class FuiBuilder {
+  constructor(width?: number, height?: number, mode?: FuiMode);
+  panel(id: string, x: number, y: number, w: number, h: number, opts?: FuiPanelOpts): this;
+  label(id: string, x: number, y: number, w: number, h: number, text: string, opts?: FuiLabelOpts): this;
+  button(id: string, x: number, y: number, w: number, h: number, text: string, opts?: FuiButtonOpts): this;
+  background(color: string, opts?: { opacity?: number }): this;
+  animation(id: string, name: string, duration: number, loop: boolean, tracks: FuiAnimTrackSpec[]): this;
+  build(): FuiDocument;
+  toJSON(): string;
+  static genId(prefix?: string): string;
 }
 `;
 

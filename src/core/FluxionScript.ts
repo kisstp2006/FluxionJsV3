@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { EntityId, ECSManager } from './ECS';
+import { markDirty } from './ECS';
 import type { Engine } from './Engine';
 import type { InputManager } from '../input/InputManager';
 import type { FluxionRenderer } from '../renderer/Renderer';
@@ -250,6 +251,125 @@ export class FluxionScript {
   /** Stop a coroutine by the handle returned from startCoroutine(). */
   stopCoroutine(id: symbol): void {
     this._coroutines.delete(id);
+  }
+
+  // ── FUI (Fluxion UI) ─────────────────────────────────────────
+
+  /**
+   * Fluent API for the FuiComponent on this entity.
+   * The entity must have a FuiComponent added in the editor (or via addComponent).
+   *
+   * @example
+   *   // Load a .fui file
+   *   this.ui.load('UI/HUD.fui');
+   *
+   *   // Update a label
+   *   this.ui.setText('score_label', `Score: ${this.score}`);
+   *
+   *   // React to button clicks
+   *   this.ui.onButtonClick('play_btn', () => this.startGame());
+   */
+  get ui() {
+    const ecs = this._ecs;
+    const engine = this._engine;
+    const entity = this.entity;
+
+    const cleanupFns = this._cleanupFns;
+    const getComp   = () => ecs.getComponent<any>(entity, 'Fui');
+    const getRuntime = () => ecs.getSystem<any>('FuiRuntime');
+
+    return {
+      /** Load a .fui file. Replaces any inline document. */
+      load(path: string): void {
+        const comp = getComp();
+        if (!comp) return;
+        comp.fuiPath = path;
+        comp._inlineDoc = undefined;
+        markDirty(comp);
+      },
+
+      /**
+       * Attach a FuiDocument built with FuiBuilder (inline, no file needed).
+       * @example
+       *   const doc = new FuiBuilder(400, 200)
+       *     .label('hp', 10, 10, 200, 30, 'HP: 100')
+       *     .build();
+       *   this.ui.create(doc);
+       */
+      create(doc: unknown): void {
+        const comp = getComp();
+        if (!comp) return;
+        comp._inlineDoc = doc;
+        comp.fuiPath = '';
+        markDirty(comp);
+      },
+
+      /** Update the text of a label or button node by ID. Re-renders immediately. */
+      setText(nodeId: string, text: string): void {
+        getRuntime()?.setNodeText?.(entity, nodeId, text);
+      },
+
+      /** Show the FUI (set comp.enabled = true). */
+      show(): void {
+        const comp = getComp();
+        if (comp) comp.enabled = true;
+      },
+
+      /** Hide the FUI (set comp.enabled = false). */
+      hide(): void {
+        const comp = getComp();
+        if (comp) comp.enabled = false;
+      },
+
+      /** Toggle FUI visibility. */
+      setVisible(visible: boolean): void {
+        const comp = getComp();
+        if (comp) comp.enabled = visible;
+      },
+
+      /** Start a named animation defined in the FUI document. */
+      playAnimation(id: string): void {
+        const comp = getComp();
+        if (comp) comp.playAnimation = id;
+      },
+
+      /** Stop the currently playing animation. */
+      stopAnimation(): void {
+        const comp = getComp();
+        if (comp) comp.playAnimation = '';
+      },
+
+      /** Move a screen-space FUI to the given pixel position. */
+      setScreenPosition(x: number, y: number): void {
+        const comp = getComp();
+        if (comp) { comp.screenX = x; comp.screenY = y; }
+      },
+
+      /**
+       * Subscribe to a specific button click by element ID.
+       * The listener is auto-cleaned up when the script is destroyed.
+       * @example this.ui.onButtonClick('play_btn', () => this.startGame());
+       */
+      onButtonClick(elementId: string, callback: () => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string }>(
+          'ui:click',
+          (data) => { if (data.entity === entity && data.elementId === elementId) callback(); },
+        );
+        cleanupFns.push(unsub);
+      },
+
+      /**
+       * Subscribe to any button click on this entity's FUI.
+       * @example this.ui.onAnyClick((id) => console.log('clicked', id));
+       */
+      onAnyClick(callback: (elementId: string) => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string }>(
+          'ui:click',
+          (data) => { if (data.entity === entity) callback(data.elementId); },
+        );
+        cleanupFns.push(unsub);
+      },
+    };
   }
 
   // ── Audio ────────────────────────────────────────────────────

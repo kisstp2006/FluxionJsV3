@@ -11,6 +11,7 @@ import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
 import { FluxionScript } from '../../../../src/core/FluxionScript';
+import { EntityRef } from '../../../../src/core/EntityRef';
 import { compileScript } from '../../../../src/core/ScriptCompiler';
 import { RemoveComponentButton } from './RemoveComponentButton';
 import { getFileSystem } from '../../../../src/filesystem';
@@ -29,32 +30,55 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionScript', 'console', compiledJs)(mod, FluxionScript, console);
+    new Function('exports', 'FluxionScript', 'EntityRef', 'console', compiledJs)(
+      mod, FluxionScript, EntityRef, console,
+    );
   } catch {
     return null;
   }
   return mod.default;
 }
 
-function getScriptProperties(
-  ScriptClass: any,
-  overrides: Record<string, any>,
-): Array<{ key: string; type: 'number' | 'string' | 'boolean'; value: any; default: any }> {
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity';
+
+interface ScriptProp {
+  key: string;
+  type: ScriptPropType;
+  /** For type==='entity': the component type constraint, or undefined for any entity. */
+  requireComponent?: string;
+  value: any;
+  default: any;
+}
+
+function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): ScriptProp[] {
   if (!ScriptClass) return [];
   try {
     const probe = new ScriptClass();
-    // Inject minimal stubs so the constructor doesn't crash on system calls.
-    // All keys start with _ so they are filtered from inspector display.
     Object.assign(probe, { _ecs: null, _engine: null, _input: null, _renderer: null, _audio: null });
-    return Object.keys(probe)
-      .filter((k) => !k.startsWith('_') && typeof probe[k] !== 'function')
-      .map((k) => ({
-        key: k,
-        type: typeof probe[k] as 'number' | 'string' | 'boolean',
-        default: probe[k],
-        value: k in overrides ? overrides[k] : probe[k],
-      }))
-      .filter((p) => p.type === 'number' || p.type === 'string' || p.type === 'boolean');
+    const props: ScriptProp[] = [];
+    for (const k of Object.keys(probe)) {
+      if (k.startsWith('_') || typeof probe[k] === 'function') continue;
+      const raw = probe[k];
+      if (raw instanceof EntityRef) {
+        const override = overrides[k];
+        const entityId = typeof override?.entity === 'number' ? override.entity : null;
+        props.push({
+          key: k,
+          type: 'entity',
+          requireComponent: raw.requireComponent,
+          default: raw,
+          value: { entity: entityId, requireComponent: raw.requireComponent },
+        });
+      } else if (typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean') {
+        props.push({
+          key: k,
+          type: typeof raw as 'number' | 'string' | 'boolean',
+          default: raw,
+          value: k in overrides ? overrides[k] : raw,
+        });
+      }
+    }
+    return props;
   } catch {
     return [];
   }
@@ -62,12 +86,64 @@ function getScriptProperties(
 
 // ── Per-entry sub-component ───────────────────────────────────
 
+// ── Entity picker ─────────────────────────────────────────────
+
+const EntityRefInput: React.FC<{
+  entityId: EntityId | null;
+  requireComponent?: string;
+  engine: any;
+  onChange: (entityId: EntityId | null) => void;
+}> = ({ entityId, requireComponent, engine, onChange }) => {
+  const ecs = engine?.engine?.ecs;
+  if (!ecs) return null;
+
+  // Collect candidate entities filtered by requireComponent
+  const candidates: Array<{ id: EntityId; name: string }> = [];
+  for (const id of ecs.getAllEntities()) {
+    if (requireComponent && !ecs.hasComponent(id, requireComponent)) continue;
+    candidates.push({ id, name: ecs.getEntityName(id) || `Entity ${id}` });
+  }
+  candidates.sort((a, b) => a.name.localeCompare(b.name));
+
+  const selectStyle: React.CSSProperties = {
+    width: '100%',
+    background: 'var(--bg-input)',
+    border: '1px solid var(--border)',
+    borderRadius: 3,
+    color: entityId === null ? 'var(--text-muted)' : 'var(--text-primary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 11,
+    padding: '3px 6px',
+  };
+
+  return (
+    <select
+      style={selectStyle}
+      value={entityId ?? ''}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === '' ? null : Number(v));
+      }}
+    >
+      <option value="">— None —</option>
+      {candidates.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}{requireComponent ? ` [${requireComponent}]` : ''}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+// ── Per-entry sub-component ───────────────────────────────────
+
 const ScriptEntryRow: React.FC<{
   entry: ScriptEntry;
   index: number;
+  engine: any;
   onChange: (index: number, updated: Partial<ScriptEntry>) => void;
   onRemove: (index: number) => void;
-}> = ({ entry, index, onChange, onRemove }) => {
+}> = ({ entry, index, engine, onChange, onRemove }) => {
   const [scriptClass, setScriptClass] = useState<any>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -249,6 +325,14 @@ const ScriptEntryRow: React.FC<{
                   }}
                 />
               )}
+              {p.type === 'entity' && (
+                <EntityRefInput
+                  entityId={p.value?.entity ?? null}
+                  requireComponent={p.requireComponent}
+                  engine={engine}
+                  onChange={(id) => setOverride(p.key, { entity: id, requireComponent: p.requireComponent })}
+                />
+              )}
             </PropertyRow>
           ))}
         </div>
@@ -323,6 +407,7 @@ export const ScriptInspector: React.FC<{ entity: EntityId; onRemoved: () => void
           key={i}
           entry={entry}
           index={i}
+          engine={engine}
           onChange={handleChange}
           onRemove={handleRemoveEntry}
         />

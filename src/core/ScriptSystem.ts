@@ -18,6 +18,7 @@ import { DebugDraw } from '../renderer/DebugDraw';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiBuilder } from '../ui/FuiBuilder';
+import { EntityRef } from './EntityRef';
 
 // ── Script execution scope extras ────────────────────────────
 
@@ -91,6 +92,7 @@ function loadScriptClass(
     'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat4', 'Mat3',
     'Mathf',
     'FuiBuilder',
+    'EntityRef',
     'console',
     compiledJs,
   )(
@@ -108,6 +110,7 @@ function loadScriptClass(
     MATH_SHORTCUTS.Mat3,
     Mathf,
     FuiBuilder,
+    EntityRef,
     console,
   );
   return mod.default;
@@ -289,7 +292,13 @@ export class ScriptSystem implements System {
 
     // Apply inspector property overrides
     for (const [key, val] of Object.entries(entry.properties)) {
-      (instance as any)[key] = val;
+      const current = (instance as any)[key];
+      if (current instanceof EntityRef && val && typeof val === 'object') {
+        // Restore EntityRef — copy entityId, keep the requireComponent constraint.
+        current.entity = typeof val.entity === 'number' ? val.entity : null;
+      } else {
+        (instance as any)[key] = val;
+      }
     }
 
     // Store instance — onStart() is deferred until the first update() tick in play mode

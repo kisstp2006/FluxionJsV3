@@ -14,12 +14,26 @@ export class TransformComponent implements Component {
   enabled = true;
 
   position = new THREE.Vector3(0, 0, 0);
-  rotation = new THREE.Euler(0, 0, 0);
   scale = new THREE.Vector3(1, 1, 1);
-  quaternion = new THREE.Quaternion();
+
+  /**
+   * Euler rotation — mirrors THREE.Object3D behaviour:
+   * modifying .x/.y/.z automatically syncs `quaternion`, and vice-versa.
+   */
+  readonly rotation: THREE.Euler;
+  readonly quaternion: THREE.Quaternion;
 
   private _matrix = new THREE.Matrix4();
   private _worldMatrix = new THREE.Matrix4();
+
+  constructor() {
+    this.quaternion = new THREE.Quaternion();
+    this.rotation    = new THREE.Euler(0, 0, 0);
+
+    // Mirror what THREE.Object3D does internally so both stay in sync.
+    (this.rotation    as any)._onChange(() => { this.quaternion.setFromEuler(this.rotation, false); });
+    (this.quaternion  as any)._onChange(() => { this.rotation.setFromQuaternion(this.quaternion, undefined, false); });
+  }
 
   get localMatrix(): THREE.Matrix4 {
     this._matrix.compose(this.position, this.quaternion, this.scale);
@@ -37,8 +51,7 @@ export class TransformComponent implements Component {
   lookAt(target: THREE.Vector3): void {
     const m = new THREE.Matrix4();
     m.lookAt(this.position, target, new THREE.Vector3(0, 1, 0));
-    this.quaternion.setFromRotationMatrix(m);
-    this.rotation.setFromQuaternion(this.quaternion);
+    this.quaternion.setFromRotationMatrix(m); // quaternion onChange → rotation syncs
   }
 }
 

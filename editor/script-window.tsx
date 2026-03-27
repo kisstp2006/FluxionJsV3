@@ -325,6 +325,30 @@ declare class FuiBuilder {
   toJSON(): string;
   static genId(prefix?: string): string;
 }
+
+// ── EntityRef ─────────────────────────────────────────────────
+
+/**
+ * A typed entity reference that is exposed as an entity picker in the Inspector.
+ * @example
+ *   target      = new EntityRef();            // any entity
+ *   cameraSlot  = new EntityRef('Camera');    // only entities with Camera
+ *   rbSlot      = new EntityRef('Rigidbody');
+ *
+ *   onUpdate() {
+ *     if (!this.target.isValid) return;
+ *     const tf = this.getComponentOf(this.target.entity, 'Transform');
+ *   }
+ */
+declare class EntityRef {
+  /** The assigned entity ID, or null when unassigned. */
+  entity: number | null;
+  /** Component type constraint shown in the Inspector filter (read-only). */
+  readonly requireComponent: string | undefined;
+  /** True when an entity is assigned. */
+  readonly isValid: boolean;
+  constructor(requireComponent?: string);
+}
 `;
 
 // ── Types ─────────────────────────────────────────────────────

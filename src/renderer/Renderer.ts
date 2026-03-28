@@ -774,17 +774,25 @@ class LightSystem implements System {
   readonly requiredComponents = ['Transform', 'Light'];
   priority = 5;
   enabled = true;
-  private tracked: Set<EntityId> = new Set();
-  private cookieLoading: Set<EntityId> = new Set();
+  private tracked:       Set<EntityId>               = new Set();
+  private cookieLoading: Set<EntityId>               = new Set();
+  private lastLightType: Map<EntityId, string>       = new Map();
+  /** Tracks the cookie path that is currently loaded/loading per entity. */
+  private lastCookiePath: Map<EntityId, string|null> = new Map();
+  /** Separate target store so we can remove targets even after lightComp is gone. */
+  private targets: Map<EntityId, THREE.Object3D>     = new Map();
+  /** Tracks last shadow map size per entity to detect runtime changes. */
+  private lastShadowSize: Map<EntityId, number>      = new Map();
 
   constructor(private renderer: FluxionRenderer) {}
-
-  private lastLightType: Map<EntityId, string> = new Map();
 
   onSceneClear(): void {
     this.tracked.clear();
     this.cookieLoading.clear();
     this.lastLightType.clear();
+    this.lastCookiePath.clear();
+    this.targets.clear();
+    this.lastShadowSize.clear();
   }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
@@ -793,109 +801,165 @@ class LightSystem implements System {
       const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
       if (!lightComp || !transform) continue;
 
-      // Detect lightType change → destroy old light and recreate
-      const prevType = this.lastLightType.get(entity);
-      if (lightComp.light && prevType !== undefined && prevType !== lightComp.lightType) {
-        if ((lightComp.light as any).target) {
-          this.renderer.scene.remove((lightComp.light as any).target);
-        }
+      // ── Detect lightType change → destroy old light and recreate ────────
+      const prevType     = this.lastLightType.get(entity);
+      const prevShadSize = this.lastShadowSize.get(entity);
+      const typeChanged  = prevType !== undefined && prevType !== lightComp.lightType;
+      const shadowResChanged = lightComp.light !== null
+        && prevShadSize !== undefined
+        && prevShadSize !== lightComp.shadowMapSize;
+
+      if (lightComp.light && (typeChanged || shadowResChanged)) {
+        const target = this.targets.get(entity);
+        if (target) { this.renderer.scene.remove(target); this.targets.delete(entity); }
         this.renderer.removeObject(entity);
         lightComp.light = null;
         this.tracked.delete(entity);
+        // Force cookie reload after recreate
+        this.lastCookiePath.delete(entity);
+        this.cookieLoading.delete(entity);
       }
       this.lastLightType.set(entity, lightComp.lightType);
+      this.lastShadowSize.set(entity, lightComp.shadowMapSize);
 
-      // Create light if needed
+      // ── Create light if needed ───────────────────────────────────────────
       if (!lightComp.light) {
         lightComp.light = this.createLight(lightComp);
-        this.renderer.addObject(entity, lightComp.light);
+        const target = (lightComp.light as any).target as THREE.Object3D | undefined;
+        if (target) { this.renderer.scene.add(target); this.targets.set(entity, target); }
+        this.renderer.addObject(entity, lightComp.light!);
         this.tracked.add(entity);
       }
 
-      // Sync light properties every frame — TransformSystem already cleared
-      // transform.dirty/worldDirty before we run, so those flags cannot gate here.
-      lightComp.light.color.copy(lightComp.color);
-      lightComp.light.intensity = lightComp.intensity;
+      const light = lightComp.light!;
 
-      // When CSM is active, suppress the user's directional light (CSM provides its own)
-      if (lightComp.light instanceof THREE.DirectionalLight && this.renderer.csm) {
-        lightComp.light.intensity = 0;
-        lightComp.light.castShadow = false;
+      // ── Respect enabled flag — hide/show without removing from scene ─────
+      const shouldBeVisible = lightComp.enabled;
+      light.visible = shouldBeVisible;
+      if (!shouldBeVisible) {
+        // Still clear dirty to avoid stale flags, but skip all further sync
+        if (isDirty(lightComp)) clearDirty(lightComp);
+        continue;
       }
 
-      if (lightComp.light instanceof THREE.PointLight) {
-        lightComp.light.distance = lightComp.range;
-        lightComp.light.castShadow = lightComp.castShadow;
-      }
-      if (lightComp.light instanceof THREE.SpotLight) {
-        lightComp.light.distance = lightComp.range;
-        lightComp.light.angle = THREE.MathUtils.degToRad(lightComp.spotAngle);
-        lightComp.light.penumbra = lightComp.spotPenumbra;
-        lightComp.light.castShadow = lightComp.castShadow;
+      // ── Sync shared properties ───────────────────────────────────────────
+      light.color.copy(lightComp.color);
+      light.intensity = lightComp.intensity;
 
-        // Update target from transform forward direction (local -Z)
+      if (light instanceof THREE.SpotLight) {
+        light.distance   = lightComp.range;
+        light.angle      = THREE.MathUtils.degToRad(lightComp.spotAngle);
+        light.penumbra   = lightComp.spotPenumbra;
+        light.castShadow = lightComp.castShadow;
+
+        // Update target (local -Z direction)
         const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
-        lightComp.light.target.position.copy(transform.position).add(forward);
-        lightComp.light.target.updateMatrixWorld();
+        light.target.position.copy(transform.position).add(forward);
+        light.target.updateMatrixWorld();
 
-        // Cookie / projection texture
-        if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
-          this.cookieLoading.add(entity);
-          const absPath = projectManager.resolvePath(lightComp.cookieTexturePath);
-          const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
-          new THREE.TextureLoader().load(
-            url,
-            (tex) => {
-              lightComp.cookieTexture = tex;
-              if (lightComp.light instanceof THREE.SpotLight) {
-                lightComp.light.map = tex;
-              }
-              this.cookieLoading.delete(entity);
-            },
-            undefined,
-            (_err) => {
-              DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
-              this.cookieLoading.delete(entity);
-            },
-          );
-        }
-        if (lightComp.cookieTexture) {
-          lightComp.light.map = lightComp.cookieTexture;
-        }
-        if (!lightComp.cookieTexturePath && lightComp.cookieTexture) {
-          lightComp.cookieTexture.dispose();
-          lightComp.cookieTexture = null;
-          lightComp.light.map = null;
-          this.cookieLoading.delete(entity);
-        }
+        // ── Cookie / projection texture ──────────────────────────────────
+        this._syncCookieTexture(entity, lightComp);
       }
-      if (lightComp.light instanceof THREE.DirectionalLight) {
-        if (!this.renderer.csm) {
-          lightComp.light.castShadow = lightComp.castShadow;
+
+      if (light instanceof THREE.PointLight) {
+        light.distance   = lightComp.range;
+        light.castShadow = lightComp.castShadow;
+      }
+
+      if (light instanceof THREE.DirectionalLight) {
+        // When CSM is active, suppress the user's directional light (CSM provides its own)
+        if (this.renderer.csm) {
+          light.intensity   = 0;
+          light.castShadow  = false;
+        } else {
+          light.castShadow = lightComp.castShadow;
         }
 
-        // Update target from transform forward direction (local -Z)
+        // Update target (local -Z direction)
         const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
-        lightComp.light.target.position.copy(transform.position).add(forward);
-        lightComp.light.target.updateMatrixWorld();
+        light.target.position.copy(transform.position).add(forward);
+        light.target.updateMatrixWorld();
       }
 
       if (isDirty(lightComp)) clearDirty(lightComp);
     }
 
-    // Cleanup removed
+    // ── Cleanup removed entities / components ────────────────────────────
     for (const entity of this.tracked) {
       if (!entities.has(entity)) {
+        // Remove target using our own map — safe even if lightComp is already gone
+        const target = this.targets.get(entity);
+        if (target) { this.renderer.scene.remove(target); this.targets.delete(entity); }
+
+        // Dispose cookie texture if still live
         const lightComp = ecs.getComponent<LightComponent>(entity, 'Light');
-        if (lightComp?.light && (lightComp.light as any).target) {
-          this.renderer.scene.remove((lightComp.light as any).target);
+        if (lightComp?.cookieTexture) {
+          lightComp.cookieTexture.dispose();
+          lightComp.cookieTexture = null;
         }
+
         this.renderer.removeObject(entity);
         this.tracked.delete(entity);
         this.lastLightType.delete(entity);
+        this.lastCookiePath.delete(entity);
+        this.lastShadowSize.delete(entity);
         this.cookieLoading.delete(entity);
       }
     }
+  }
+
+  // ── Cookie texture sync ─────────────────────────────────────────────────────
+  private _syncCookieTexture(entity: EntityId, lightComp: LightComponent): void {
+    const currentPath = lightComp.cookieTexturePath ?? null;
+    const loadedPath  = this.lastCookiePath.get(entity);
+
+    // Path changed (including cleared) → dispose old texture and reset
+    if (loadedPath !== currentPath) {
+      if (lightComp.cookieTexture) {
+        lightComp.cookieTexture.dispose();
+        lightComp.cookieTexture = null;
+      }
+      if (lightComp.light instanceof THREE.SpotLight) lightComp.light.map = null;
+      this.lastCookiePath.set(entity, currentPath);
+      this.cookieLoading.delete(entity);
+    }
+
+    if (!currentPath) return;
+
+    // Already loaded for this path → just apply
+    if (lightComp.cookieTexture) {
+      if (lightComp.light instanceof THREE.SpotLight) {
+        lightComp.light.map = lightComp.cookieTexture;
+      }
+      return;
+    }
+
+    // Start loading if not already in-flight
+    if (this.cookieLoading.has(entity)) return;
+    this.cookieLoading.add(entity);
+
+    const absPath = projectManager.resolvePath(currentPath);
+    const url     = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+
+    new THREE.TextureLoader().load(
+      url,
+      (tex) => {
+        // Guard: entity destroyed or path changed while loading
+        if (this.lastCookiePath.get(entity) !== currentPath) {
+          tex.dispose();
+          this.cookieLoading.delete(entity);
+          return;
+        }
+        lightComp.cookieTexture = tex;
+        if (lightComp.light instanceof THREE.SpotLight) lightComp.light.map = tex;
+        this.cookieLoading.delete(entity);
+      },
+      undefined,
+      (_err) => {
+        DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
+        this.cookieLoading.delete(entity);
+      },
+    );
   }
 
   private createLight(comp: LightComponent): THREE.Light {

@@ -6,24 +6,23 @@
 // ============================================================
 
 import * as THREE from 'three';
-import type { System, ECSManager, EntityId } from './ECS';
-import type { Engine } from './Engine';
+import type { System, ECSManager, EntityId } from '../core/ECS';
+import type { Engine } from '../core/Engine';
 import type { InputManager } from '../input/InputManager';
 import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
-import { ScriptComponent, ScriptEntry } from './Components';
-import { FluxionScript } from './FluxionScript';
+import { ScriptComponent, ScriptEntry } from '../core/Components';
+import { FluxionBehaviour } from './FluxionBehaviour';
 import { compileScript } from './ScriptCompiler';
 import { DebugDraw } from '../renderer/DebugDraw';
-import { DebugConsole } from './DebugConsole';
+import { DebugConsole } from '../core/DebugConsole';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiBuilder } from '../ui/FuiBuilder';
 import { EntityRef } from './EntityRef';
 
-// ── Script execution scope extras ────────────────────────────
+// ── THREE math shortcuts injected into every script's scope ──
 
-/** THREE math shortcuts injected into every script's scope. */
 const MATH_SHORTCUTS = {
   Vec2: THREE.Vector2,
   Vec3: THREE.Vector3,
@@ -35,59 +34,48 @@ const MATH_SHORTCUTS = {
   Mat3: THREE.Matrix3,
 };
 
-/** Mathf — common math helpers injected into every script's scope. */
 const Mathf = {
-  PI: Math.PI,
-  TAU: Math.PI * 2,
-  Deg2Rad: Math.PI / 180,
-  Rad2Deg: 180 / Math.PI,
-  lerp:         (a: number, b: number, t: number) => a + (b - a) * t,
-  clamp:        (v: number, min: number, max: number) => Math.max(min, Math.min(max, v)),
-  clamp01:      (v: number) => Math.max(0, Math.min(1, v)),
-  smoothstep:   (e0: number, e1: number, x: number) => {
+  PI:         Math.PI,
+  TAU:        Math.PI * 2,
+  Deg2Rad:    Math.PI / 180,
+  Rad2Deg:    180 / Math.PI,
+  lerp:       (a: number, b: number, t: number) => a + (b - a) * t,
+  clamp:      (v: number, min: number, max: number) => Math.max(min, Math.min(max, v)),
+  clamp01:    (v: number) => Math.max(0, Math.min(1, v)),
+  smoothstep: (e0: number, e1: number, x: number) => {
     const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
     return t * t * (3 - 2 * t);
   },
   approximately: (a: number, b: number) => Math.abs(a - b) < 1e-6,
-  moveTowards:  (cur: number, tgt: number, d: number) =>
+  moveTowards:   (cur: number, tgt: number, d: number) =>
     Math.abs(tgt - cur) <= d ? tgt : cur + Math.sign(tgt - cur) * d,
-  repeat:       (t: number, len: number) => t - Math.floor(t / len) * len,
-  deltaAngle:   (a: number, b: number) => {
+  repeat:        (t: number, len: number) => t - Math.floor(t / len) * len,
+  deltaAngle:    (a: number, b: number) => {
     const d = (b - a) % 360;
     return d > 180 ? d - 360 : d < -180 ? d + 360 : d;
   },
-  pingPong:     (t: number, len: number) => {
+  pingPong: (t: number, len: number) => {
     const r = (t % (len * 2) + len * 2) % (len * 2);
     return len - Math.abs(r - len);
   },
   abs:   Math.abs,  ceil:  Math.ceil,  floor: Math.floor, round: Math.round,
-  sin:   Math.sin,  cos:   Math.cos,   atan2: Math.atan2,  sqrt:  Math.sqrt,
-  sign:  Math.sign, pow:   Math.pow,   log:   Math.log,    exp:   Math.exp,
+  sin:   Math.sin,  cos:   Math.cos,   atan2: Math.atan2, sqrt:  Math.sqrt,
+  sign:  Math.sign, pow:   Math.pow,   log:   Math.log,   exp:   Math.exp,
   min:   Math.min,  max:   Math.max,
 };
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── Script loader ─────────────────────────────────────────────
 
-/**
- * Execute compiled CommonJS JS in an isolated scope and return
- * whatever was set on `exports.default`.
- *
- * Scope injections available inside every script:
- *   - FluxionScript  — base class
- *   - THREE          — full three.js namespace
- *   - Debug          — DebugDraw (static draw helpers)
- *   - Vec2/Vec3/Vec4/Quat/Color/Euler/Mat4/Mat3 — THREE shortcuts
- *   - console        — standard console
- */
 function loadScriptClass(
   compiledJs: string,
-  FluxionScriptBase: typeof FluxionScript,
+  BehaviourBase: typeof FluxionBehaviour,
 ): any {
   const mod: { default: any } = { default: null };
   // eslint-disable-next-line no-new-func
   new Function(
     'exports',
-    'FluxionScript',
+    'FluxionBehaviour',
+    'FluxionScript',   // backward-compat alias
     'THREE',
     'Debug',
     'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat4', 'Mat3',
@@ -98,7 +86,8 @@ function loadScriptClass(
     compiledJs,
   )(
     mod,
-    FluxionScriptBase,
+    BehaviourBase,
+    BehaviourBase,     // FluxionScript alias → same class
     THREE,
     DebugDraw,
     MATH_SHORTCUTS.Vec2,
@@ -117,7 +106,7 @@ function loadScriptClass(
   return mod.default;
 }
 
-// ── ScriptSystem ─────────────────────────────────────────────
+// ── ScriptSystem ──────────────────────────────────────────────
 
 export class ScriptSystem implements System {
   readonly name = 'ScriptSystem';
@@ -125,27 +114,25 @@ export class ScriptSystem implements System {
   priority = 100;
   enabled = true;
 
-  /** Max ms allowed per onUpdate call (0 = disabled). Set from project settings. */
+  /** Max ms allowed per update() call (0 = disabled). Set from project settings. */
   updateTimeout = 0;
 
-  private engine: Engine;
-  private input: InputManager;
+  private engine:   Engine;
+  private input:    InputManager;
   private renderer: FluxionRenderer | null;
-  private audio: AudioSystem | null;
+  private audio:    AudioSystem | null;
 
   constructor(
-    engine: Engine,
-    input: InputManager,
+    engine:   Engine,
+    input:    InputManager,
     renderer: FluxionRenderer | null = null,
-    audio: AudioSystem | null = null,
+    audio:    AudioSystem    | null = null,
   ) {
-    this.engine = engine;
-    this.input = input;
+    this.engine   = engine;
+    this.input    = input;
     this.renderer = renderer;
-    this.audio = audio;
+    this.audio    = audio;
   }
-
-  // ── Lifecycle ────────────────────────────────────────────
 
   init(): void {}
 
@@ -159,10 +146,9 @@ export class ScriptSystem implements System {
         if (!entry.enabled || !entry.path) continue;
 
         if (!comp._instances.has(entry.path)) {
-          // Not yet loaded — kick off async load (guards against double-load)
           if (!comp._loading.has(entry.path)) {
             comp._loading.add(entry.path);
-            this.loadScript(entity, comp, entry, ecs).catch((err) => {
+            this._loadScript(entity, comp, entry, ecs).catch((err) => {
               DebugConsole.LogError(`[ScriptSystem] Failed to load "${entry.path}": ${err}`);
               comp._loading.delete(entry.path);
             });
@@ -173,33 +159,39 @@ export class ScriptSystem implements System {
         const inst = comp._instances.get(entry.path);
         if (!inst) continue;
 
-        // Scripts only run in play mode
         if (this.engine.simulationPaused) continue;
 
-        // Call onStart() before the very first onUpdate() — mirrors Unity behaviour
+        // Call start() before the very first update() — mirrors Unity behaviour
         if (!inst._started) {
           inst._started = true;
           try {
-            inst.onStart?.();
+            const result = inst.start?.();
+            if (result instanceof Promise) {
+              result.catch((err: unknown) =>
+                DebugConsole.LogError(`[ScriptSystem] start() async error in "${entry.path}": ${err}`),
+              );
+            }
           } catch (err) {
-            DebugConsole.LogError(`[ScriptSystem] onStart error in "${entry.path}": ${err}`);
+            DebugConsole.LogError(`[ScriptSystem] start() error in "${entry.path}": ${err}`);
           }
         }
 
         try {
           if (this.updateTimeout > 0) {
             const t0 = performance.now();
-            inst.onUpdate?.(dt);
+            inst.update?.(dt);
             const elapsed = performance.now() - t0;
             if (elapsed > this.updateTimeout) {
-              DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" exceeded ${this.updateTimeout}ms in onUpdate (${elapsed.toFixed(1)}ms)`);
+              DebugConsole.LogWarning(
+                `[ScriptSystem] "${entry.path}" exceeded ${this.updateTimeout}ms in update() (${elapsed.toFixed(1)}ms)`,
+              );
             }
           } else {
-            inst.onUpdate?.(dt);
+            inst.update?.(dt);
           }
-          this.tickCoroutines(inst, dt, nowSec);
+          this._tickCoroutines(inst, dt, nowSec);
         } catch (err) {
-          DebugConsole.LogError(`[ScriptSystem] onUpdate error in "${entry.path}": ${err}`);
+          DebugConsole.LogError(`[ScriptSystem] update() error in "${entry.path}": ${err}`);
         }
       }
     }
@@ -215,10 +207,27 @@ export class ScriptSystem implements System {
         const inst = comp._instances.get(entry.path);
         if (!inst) continue;
         try {
-          inst.onFixedUpdate?.(dt);
-          this.tickCoroutines(inst, dt, nowSec);
+          inst.fixedUpdate?.(dt);
+          this._tickCoroutines(inst, dt, nowSec);
         } catch (err) {
-          DebugConsole.LogError(`[ScriptSystem] onFixedUpdate error in "${entry.path}": ${err}`);
+          DebugConsole.LogError(`[ScriptSystem] fixedUpdate() error in "${entry.path}": ${err}`);
+        }
+      }
+    }
+  }
+
+  lateUpdate(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
+    for (const entity of entities) {
+      const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
+      if (!comp || !comp.enabled) continue;
+      for (const entry of comp.scripts) {
+        if (!entry.enabled) continue;
+        const inst = comp._instances.get(entry.path);
+        if (!inst) continue;
+        try {
+          inst.lateUpdate?.(dt);
+        } catch (err) {
+          DebugConsole.LogError(`[ScriptSystem] lateUpdate() error in "${entry.path}": ${err}`);
         }
       }
     }
@@ -229,7 +238,7 @@ export class ScriptSystem implements System {
     for (const entity of ecs.getAllEntities()) {
       const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
       if (!comp) continue;
-      this.destroyAll(comp);
+      this._destroyAll(comp);
     }
   }
 
@@ -237,13 +246,13 @@ export class ScriptSystem implements System {
     this.onSceneClear();
   }
 
-  // ── Internal ─────────────────────────────────────────────
+  // ── Internal ──────────────────────────────────────────────────
 
-  private async loadScript(
-    entity: EntityId,
-    comp: ScriptComponent,
-    entry: ScriptEntry,
-    ecs: ECSManager,
+  private async _loadScript(
+    entity:  EntityId,
+    comp:    ScriptComponent,
+    entry:   ScriptEntry,
+    ecs:     ECSManager,
   ): Promise<void> {
     const fs = getFileSystem();
     let absPath: string;
@@ -255,7 +264,6 @@ export class ScriptSystem implements System {
 
     const source = await fs.readFile(absPath);
 
-    // Guard: entity or component might have been removed while loading
     if (!ecs.entityExists(entity)) return;
     if (!comp._loading.has(entry.path)) return; // invalidated (hot reload)
 
@@ -270,7 +278,7 @@ export class ScriptSystem implements System {
 
     let ScriptClass: any;
     try {
-      ScriptClass = loadScriptClass(compiled, FluxionScript);
+      ScriptClass = loadScriptClass(compiled, FluxionBehaviour);
     } catch (err) {
       DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
       comp._loading.delete(entry.path);
@@ -283,34 +291,31 @@ export class ScriptSystem implements System {
       return;
     }
 
-    // Instantiate and inject context using underscore-prefixed internals
-    const instance = new ScriptClass() as FluxionScript;
-    instance.entity = entity;
-    instance._ecs = ecs;
-    instance._engine = this.engine;
-    instance._input = this.input;
+    const instance = new ScriptClass() as FluxionBehaviour;
+    instance.entity    = entity;
+    instance._ecs      = ecs;
+    instance._engine   = this.engine;
+    instance._input    = this.input;
     instance._renderer = this.renderer as any;
-    instance._audio = this.audio;
+    instance._audio    = this.audio;
     instance._cleanupFns = [];
 
     // Apply inspector property overrides
     for (const [key, val] of Object.entries(entry.properties)) {
       const current = (instance as any)[key];
       if (current instanceof EntityRef && val && typeof val === 'object') {
-        // Restore EntityRef — copy entityId, keep the requireComponent constraint.
-        current.entity = typeof val.entity === 'number' ? val.entity : null;
+        current.entity = typeof (val as any).entity === 'number' ? (val as any).entity : null;
       } else {
         (instance as any)[key] = val;
       }
     }
 
-    // Store instance — onStart() is deferred until the first update() tick in play mode
     instance._started = false;
     comp._instances.set(entry.path, instance);
     comp._loading.delete(entry.path);
   }
 
-  /** Called when play mode stops — clears coroutines, runs cleanup listeners, and resets start flags on all instances. */
+  /** Called when play mode stops — clears coroutines, runs cleanup listeners. */
   onSimulationStop(): void {
     const ecs = this.engine.ecs;
     for (const entity of ecs.getAllEntities()) {
@@ -319,9 +324,7 @@ export class ScriptSystem implements System {
       for (const inst of comp._instances.values()) {
         if (!inst) continue;
         if (Array.isArray(inst._cleanupFns)) {
-          for (const fn of inst._cleanupFns) {
-            try { fn(); } catch {}
-          }
+          for (const fn of inst._cleanupFns) { try { fn(); } catch {} }
           inst._cleanupFns = [];
         }
         inst._coroutines?.clear();
@@ -330,7 +333,7 @@ export class ScriptSystem implements System {
     }
   }
 
-  private tickCoroutines(inst: FluxionScript, _dt: number, now: number): void {
+  private _tickCoroutines(inst: FluxionBehaviour, _dt: number, now: number): void {
     if (!inst._coroutines.size) return;
     for (const [id, state] of inst._coroutines) {
       if (now < state.waitUntil) continue;
@@ -352,24 +355,17 @@ export class ScriptSystem implements System {
       } else if (yv?.frames) {
         state.waitUntil = now + (yv.frames as number) / 60;
       }
-      // plain yield → resume next frame (waitUntil stays at 0)
     }
   }
 
-  private destroyAll(comp: ScriptComponent): void {
+  private _destroyAll(comp: ScriptComponent): void {
     for (const [path, inst] of comp._instances) {
-      try {
-        inst?.onDestroy?.();
-      } catch (err) {
-        DebugConsole.LogError(`[ScriptSystem] onDestroy error in "${path}": ${err}`);
+      try { inst?.onDestroy?.(); } catch (err) {
+        DebugConsole.LogError(`[ScriptSystem] onDestroy() error in "${path}": ${err}`);
       }
-      // Run auto-cleanup listeners registered via this.on()
       if (Array.isArray(inst?._cleanupFns)) {
-        for (const fn of inst._cleanupFns) {
-          try { fn(); } catch {}
-        }
+        for (const fn of inst._cleanupFns) { try { fn(); } catch {} }
       }
-      // Clear any running coroutines
       inst?._coroutines?.clear();
     }
     comp._instances.clear();

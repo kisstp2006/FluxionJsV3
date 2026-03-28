@@ -32,7 +32,9 @@ export type FieldType =
   | 'vector3'
   | 'vector2'
   | 'asset'
-  | 'euler'; // euler = display in degrees, store in radians
+  | 'euler' // euler = display in degrees, store in radians
+  | 'array' // array of elements; use itemType to specify element type
+  | 'union'; // union of multiple types; use unionTypes to list them
 
 export interface FieldMeta {
   key: string;
@@ -58,6 +60,16 @@ export interface FieldMeta {
   uniformScale?: boolean;
   /** Safe fallback used by auto-deserialize when key is missing */
   defaultValue?: unknown;
+  /** Human-readable description shown in the inspector tooltip and generated API docs */
+  description?: string;
+  /** For type:'array' — the element field type (e.g. 'vector3', 'number') */
+  itemType?: string;
+  /** For type:'union' — the possible field types */
+  unionTypes?: string[];
+  /** True for readonly arrays/tuples — emits readonly keyword in TypeScript */
+  readOnly?: boolean;
+  /** For tuple types [T, U, V] — the ordered element types */
+  tupleTypes?: string[];
 }
 
 export interface ComponentMeta {
@@ -80,6 +92,8 @@ export interface ComponentMeta {
   version?: number;
   /** typeIds of components that must be present on the same entity for this component to work */
   requires?: string[];
+  /** If true, show a deprecated warning in the inspector header */
+  deprecated?: boolean;
 }
 
 // ── Module-level staging array ────────────────────────────────────────────────

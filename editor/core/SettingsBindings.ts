@@ -10,7 +10,7 @@ import { SettingsRegistry } from './SettingsRegistry';
 import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 import { EngineSubsystems } from './EditorEngine';
 import { undoManager } from './UndoService';
-import { ScriptSystem } from '../../src/core/ScriptSystem';
+import { ScriptSystem } from '../../src/scripting/ScriptSystem';
 
 const TONE_MAP: Record<string, THREE.ToneMapping> = {
   None: THREE.NoToneMapping,

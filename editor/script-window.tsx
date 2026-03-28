@@ -135,8 +135,8 @@ interface CameraComponent {
   enabled: boolean;
 }
 
-// ── FluxionScript ────────────────────────────────────────────
-declare class FluxionScript {
+// ── FluxionBehaviour ─────────────────────────────────────────
+declare class FluxionBehaviour {
   /** The entity ID this script is attached to. */
   readonly entity: number;
 
@@ -276,11 +276,16 @@ declare class FluxionScript {
   error(...args: any[]): void;
 
   // Lifecycle hooks
-  onStart?(): void;
-  onUpdate?(dt: number): void;
-  onFixedUpdate?(dt: number): void;
+  start?(): void | Promise<void>;
+  update?(dt: number): void;
+  fixedUpdate?(dt: number): void;
+  lateUpdate?(dt: number): void;
   onDestroy?(): void;
+  onEnable?(): void;
+  onDisable?(): void;
 }
+/** @deprecated Use FluxionBehaviour */
+declare class FluxionScript extends FluxionBehaviour {}
 
 // ── FUI types (available in scripts via FuiBuilder) ──────────────────────────
 
@@ -421,7 +426,7 @@ const App: React.FC = () => {
   const libRegistered = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Register FluxionScript type declarations once Monaco is loaded
+  // Register FluxionBehaviour type declarations once Monaco is loaded
   const handleMonacoMount = useCallback((editor: any, monaco: any) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -458,24 +463,39 @@ const App: React.FC = () => {
       // Lifecycle snippets available at class-body level
       const LIFECYCLE_SNIPPETS = [
         {
-          label: 'onStart',
+          label: 'start',
           detail: 'Lifecycle — called once when play begins',
-          insert: 'onStart() {\n\t$0\n}',
+          insert: 'start() {\n\t$0\n}',
         },
         {
-          label: 'onUpdate',
+          label: 'update',
           detail: 'Lifecycle — called every frame',
-          insert: 'onUpdate(dt: number) {\n\t$0\n}',
+          insert: 'update(dt: number) {\n\t$0\n}',
         },
         {
-          label: 'onFixedUpdate',
+          label: 'fixedUpdate',
           detail: 'Lifecycle — called at fixed physics rate',
-          insert: 'onFixedUpdate(dt: number) {\n\t$0\n}',
+          insert: 'fixedUpdate(dt: number) {\n\t$0\n}',
+        },
+        {
+          label: 'lateUpdate',
+          detail: 'Lifecycle — called after all update() calls',
+          insert: 'lateUpdate(dt: number) {\n\t$0\n}',
         },
         {
           label: 'onDestroy',
           detail: 'Lifecycle — called when entity is destroyed',
           insert: 'onDestroy() {\n\t$0\n}',
+        },
+        {
+          label: 'onEnable',
+          detail: 'Lifecycle — called when script becomes enabled',
+          insert: 'onEnable() {\n\t$0\n}',
+        },
+        {
+          label: 'onDisable',
+          detail: 'Lifecycle — called when script becomes disabled',
+          insert: 'onDisable() {\n\t$0\n}',
         },
       ];
 

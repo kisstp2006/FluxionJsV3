@@ -7,12 +7,12 @@
 //   cameraSlot = new EntityRef('Camera');      // only entities with Camera
 //   physicsSlot = new EntityRef('Rigidbody');
 //
-//   onUpdate() {
+//   update() {
 //     const tf = this.getComponentOf(this.target.entity, 'Transform');
 //   }
 // ============================================================
 
-import type { EntityId } from './ECS';
+import type { EntityId } from '../core/ECS';
 
 export class EntityRef {
   /**

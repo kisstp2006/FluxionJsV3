@@ -20,7 +20,7 @@ import { Scene } from '../../src/scene/Scene';
 import { AssetManager } from '../../src/assets/AssetManager';
 import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 import { CSGSystem } from '../../src/csg/CSGSystem';
-import { ScriptSystem } from '../../src/core/ScriptSystem';
+import { ScriptSystem } from '../../src/scripting/ScriptSystem';
 
 export interface EngineSubsystems {
   engine: Engine;

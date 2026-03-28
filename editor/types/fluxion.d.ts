@@ -5,7 +5,7 @@
 // auto-complete and type-checking for script files.
 //
 // Usage:
-//   export default class MyScript extends FluxionScript { ... }
+//   export default class MyScript extends FluxionBehaviour { ... }
 // ============================================================
 
 import type * as _THREE from 'three';
@@ -388,7 +388,7 @@ interface FuiDocument {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Engine sub-systems exposed through FluxionScript
+// Engine sub-systems exposed through FluxionBehaviour
 // ─────────────────────────────────────────────────────────────
 
 interface FluxionTime {
@@ -459,10 +459,10 @@ interface FluxionEvents {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FluxionScript base class
+// FluxionBehaviour base class
 // ─────────────────────────────────────────────────────────────
 
-declare class FluxionScript {
+declare class FluxionBehaviour {
   // ── Injected properties ──────────────────────────────────────
 
   /** The entity ID this script is attached to. */
@@ -669,21 +669,36 @@ declare class FluxionScript {
   // ── Lifecycle hooks (override in subclass) ────────────────────
 
   /** Called once when the script first activates (scene start or hot reload). */
-  onStart?(): void;
+  start?(): void | Promise<void>;
 
   /**
    * Called every frame.
    * @param dt Frame delta time in seconds (same as this.time.deltaTime).
    */
-  onUpdate?(dt: number): void;
+  update?(dt: number): void;
 
   /**
    * Called at a fixed physics timestep (default 1/60 s).
    * Use for physics-related logic.
    * @param dt Fixed delta time in seconds.
    */
-  onFixedUpdate?(dt: number): void;
+  fixedUpdate?(dt: number): void;
+
+  /**
+   * Called after all update() calls this frame.
+   * @param dt Frame delta time in seconds.
+   */
+  lateUpdate?(dt: number): void;
 
   /** Called when the entity is destroyed or the scene is cleared. */
   onDestroy?(): void;
+
+  /** Called when this script instance becomes enabled. */
+  onEnable?(): void;
+
+  /** Called when this script instance becomes disabled. */
+  onDisable?(): void;
 }
+
+/** @deprecated Use FluxionBehaviour */
+declare class FluxionScript extends FluxionBehaviour {}

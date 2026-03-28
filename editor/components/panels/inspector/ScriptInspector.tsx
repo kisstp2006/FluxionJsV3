@@ -10,9 +10,9 @@ import { PropertyRow, NumberInput, Checkbox, AssetInput } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
-import { FluxionScript } from '../../../../src/core/FluxionScript';
-import { EntityRef } from '../../../../src/core/EntityRef';
-import { compileScript } from '../../../../src/core/ScriptCompiler';
+import { FluxionBehaviour } from '../../../../src/scripting/FluxionBehaviour';
+import { EntityRef } from '../../../../src/scripting/EntityRef';
+import { compileScript } from '../../../../src/scripting/ScriptCompiler';
 import { ComponentSection } from './ComponentSection';
 import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
@@ -31,8 +31,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionScript', 'EntityRef', 'console', compiledJs)(
-      mod, FluxionScript, EntityRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, console,
     );
   } catch {
     return null;

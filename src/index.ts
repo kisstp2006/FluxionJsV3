@@ -49,6 +49,16 @@ export { InputManager, MouseButton } from './input/InputManager';
 // Audio
 export { AudioSystem } from './audio/AudioSystem';
 
+// Scripting
+export { FluxionBehaviour } from './scripting/FluxionBehaviour';
+export { ScriptSystem } from './scripting/ScriptSystem';
+export { EntityRef } from './scripting/EntityRef';
+
+// Meta / API generation
+export { MetaRegistry } from './meta/MetaRegistry';
+export { ApiEmitter } from './meta/ApiEmitter';
+export type { EngineDef, ComponentDef, FieldDef } from './meta/MetaTypes';
+
 // CSG (Constructive Solid Geometry)
 export { CSG, CSGSystem, csgToGeometry, geometryToCSG } from './csg';
 

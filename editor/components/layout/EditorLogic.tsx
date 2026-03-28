@@ -13,7 +13,7 @@ import { DebugDraw } from '../../../src/renderer/DebugDraw';
 import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
-import { ScriptSystem } from '../../../src/core/ScriptSystem';
+import { ScriptSystem } from '../../../src/scripting/ScriptSystem';
 import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
 import { ComponentIconSystem } from '../../core/ComponentIconSystem';
 
@@ -697,7 +697,7 @@ export const AssetHotReload: React.FC = () => {
       const { ecs } = getSubsystems();
       if (!ecs) return;
       const nChanged = norm(changedPath);
-      const { invalidateScript } = await import('../../../src/core/ScriptCompiler');
+      const { invalidateScript } = await import('../../../src/scripting/ScriptCompiler');
       const { projectManager } = await import('../../../src/project/ProjectManager');
       invalidateScript(changedPath);
       const scriptComps = ecs.getComponentsOfType<any>('Script');
@@ -712,6 +712,18 @@ export const AssetHotReload: React.FC = () => {
           comp._loading?.delete(entry.path);
         }
       }
+
+      // Regenerate IDE API files so the changed script's type info is up to date
+      try {
+        const { MetaRegistry } = await import('../../../src/meta/MetaRegistry');
+        const { ApiEmitter }   = await import('../../../src/meta/ApiEmitter');
+        const { pathJoin }     = await import('../../../src/filesystem/FileSystem');
+        if (projectManager.projectDir) {
+          const scriptsDir = pathJoin(projectManager.projectDir, 'Assets', 'Scripts');
+          await MetaRegistry.registerApi(scriptsDir);
+          await ApiEmitter.emit(projectManager.projectDir);
+        }
+      } catch { /* non-fatal — IDE files are best-effort */ }
     };
 
     // ── FUI reload: mark all FuiComponents referencing this file as dirty ──

@@ -26,6 +26,9 @@ import { SettingsService } from '../../core/SettingsService';
 import { ProjectSettingsService } from '../../core/ProjectSettingsService';
 import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
 import { AssetHotReloadService } from '../../core/AssetHotReloadService';
+import { ApiEmitter } from '../../../src/meta/ApiEmitter';
+import { MetaRegistry } from '../../../src/meta/MetaRegistry';
+import { pathJoin } from '../../../src/filesystem/FileSystem';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
 import { DebugGroups } from '../../core/EditorState';
 
@@ -183,6 +186,11 @@ export const EditorLayout: React.FC = () => {
     // Start watching project directory for file changes
     if (projectManager.projectDir) {
       AssetHotReloadService.start(projectManager.projectDir).catch(() => {});
+      // Scan user scripts first, then emit the full API (merged with built-ins)
+      const scriptsDir = pathJoin(projectManager.projectDir, 'Assets', 'Scripts');
+      MetaRegistry.registerApi(scriptsDir)
+        .then(() => ApiEmitter.emit(projectManager.projectDir!))
+        .catch(() => ApiEmitter.emit(projectManager.projectDir!).catch(() => {}));
     }
 
     await projectManager.addToRecent(config.name, projectPath);

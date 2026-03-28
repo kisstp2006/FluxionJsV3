@@ -28,12 +28,12 @@ export function compileScript(source: string, filePath: string): string {
 
   const result = ts.transpileModule(source, {
     compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
+      module:                ts.ModuleKind.CommonJS,
+      target:                ts.ScriptTarget.ES2020,
       experimentalDecorators: true,
       emitDecoratorMetadata: false,
-      strict: false,
-      noEmitOnError: false,
+      strict:                false,
+      noEmitOnError:         false,
     },
     fileName: filePath,
   });

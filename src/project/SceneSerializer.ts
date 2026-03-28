@@ -109,10 +109,15 @@ export function serializeScene(scene: Scene, engine: Engine, editorCamera?: THRE
 
 // ── Deserialize JSON to ECS ──
 
-export function deserializeScene(engine: Engine, data: SceneFileData, scene: Scene): void {
+export async function deserializeScene(
+  engine: Engine,
+  data: SceneFileData,
+  scene: Scene,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<void> {
   // Route legacy scenes (version < 2) to the preserved v1 implementation
   if (!data.version || data.version < 2) {
-    return deserializeLegacyScene(engine, data, scene);
+    return deserializeLegacyScene(engine, data, scene, onProgress);
   }
 
   scene.clear();
@@ -164,15 +169,26 @@ export function deserializeScene(engine: Engine, data: SceneFileData, scene: Sce
     }
   }
 
-  // Fire deferred asset loads (fire-and-forget)
+  // Await all deferred asset loads in parallel — eliminates staggered shader-compile stutter
+  const pending: Promise<void>[] = [];
   for (const d of ctx.deferredModelLoads) {
-    if (d.modelPath.endsWith('.fluxmesh')) {
-      loadDeferredFluxMesh(engine, d.meshComp, d.modelPath);
-    } else {
-      loadDeferredModel(engine, d.meshComp, d.modelPath);
-    }
+    pending.push(
+      d.modelPath.endsWith('.fluxmesh')
+        ? loadDeferredFluxMesh(engine, d.meshComp, d.modelPath)
+        : loadDeferredModel(engine, d.meshComp, d.modelPath)
+    );
   }
-  for (const d of ctx.deferredMaterialLoads) loadDeferredMaterial(engine, d.meshComp, d.materialPath);
+  for (const d of ctx.deferredMaterialLoads) {
+    pending.push(loadDeferredMaterial(engine, d.meshComp, d.materialPath));
+  }
+  if (onProgress && pending.length > 0) {
+    let loaded = 0;
+    const total = pending.length;
+    onProgress(0, total);
+    await Promise.all(pending.map(p => p.then(() => onProgress(++loaded, total))));
+  } else {
+    await Promise.all(pending);
+  }
 }
 
 /** Resolve path and load a .fluxmesh asset with per-slot materials onto a MeshRendererComponent */

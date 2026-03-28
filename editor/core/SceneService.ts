@@ -13,13 +13,17 @@ export async function loadProjectScene(
   subsystems: EngineSubsystems,
   scenePath: string,
   log: LogFn,
+  onProgress?: (loaded: number, total: number) => void,
 ): Promise<void> {
   const { deserializeScene } = await import('../../src/project/SceneSerializer');
   const fs = getFileSystem();
 
   const content = await fs.readFile(scenePath);
   const data = JSON.parse(content);
-  deserializeScene(subsystems.engine, data, subsystems.scene);
+
+  // Await all deferred model/material loads before returning — prevents staggered shader-compile stutter
+  await deserializeScene(subsystems.engine, data, subsystems.scene, onProgress);
+
   subsystems.scene.name = data.name || 'Untitled';
   subsystems.scene.path = scenePath;
   subsystems.scene.isDirty = false;
@@ -36,7 +40,19 @@ export async function loadProjectScene(
     subsystems.orbitControls.update();
   }
 
-  log(`Scene loaded: ${data.name} (${[...subsystems.engine.ecs.getAllEntities()].length} entities)`, 'system');
+  // Run one ECS tick so EnvironmentSystem initialises CSM and patches all material defines,
+  // then pre-compile every shader program before the first visible render frame.
+  subsystems.engine.ecs.update(0);
+  const fluxRenderer = subsystems.engine.getSubsystem<any>('renderer');
+  if (fluxRenderer?.renderer && fluxRenderer?.scene) {
+    try {
+      fluxRenderer.renderer.compile(fluxRenderer.scene, subsystems.editorCamera);
+    } catch (_e) {
+      // Non-fatal — rendering will still work, just without the pre-warm benefit
+    }
+  }
+
+  log(`Scene loaded: ${data.name} (${subsystems.engine.ecs.entityCount} entities)`, 'system');
 }
 
 /** Save the current scene to disk. */

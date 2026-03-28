@@ -303,7 +303,7 @@ export const SimulationSync: React.FC = () => {
 
       // Restore scene to pre-play snapshot
       if (sceneSnapshot.current) {
-        deserializeScene(engine.engine, sceneSnapshot.current, engine.scene);
+        void deserializeScene(engine.engine, sceneSnapshot.current, engine.scene);
         sceneSnapshot.current = null;
       }
     }

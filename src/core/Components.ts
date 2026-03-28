@@ -343,6 +343,7 @@ export type BodyType = 'dynamic' | 'static' | 'kinematic';
   category: 'Physics',
   hierarchyIcon: { icon: 'physics', color: 'var(--accent-red)' },
   hierarchyIconPriority: 40,
+  requires: ['Collider'],
 })
 export class RigidbodyComponent extends BaseComponent {
   readonly typeId = 'Rigidbody';
@@ -820,6 +821,7 @@ export class FuiComponent extends BaseComponent {
   displayName: 'Animation',
   icon: '▶',
   category: 'Animation',
+  requires: ['MeshRenderer'],
 })
 export class AnimationComponent extends BaseComponent {
   readonly typeId = 'Animation';

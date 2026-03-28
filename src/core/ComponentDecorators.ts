@@ -78,6 +78,8 @@ export interface ComponentMeta {
   hierarchyIconPriority?: number;
   /** Schema version — increment when the serialized shape changes */
   version?: number;
+  /** typeIds of components that must be present on the same entity for this component to work */
+  requires?: string[];
 }
 
 // ── Module-level staging array ────────────────────────────────────────────────

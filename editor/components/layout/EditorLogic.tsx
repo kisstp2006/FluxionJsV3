@@ -15,6 +15,7 @@ import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
 import { ScriptSystem } from '../../../src/core/ScriptSystem';
 import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
+import { ComponentIconSystem } from '../../core/ComponentIconSystem';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -906,6 +907,36 @@ export const ParticleGizmoSync: React.FC = () => {
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
   }, [engine, state.selectedEntity, state.debugGroups]);
+
+  return null;
+};
+
+// ── Component billboard icon sync ──
+export const ComponentIconSync: React.FC = () => {
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+
+    const system = new ComponentIconSystem(engine.renderer.scene);
+    engine.componentIconSystem = system;
+
+    const handler = () => {
+      system.update(
+        engine.engine.ecs,
+        (id) => engine.renderer.getObject(id),
+        engine.editorCamera,
+        !engine.engine.simulationPaused,
+      );
+    };
+    engine.engine.events.on('engine:update', handler);
+
+    return () => {
+      engine.engine.events.off('engine:update', handler);
+      system.dispose();
+      engine.componentIconSystem = null;
+    };
+  }, [engine]);
 
   return null;
 };

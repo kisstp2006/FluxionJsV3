@@ -186,6 +186,13 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     for (const hit of intersects) {
       if (hit.object.type === 'LineSegments') continue;
 
+      // Billboard icon hit — select the associated entity directly
+      const billboardEntity = (hit.object as any).__editorEntityId as number | undefined;
+      if (billboardEntity !== undefined) {
+        dispatch({ type: 'SELECT_ENTITY', entity: billboardEntity });
+        return;
+      }
+
       const entity = engine.renderer.getEntity(hit.object) ??
         (hit.object.parent ? engine.renderer.getEntity(hit.object.parent) : undefined);
       if (entity !== undefined) {

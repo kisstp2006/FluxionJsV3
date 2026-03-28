@@ -207,11 +207,19 @@ export const Toolbar: React.FC = () => {
           value={state.viewportShading}
           onChange={(v) => dispatch({ type: 'SET_VIEWPORT_SHADING', mode: v as ViewportShadingMode })}
           options={[
-            { value: 'lit', label: 'Lit' },
-            { value: 'unlit', label: 'Unlit' },
-            { value: 'wireframe', label: 'Wire' },
+            { value: 'lit',             label: 'Lit' },
+            { value: 'unlit',           label: 'Unlit' },
+            { value: 'wireframe',       label: 'Wire' },
+            { value: 'albedo',          label: 'Color base' },
+            { value: 'normals-world',   label: 'Normal (world)' },
+            { value: 'normals-tangent', label: 'Normal (tangent)' },
+            { value: 'emissive',        label: 'Emissive' },
+            { value: 'roughness',       label: 'Roughness' },
+            { value: 'glossiness',      label: 'Glossiness' },
+            { value: 'metalness',       label: 'Specular' },
+            { value: 'occlusion',       label: 'Occlusion' },
           ]}
-          style={{ width: '64px', height: '22px', fontSize: '10px', padding: '0 4px' }}
+          style={{ width: '120px', height: '22px', fontSize: '10px', padding: '0 4px' }}
         />
       </div>
 

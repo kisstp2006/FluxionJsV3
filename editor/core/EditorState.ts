@@ -17,7 +17,10 @@ export interface ConsoleEntry {
   time: Date;
 }
 
-export type ViewportShadingMode = 'lit' | 'unlit' | 'wireframe';
+export type ViewportShadingMode =
+  | 'lit' | 'unlit' | 'wireframe'
+  | 'albedo' | 'normals-world' | 'normals-tangent'
+  | 'emissive' | 'roughness' | 'glossiness' | 'metalness' | 'occlusion';
 
 export interface SnapConfig {
   translationSnap: number;

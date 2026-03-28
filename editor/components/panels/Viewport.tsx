@@ -11,6 +11,7 @@ import { ViewCube } from './ViewCube';
 import { CameraComponent } from '../../../src/core/Components';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
+import { applyDebugMode, restoreDebugMode } from '../../core/ViewportDebugMaterials';
 
 export interface ViewportProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
@@ -329,40 +330,9 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   useEffect(() => {
     if (!engine) return;
     const scene = engine.renderer.scene;
-    const isUnlit = state.viewportShading === 'unlit';
-    const isWireframe = state.viewportShading === 'wireframe';
-    scene.traverse((obj: THREE.Object3D) => {
-      if (obj instanceof THREE.Mesh) {
-        const mat = obj.material;
-        if (!mat) return;
-        const mats = Array.isArray(mat) ? mat : [mat];
-        for (const m of mats) {
-          if (m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial) {
-            m.wireframe = isWireframe;
-            if (isUnlit) {
-              (m as any)._origEnvMapIntensity = (m as any)._origEnvMapIntensity ?? m.envMapIntensity;
-              m.envMapIntensity = 0;
-            } else if ((m as any)._origEnvMapIntensity !== undefined) {
-              m.envMapIntensity = (m as any)._origEnvMapIntensity;
-            }
-          }
-        }
-      } else if (obj instanceof THREE.AmbientLight) {
-        if (isUnlit) {
-          (obj as any)._origIntensity = (obj as any)._origIntensity ?? obj.intensity;
-          obj.intensity = 2;
-        } else if ((obj as any)._origIntensity !== undefined) {
-          obj.intensity = (obj as any)._origIntensity;
-        }
-      } else if (obj instanceof THREE.Light) {
-        if (isUnlit) {
-          (obj as any)._origVisible = (obj as any)._origVisible ?? obj.visible;
-          obj.visible = false;
-        } else if ((obj as any)._origVisible !== undefined) {
-          obj.visible = (obj as any)._origVisible;
-        }
-      }
-    });
+    const threeRenderer = engine.renderer.renderer;
+    applyDebugMode(state.viewportShading, scene, threeRenderer);
+    return () => restoreDebugMode(scene, threeRenderer);
   }, [engine, state.viewportShading]);
 
   // Camera preset view helper

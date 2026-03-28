@@ -22,6 +22,9 @@ import { DebugConsole } from '../core/DebugConsole';
 import { AssetManager } from '../assets/AssetManager';
 import { PhysicsWorld } from './PhysicsWorld';
 
+// Module-level scratch — zero alloc in _extractGeometry vertex loop
+const _geoScratch = new THREE.Vector3();
+
 // ── Rapier interaction groups helper ─────────────────────────────────────────
 // High 16 bits = membership (which groups this collider belongs to)
 // Low  16 bits = filter     (which groups this collider interacts with)
@@ -409,9 +412,8 @@ export class PhysicsBodySystem implements System {
 
       // Apply object's world matrix to each vertex
       const mat = obj.matrixWorld;
-      const v   = new THREE.Vector3();
       for (let i = 0; i < posAttr.count; i++) {
-        v.fromBufferAttribute(posAttr, i).applyMatrix4(mat);
+        const v = _geoScratch.fromBufferAttribute(posAttr, i).applyMatrix4(mat);
         positions.push(v.x, v.y, v.z);
       }
 

@@ -146,16 +146,34 @@ export const StatsUpdater: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
 
+    let frameCount = 0;
+    let prevFps = -1, prevEntities = -1, prevDrawCalls = -1, prevTris = -1;
+
     const handler = () => {
+      // Throttle to ~15 Hz (every 4th frame) — stats display doesn't need 60 Hz
+      if ((++frameCount & 3) !== 0) return;
+
       const info = engine.renderer.renderer.info;
+      const fps          = engine.engine.time.smoothFps;
+      const entityCount  = engine.engine.ecs.entityCount;
+      const drawCalls    = info.render.calls;
+      const triangles    = info.render.triangles;
+
+      // Skip dispatch when nothing meaningful changed
+      if (fps === prevFps && entityCount === prevEntities &&
+          drawCalls === prevDrawCalls && triangles === prevTris) return;
+
+      prevFps = fps; prevEntities = entityCount;
+      prevDrawCalls = drawCalls; prevTris = triangles;
+
       dispatch({
         type: 'UPDATE_STATS',
         stats: {
-          fps: engine.engine.time.smoothFps,
-          entityCount: [...engine.engine.ecs.getAllEntities()].length,
+          fps,
+          entityCount,
           frameTime: engine.engine.time.unscaledDeltaTime * 1000,
-          drawCalls: info.render.calls,
-          triangles: info.render.triangles,
+          drawCalls,
+          triangles,
           textures: info.memory.textures,
           geometries: info.memory.geometries,
         },
@@ -340,28 +358,17 @@ export const CameraGizmoSync: React.FC = () => {
       if (isPlaying && !state.debugGroups.drawInPlayMode) return;
       if (!state.debugGroups.camera) return;
       const ecs = engine.engine.ecs;
-      const allEntities = ecs.getAllEntities();
       const aspect = engine.editorCamera.aspect || 16 / 9;
 
-      for (const eid of allEntities) {
-        const cam = ecs.getComponent<CameraComponent>(eid, 'Camera');
-        if (!cam || !cam.enabled) continue;
-
+      for (const [eid, cam] of ecs.getComponentsOfType<CameraComponent>('Camera')) {
+        if (!cam.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
-
-        const isSelected = state.selectedEntity === eid;
-
         GizmoRenderer.drawCameraFrustum(
-          t.position,
-          t.quaternion,
-          cam.fov,
-          cam.near,
-          cam.far,
-          aspect,
-          cam.isOrthographic,
-          cam.orthoSize,
-          isSelected,
+          t.position, t.quaternion,
+          cam.fov, cam.near, cam.far, aspect,
+          cam.isOrthographic, cam.orthoSize,
+          state.selectedEntity === eid,
           engine.editorCamera,
         );
       }
@@ -796,9 +803,8 @@ export const ColliderGizmoSync: React.FC = () => {
       if (isPlaying && !state.debugGroups.drawInPlayMode) return;
       if (!state.debugGroups.physics) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const col = ecs.getComponent<ColliderComponent>(eid, 'Collider');
-        if (!col || !col.enabled) continue;
+      for (const [eid, col] of ecs.getComponentsOfType<ColliderComponent>('Collider')) {
+        if (!col.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawColliderGizmo(
@@ -827,9 +833,8 @@ export const LightGizmoSync: React.FC = () => {
       if (isPlaying && !state.debugGroups.drawInPlayMode) return;
       if (!state.debugGroups.lights) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const light = ecs.getComponent<LightComponent>(eid, 'Light');
-        if (!light || !light.enabled) continue;
+      for (const [eid, light] of ecs.getComponentsOfType<LightComponent>('Light')) {
+        if (!light.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawLightGizmo(
@@ -858,9 +863,8 @@ export const AudioGizmoSync: React.FC = () => {
       if (isPlaying && !state.debugGroups.drawInPlayMode) return;
       if (!state.debugGroups.audio) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const audio = ecs.getComponent<AudioSourceComponent>(eid, 'AudioSource');
-        if (!audio || !audio.enabled) continue;
+      for (const [eid, audio] of ecs.getComponentsOfType<AudioSourceComponent>('AudioSource')) {
+        if (!audio.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawAudioGizmo(
@@ -889,9 +893,8 @@ export const ParticleGizmoSync: React.FC = () => {
       if (isPlaying && !state.debugGroups.drawInPlayMode) return;
       if (!state.debugGroups.particles) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const emitter = ecs.getComponent<ParticleEmitterComponent>(eid, 'ParticleEmitter');
-        if (!emitter || !emitter.enabled) continue;
+      for (const [eid, emitter] of ecs.getComponentsOfType<ParticleEmitterComponent>('ParticleEmitter')) {
+        if (!emitter.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawParticleGizmo(

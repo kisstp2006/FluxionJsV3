@@ -27,8 +27,10 @@ import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
 import { DebugConsole } from '../core/DebugConsole';
 
-// Module-level scratch — avoids per-frame Vector3 allocations in LightSystem
-const _lightForward = new THREE.Vector3();
+// Module-level scratch — avoids per-frame Vector3 allocations
+const _lightForward  = new THREE.Vector3();
+const _sunDir        = new THREE.Vector3();
+const _csmForward    = new THREE.Vector3();
 
 export interface RendererConfig {
   shadows?: boolean;
@@ -255,8 +257,9 @@ class TransformSyncSystem implements System {
       const obj = this.renderer.getObject(entity);
       if (!transform || !obj) continue;
 
-      // Apply local transform so THREE.js (and gizmo service) sees LOCAL position/rotation/scale.
-      // TransformSystem has already computed the correct worldMatrix in TransformComponent.
+      // Always sync local transform — TransformSystem (priority -150) already
+      // cleared dirty/worldDirty before we run (priority -100), so those flags
+      // cannot be used as a gate here.
       obj.position.copy(transform.position);
       obj.quaternion.copy(transform.quaternion);
       obj.scale.copy(transform.scale);
@@ -293,6 +296,32 @@ class MeshRendererSystem implements System {
     this.trackedMesh.clear();
   }
 
+  /** Apply shadow flags and CSM material setup to a mesh/group in one traverse. */
+  private _applyMeshFlags(mesh: THREE.Object3D, cast: boolean, recv: boolean): void {
+    const csm = this.renderer.csm;
+    mesh.castShadow = cast;
+    mesh.receiveShadow = recv;
+    if (mesh instanceof THREE.Group) {
+      mesh.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = cast;
+          child.receiveShadow = recv;
+          if (csm) {
+            const mat = child.material;
+            if (Array.isArray(mat)) mat.forEach(m => csm.setupMaterial(m));
+            else if (mat) csm.setupMaterial(mat);
+          }
+        }
+      });
+    } else if ((mesh as THREE.Mesh).isMesh) {
+      const mat = (mesh as THREE.Mesh).material;
+      if (csm) {
+        if (Array.isArray(mat)) mat.forEach(m => csm.setupMaterial(m));
+        else if (mat) csm.setupMaterial(mat);
+      }
+    }
+  }
+
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     // Add new meshes / detect mesh swaps
     for (const entity of entities) {
@@ -303,53 +332,19 @@ class MeshRendererSystem implements System {
 
       if (!this.tracked.has(entity)) {
         // First time — add to scene
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         this.renderer.addObject(entity, meshComp.mesh);
         this.tracked.add(entity);
         this.trackedMesh.set(entity, meshComp.mesh);
       } else if (currentMesh !== meshComp.mesh) {
         // Mesh reference changed — swap in scene
         this.renderer.removeObject(entity);
-
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         this.renderer.addObject(entity, meshComp.mesh);
         this.trackedMesh.set(entity, meshComp.mesh);
       } else if (isDirty(meshComp)) {
-        // Sync shadow properties when component is dirty (Stride processor pattern)
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        // Sync shadow properties when component is dirty
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         clearDirty(meshComp);
       }
     }
@@ -817,7 +812,8 @@ class LightSystem implements System {
         this.tracked.add(entity);
       }
 
-      // Sync properties every frame (Stride EntityProcessor pattern)
+      // Sync light properties every frame — TransformSystem already cleared
+      // transform.dirty/worldDirty before we run, so those flags cannot gate here.
       lightComp.light.color.copy(lightComp.color);
       lightComp.light.intensity = lightComp.intensity;
 
@@ -857,7 +853,7 @@ class LightSystem implements System {
               this.cookieLoading.delete(entity);
             },
             undefined,
-            (err) => {
+            (_err) => {
               DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
               this.cookieLoading.delete(entity);
             },
@@ -1112,7 +1108,7 @@ class EnvironmentSystem implements System {
     // Cloud sun direction derived from sun elevation/azimuth
     const sunElRad = THREE.MathUtils.degToRad(env.sunElevation);
     const sunAzRad = THREE.MathUtils.degToRad(env.sunAzimuth);
-    const sunDir = new THREE.Vector3(
+    const sunDir = _sunDir.set(
       Math.cos(sunElRad) * Math.sin(sunAzRad),
       Math.sin(sunElRad),
       Math.cos(sunElRad) * Math.cos(sunAzRad),
@@ -1334,7 +1330,7 @@ class EnvironmentSystem implements System {
       // Recreate CSM
       this.removeCSM();
 
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+      const forward = _csmForward.set(0, 0, -1).applyQuaternion(dirTransform.quaternion);
 
       this.renderer.csm = new CSM({
         camera,
@@ -1386,7 +1382,7 @@ class EnvironmentSystem implements System {
     const csm = this.renderer.csm!;
 
     // Sync light direction from directional light transform
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+    const forward = _csmForward.set(0, 0, -1).applyQuaternion(dirTransform.quaternion);
     csm.lightDirection.copy(forward).negate();
 
     // Sync color + intensity
@@ -1394,16 +1390,6 @@ class EnvironmentSystem implements System {
       cl.color.copy(dirLightComp.color);
       cl.intensity = dirLightComp.intensity;
     }
-
-    // Setup new materials that haven't been patched yet
-    this.renderer.scene.traverse((obj: THREE.Object3D) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mat = (obj as THREE.Mesh).material;
-        if (mat && !Array.isArray(mat) && !mat.defines?.USE_CSM) {
-          csm.setupMaterial(mat);
-        }
-      }
-    });
 
     // Update frustums and shadow positions
     csm.update();
@@ -1437,9 +1423,37 @@ class FogVolumeSystem implements System {
   enabled = true;
 
   private _renderer: FluxionRenderer;
+  // Pre-allocated pools — reused every frame, zero clone() allocs
+  private _volPool:   FogVolumeData[] = [];
+  private _lightPool: FogLightData[]  = [];
+  private _dir = new THREE.Vector3();
 
   constructor(renderer: FluxionRenderer) {
     this._renderer = renderer;
+  }
+
+  private _getVol(i: number): FogVolumeData {
+    if (i >= this._volPool.length) {
+      this._volPool.push({
+        position: new THREE.Vector3(), size: new THREE.Vector3(),
+        shape: 0, density: 0,
+        albedo: new THREE.Color(), emission: new THREE.Color(),
+        emissionEnergy: 0, negative: false,
+      });
+    }
+    return this._volPool[i];
+  }
+
+  private _getLight(i: number): FogLightData {
+    if (i >= this._lightPool.length) {
+      this._lightPool.push({
+        type: 0,
+        position: new THREE.Vector3(), direction: new THREE.Vector3(),
+        color: new THREE.Color(),
+        intensity: 0, range: 0, outerCos: 0, innerCos: 0,
+      });
+    }
+    return this._lightPool[i];
   }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
@@ -1452,70 +1466,60 @@ class FogVolumeSystem implements System {
       const fv = ecs.getComponent<FogVolumeComponent>(eid, 'FogVolume');
       const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
       if (!fv || !t || !fv.enabled) continue;
-      volumes.push({
-        position: t.position.clone(),
-        size: t.scale.clone(),
-        shape: fv.shape === 'box' ? 0 : fv.shape === 'ellipsoid' ? 1 : 2,
-        density: fv.density,
-        albedo: fv.albedo.clone(),
-        emission: fv.emission.clone(),
-        emissionEnergy: fv.emissionEnergy,
-        negative: fv.negative,
-      });
+      const vol = this._getVol(volumes.length);
+      vol.position.copy(t.position);
+      vol.size.copy(t.scale);
+      vol.shape = fv.shape === 'box' ? 0 : fv.shape === 'ellipsoid' ? 1 : 2;
+      vol.density = fv.density;
+      vol.albedo.copy(fv.albedo);
+      vol.emission.copy(fv.emission);
+      vol.emissionEnergy = fv.emissionEnergy;
+      vol.negative = fv.negative;
+      volumes.push(vol);
     }
     pp.config.volumetricFog.volumes = volumes;
 
     // ── Light sources ────────────────────────────────────────
     const lights: FogLightData[] = [];
-    const lightEntities = ecs.getAllEntities();
     const DEG2RAD = Math.PI / 180;
 
-    for (const eid of lightEntities) {
+    for (const [eid, lc] of ecs.getComponentsOfType<LightComponent>('Light')) {
       if (lights.length >= 8) break;
-      const lc = ecs.getComponent<LightComponent>(eid, 'Light');
-      const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
+      const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
       if (!lc || !t || !lc.enabled) continue;
-      if (lc.lightType === 'ambient') continue; // ambient light ≠ volumetric scattering source
+      if (lc.lightType === 'ambient') continue;
 
-      // Forward direction of the light fixture (local -Z rotated by entity quaternion)
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(t.quaternion).normalize();
+      const light = this._getLight(lights.length);
+      this._dir.set(0, 0, -1).applyQuaternion(t.quaternion).normalize();
+      light.direction.copy(this._dir);
 
       if (lc.lightType === 'directional') {
-        lights.push({
-          type: 0,
-          position: new THREE.Vector3(),  // unused for directional
-          direction: dir,
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: 0,
-          outerCos: 0,
-          innerCos: 0,
-        });
+        light.type = 0;
+        light.position.set(0, 0, 0);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = 0; light.outerCos = 0; light.innerCos = 0;
       } else if (lc.lightType === 'point') {
-        lights.push({
-          type: 1,
-          position: t.position.clone(),
-          direction: new THREE.Vector3(),  // unused
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: lc.range,
-          outerCos: 0,
-          innerCos: 0,
-        });
+        light.type = 1;
+        light.position.copy(t.position);
+        light.direction.set(0, 0, 0);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = lc.range; light.outerCos = 0; light.innerCos = 0;
       } else if (lc.lightType === 'spot') {
         const outerAngle = lc.spotAngle * DEG2RAD;
         const innerAngle = outerAngle * Math.max(0, 1 - lc.spotPenumbra);
-        lights.push({
-          type: 2,
-          position: t.position.clone(),
-          direction: dir,
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: lc.range,
-          outerCos: Math.cos(outerAngle),
-          innerCos: Math.cos(innerAngle),
-        });
+        light.type = 2;
+        light.position.copy(t.position);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = lc.range;
+        light.outerCos = Math.cos(outerAngle);
+        light.innerCos = Math.cos(innerAngle);
+      } else {
+        continue;
       }
+      lights.push(light);
     }
     pp.config.volumetricFog.lights = lights;
   }

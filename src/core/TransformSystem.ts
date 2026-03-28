@@ -28,8 +28,9 @@ export class TransformSystem implements System {
   priority = -150;
   enabled = true;
 
-  // Reusable queue — allocated once, cleared each frame to avoid GC
-  private _queue: EntityId[] = [];
+  // Reusable queue + visited set — allocated once, cleared each frame to avoid GC
+  private _queue:   EntityId[] = [];
+  private _visited: Set<EntityId> = new Set();
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -56,7 +57,8 @@ export class TransformSystem implements System {
     const roots = ecs.getRootEntities();
     for (let i = 0; i < roots.length; i++) queue.push(roots[i]);
 
-    const visited = new Set<EntityId>();
+    const visited = this._visited;
+    visited.clear();
 
     let head = 0;
     while (head < queue.length) {

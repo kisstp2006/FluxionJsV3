@@ -71,6 +71,10 @@ export class ECSManager {
   // O(1) indexes maintained incrementally — no full-scan on every query
   private rootEntities: Set<EntityId> = new Set();
   private tagIndex: Map<string, Set<EntityId>> = new Map();
+  /** Cached entity count — O(1) alternative to spreading getAllEntities(). */
+  private _entityCount = 0;
+  /** Increments on every entity create/destroy — lets UI components detect topology changes. */
+  private _hierarchyRevision = 0;
 
   // ── Entity management ──
 
@@ -81,6 +85,8 @@ export class ECSManager {
     this.childrenMap.set(id, new Set());
     if (name) this.entityNames.set(id, name);
     this.rootEntities.add(id);
+    this._entityCount++;
+    this._hierarchyRevision++;
     this.dirty = true;
     return id;
   }
@@ -127,6 +133,8 @@ export class ECSManager {
     this.entityTags.delete(entity);
     this.entityNames.delete(entity);
     this.childrenMap.delete(entity);
+    this._entityCount--;
+    this._hierarchyRevision++;
     this.dirty = true;
   }
 
@@ -145,6 +153,13 @@ export class ECSManager {
   getAllEntities(): ReadonlySet<EntityId> {
     return this.entities;
   }
+
+  /** O(1) entity count — use this instead of spreading getAllEntities(). */
+  get entityCount(): number { return this._entityCount; }
+
+  /** Increments whenever entities are created or destroyed — use as a useMemo dep
+   *  in React components that need to rebuild on topology changes. */
+  get hierarchyRevision(): number { return this._hierarchyRevision; }
 
   // ── Hierarchy (like LumixEngine scene tree) ──
 

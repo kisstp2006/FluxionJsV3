@@ -180,6 +180,23 @@ export const HierarchyPanel: React.FC = () => {
   const [editingEntity, setEditingEntity] = useState<EntityId | null>(null);
   const draggedEntity = useRef<EntityId | null>(null);
 
+  // Track ECS topology changes without triggering on every frame.
+  // hierarchyRevision only increments when entities are created/destroyed.
+  const [hierarchyRevision, setHierarchyRevision] = useState(0);
+  const lastRevRef = useRef(0);
+  useEffect(() => {
+    if (!engine) return;
+    const handler = () => {
+      const rev = engine.engine.ecs.hierarchyRevision;
+      if (rev !== lastRevRef.current) {
+        lastRevRef.current = rev;
+        setHierarchyRevision(rev);
+      }
+    };
+    engine.engine.events.on('engine:update', handler);
+    return () => engine.engine.events.off('engine:update', handler);
+  }, [engine]);
+
   const handleSelect = useCallback((entity: EntityId) => {
     dispatch({ type: 'SELECT_ENTITY', entity });
   }, [dispatch]);
@@ -285,7 +302,7 @@ export const HierarchyPanel: React.FC = () => {
       const name = engine.engine.ecs.getEntityName(e);
       return name.toLowerCase().includes(state.hierarchyFilter.toLowerCase());
     });
-  }, [engine, state.hierarchyFilter, state.selectedEntity, state.entityCount]);
+  }, [engine, state.hierarchyFilter, state.selectedEntity, hierarchyRevision]);
 
   return (
     <div style={{

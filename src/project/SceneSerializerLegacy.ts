@@ -1428,8 +1428,9 @@ function _serializeEntityComponents(entityId: EntityId, engine: Engine): Seriali
 export function snapshotEntitySubtree(rootId: EntityId, engine: Engine): SerializedEntity[] {
   const result: SerializedEntity[] = [];
   const queue: EntityId[] = [rootId];
-  while (queue.length > 0) {
-    const entityId = queue.shift()!;
+  let head = 0;
+  while (head < queue.length) {
+    const entityId = queue[head++];
     result.push({
       id: entityId as number,
       name: engine.ecs.getEntityName(entityId),

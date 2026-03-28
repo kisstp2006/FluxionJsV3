@@ -150,6 +150,7 @@ export class ScriptSystem implements System {
   init(): void {}
 
   update(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
+    const nowSec = performance.now() / 1000;
     for (const entity of entities) {
       const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
       if (!comp || !comp.enabled) continue;
@@ -196,7 +197,7 @@ export class ScriptSystem implements System {
           } else {
             inst.onUpdate?.(dt);
           }
-          this.tickCoroutines(inst, dt);
+          this.tickCoroutines(inst, dt, nowSec);
         } catch (err) {
           DebugConsole.LogError(`[ScriptSystem] onUpdate error in "${entry.path}": ${err}`);
         }
@@ -205,6 +206,7 @@ export class ScriptSystem implements System {
   }
 
   fixedUpdate(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
+    const nowSec = performance.now() / 1000;
     for (const entity of entities) {
       const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
       if (!comp || !comp.enabled) continue;
@@ -214,7 +216,7 @@ export class ScriptSystem implements System {
         if (!inst) continue;
         try {
           inst.onFixedUpdate?.(dt);
-          this.tickCoroutines(inst, dt);
+          this.tickCoroutines(inst, dt, nowSec);
         } catch (err) {
           DebugConsole.LogError(`[ScriptSystem] onFixedUpdate error in "${entry.path}": ${err}`);
         }
@@ -328,9 +330,8 @@ export class ScriptSystem implements System {
     }
   }
 
-  private tickCoroutines(inst: FluxionScript, _dt: number): void {
+  private tickCoroutines(inst: FluxionScript, _dt: number, now: number): void {
     if (!inst._coroutines.size) return;
-    const now = performance.now() / 1000;
     for (const [id, state] of inst._coroutines) {
       if (now < state.waitUntil) continue;
       let result: IteratorResult<any>;

@@ -19,13 +19,15 @@ import { Engine } from '../core/Engine';
 import { PhysicsBodySystem } from './PhysicsBodySystem';
 import { CharacterControllerSystem } from './CharacterControllerSystem';
 import { PhysicsQuerySystem } from './PhysicsQuerySystem';
-import { colliderPairKey } from './PhysicsTypes';
-
 // Rapier module type (loaded dynamically — WASM)
 type RAPIER = typeof import('@dimforge/rapier3d-compat');
 
 // ── Module-level scratch (zero allocations in hot paths) ──────────────────────
 const _vel = new THREE.Vector3();
+
+/** Numeric composite key for a collider pair — zero string alloc. */
+const _pairKey = (h1: number, h2: number): number =>
+  h1 < h2 ? h1 * 0x100000 + h2 : h2 * 0x100000 + h1;
 
 // ── Internal: steps the Rapier world and drains events ───────────────────────
 // Runs between PhysicsBodySystem (creates bodies) and
@@ -72,10 +74,10 @@ export class PhysicsWorld {
   private colliderMap: Map<EntityId, any> = new Map();
 
   // ── Collision stay tracking ───────────────────────────────────────────────
-  /** Pairs currently in contact (non-sensor). Key = colliderPairKey. */
-  private activeCollisions: Set<string> = new Set();
-  /** Pairs currently in trigger overlap. Key = colliderPairKey. */
-  private activeTriggers: Set<string> = new Set();
+  /** Pairs currently in contact (non-sensor). Key = _pairKey(h1,h2), value = entity pair. */
+  private activeCollisions: Map<number, { e1: EntityId | null; e2: EntityId | null }> = new Map();
+  /** Pairs currently in trigger overlap. Key = _pairKey(h1,h2), value = entity pair. */
+  private activeTriggers: Map<number, { e1: EntityId | null; e2: EntityId | null }> = new Map();
 
   constructor(engine: Engine) {
     this._engine = engine;
@@ -113,11 +115,11 @@ export class PhysicsWorld {
       const e2  = this.colliderHandleToEntity.get(h2) ?? null;
       const col = this.world.getCollider(h1);
       const isTrigger = col?.isSensor() ?? false;
-      const key = colliderPairKey(h1, h2);
+      const key = _pairKey(h1, h2);
 
       if (isTrigger) {
         if (started) {
-          this.activeTriggers.add(key);
+          this.activeTriggers.set(key, { e1, e2 });
           this._engine.events.emit('physics:trigger-enter', { entity1: e1, entity2: e2 });
         } else {
           this.activeTriggers.delete(key);
@@ -125,7 +127,7 @@ export class PhysicsWorld {
         }
       } else {
         if (started) {
-          this.activeCollisions.add(key);
+          this.activeCollisions.set(key, { e1, e2 });
           this._engine.events.emit('physics:collision-enter', { entity1: e1, entity2: e2 });
         } else {
           this.activeCollisions.delete(key);
@@ -137,16 +139,10 @@ export class PhysicsWorld {
 
   /** Emit stay events for every pair still active this step. @internal */
   _emitStayEvents(): void {
-    for (const key of this.activeCollisions) {
-      const [s1, s2] = key.split(':');
-      const e1 = this.colliderHandleToEntity.get(Number(s1)) ?? null;
-      const e2 = this.colliderHandleToEntity.get(Number(s2)) ?? null;
+    for (const { e1, e2 } of this.activeCollisions.values()) {
       this._engine.events.emit('physics:collision-stay', { entity1: e1, entity2: e2, contactPoint: null });
     }
-    for (const key of this.activeTriggers) {
-      const [s1, s2] = key.split(':');
-      const e1 = this.colliderHandleToEntity.get(Number(s1)) ?? null;
-      const e2 = this.colliderHandleToEntity.get(Number(s2)) ?? null;
+    for (const { e1, e2 } of this.activeTriggers.values()) {
       this._engine.events.emit('physics:trigger-stay', { entity1: e1, entity2: e2 });
     }
   }
@@ -180,15 +176,20 @@ export class PhysicsWorld {
 
   unregisterAuxColliderHandle(handle: number): void {
     this.colliderHandleToEntity.delete(handle);
-    // Remove stale stay-event tracking keys
-    for (const key of [...this.activeCollisions]) {
-      const [s1, s2] = key.split(':');
-      if (Number(s1) === handle || Number(s2) === handle) this.activeCollisions.delete(key);
+    // Remove stale stay-event tracking keys — avoid mutating map while iterating
+    const toDeleteC: number[] = [];
+    for (const key of this.activeCollisions.keys()) {
+      const lo = key & 0xFFFFF, hi = (key / 0x100000) | 0;
+      if (lo === handle || hi === handle) toDeleteC.push(key);
     }
-    for (const key of [...this.activeTriggers]) {
-      const [s1, s2] = key.split(':');
-      if (Number(s1) === handle || Number(s2) === handle) this.activeTriggers.delete(key);
+    for (const k of toDeleteC) this.activeCollisions.delete(k);
+
+    const toDeleteT: number[] = [];
+    for (const key of this.activeTriggers.keys()) {
+      const lo = key & 0xFFFFF, hi = (key / 0x100000) | 0;
+      if (lo === handle || hi === handle) toDeleteT.push(key);
     }
+    for (const k of toDeleteT) this.activeTriggers.delete(k);
   }
 
   /** Look up entity by collider handle — O(1). */

@@ -329,43 +329,37 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   useEffect(() => {
     if (!engine) return;
     const scene = engine.renderer.scene;
+    const isUnlit = state.viewportShading === 'unlit';
+    const isWireframe = state.viewportShading === 'wireframe';
     scene.traverse((obj: THREE.Object3D) => {
       if (obj instanceof THREE.Mesh) {
         const mat = obj.material;
         if (!mat) return;
-        const materials = Array.isArray(mat) ? mat : [mat];
-        for (const m of materials) {
+        const mats = Array.isArray(mat) ? mat : [mat];
+        for (const m of mats) {
           if (m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial) {
-            m.wireframe = state.viewportShading === 'wireframe';
-            // For unlit, we use emissive override trick — store original if needed
-            if (state.viewportShading === 'unlit') {
+            m.wireframe = isWireframe;
+            if (isUnlit) {
               (m as any)._origEnvMapIntensity = (m as any)._origEnvMapIntensity ?? m.envMapIntensity;
               m.envMapIntensity = 0;
-              // Boost emissive slightly so objects are visible
             } else if ((m as any)._origEnvMapIntensity !== undefined) {
               m.envMapIntensity = (m as any)._origEnvMapIntensity;
             }
           }
         }
-      }
-    });
-    // Toggle scene lights for unlit
-    scene.traverse((obj: THREE.Object3D) => {
-      if (obj instanceof THREE.Light && !(obj instanceof THREE.AmbientLight)) {
-        if (state.viewportShading === 'unlit') {
-          (obj as any)._origVisible = (obj as any)._origVisible ?? obj.visible;
-          obj.visible = false;
-        } else if ((obj as any)._origVisible !== undefined) {
-          obj.visible = (obj as any)._origVisible;
-        }
-      }
-      // Ensure ambient light for unlit
-      if (obj instanceof THREE.AmbientLight) {
-        if (state.viewportShading === 'unlit') {
+      } else if (obj instanceof THREE.AmbientLight) {
+        if (isUnlit) {
           (obj as any)._origIntensity = (obj as any)._origIntensity ?? obj.intensity;
           obj.intensity = 2;
         } else if ((obj as any)._origIntensity !== undefined) {
           obj.intensity = (obj as any)._origIntensity;
+        }
+      } else if (obj instanceof THREE.Light) {
+        if (isUnlit) {
+          (obj as any)._origVisible = (obj as any)._origVisible ?? obj.visible;
+          obj.visible = false;
+        } else if ((obj as any)._origVisible !== undefined) {
+          obj.visible = (obj as any)._origVisible;
         }
       }
     });

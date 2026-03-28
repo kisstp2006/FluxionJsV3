@@ -84,7 +84,6 @@ export class TransformComponent extends BaseComponent {
   displayName: 'Mesh Renderer',
   icon: '▣',
   category: 'Rendering',
-  showInAddMenu: false,
   hierarchyIcon: { icon: 'cube', color: 'var(--accent-purple)' },
   hierarchyIconPriority: 10,
 })

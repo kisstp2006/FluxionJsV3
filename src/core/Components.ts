@@ -422,6 +422,18 @@ export class ColliderComponent extends BaseComponent {
   @field({ type: 'vector3', label: 'Offset' })
   offset = new THREE.Vector3(0, 0, 0);
 
+  /** Project-relative path to a model (.fbx, .glb, .fluxmesh) used as collision geometry.
+   *  Only relevant when shape = 'mesh' or 'convex'. */
+  @field({
+    type: 'asset',
+    label: 'Mesh Source',
+    assetType: 'model',
+    group: 'Shape',
+    visibleIf: s => s.shape === 'mesh' || s.shape === 'convex',
+    dependsOn: ['shape'],
+  })
+  meshPath: string = '';
+
   /** Bitmask — which collision groups this collider belongs to (bits 0-15). Default = group 1. */
   @field({ type: 'number', label: 'Collision Layer', step: 1, min: 0, max: 65535, group: 'Filtering' })
   collisionLayer = 0x0001;

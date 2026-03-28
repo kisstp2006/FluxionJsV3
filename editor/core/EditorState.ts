@@ -4,6 +4,7 @@
 // ============================================================
 
 import { EntityId } from '../../src/core/ECS';
+import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 
 // ── Types ──
 export type EditorTool = 'select' | 'move' | 'rotate' | 'scale';
@@ -16,7 +17,10 @@ export interface ConsoleEntry {
   time: Date;
 }
 
-export type ViewportShadingMode = 'lit' | 'unlit' | 'wireframe';
+export type ViewportShadingMode =
+  | 'lit' | 'unlit' | 'wireframe'
+  | 'albedo' | 'normals-world' | 'normals-tangent'
+  | 'emissive' | 'roughness' | 'glossiness' | 'metalness' | 'occlusion';
 
 export interface SnapConfig {
   translationSnap: number;
@@ -27,6 +31,15 @@ export interface SnapConfig {
 export interface SelectedAsset {
   path: string;
   type: string;
+}
+
+export interface DebugGroups {
+  physics: boolean;
+  camera: boolean;
+  lights: boolean;
+  audio: boolean;
+  particles: boolean;
+  drawInPlayMode: boolean;
 }
 
 export interface EditorState {
@@ -42,6 +55,7 @@ export interface EditorState {
   viewportTab: 'Scene' | 'Game';
   viewportShading: ViewportShadingMode;
   showGrid: boolean;
+  debugGroups: DebugGroups;
   consoleEntries: ConsoleEntry[];
   leftPanelWidth: number;
   rightPanelWidth: number;
@@ -88,7 +102,9 @@ export type EditorAction =
   | { type: 'LOAD_PROJECT'; path: string; name: string }
   | { type: 'CLOSE_PROJECT' }
   | { type: 'SET_SCENE_PATH'; path: string | null }
-  | { type: 'SET_SCENE_DIRTY'; dirty: boolean };
+  | { type: 'SET_SCENE_DIRTY'; dirty: boolean }
+  | { type: 'SET_DEBUG_GROUP'; group: keyof DebugGroups; value: boolean }
+  | { type: 'LOAD_DEBUG_GROUPS'; groups: DebugGroups };
 
 // ── Initial State ──
 export const initialEditorState: EditorState = {
@@ -108,6 +124,14 @@ export const initialEditorState: EditorState = {
   viewportTab: 'Scene',
   viewportShading: 'lit',
   showGrid: true,
+  debugGroups: {
+    physics: true,
+    camera: true,
+    lights: true,
+    audio: true,
+    particles: true,
+    drawInPlayMode: true,
+  },
   consoleEntries: [],
   leftPanelWidth: 280,
   rightPanelWidth: 320,
@@ -187,6 +211,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, currentScenePath: action.path };
     case 'SET_SCENE_DIRTY':
       return { ...state, isSceneDirty: action.dirty };
+    case 'SET_DEBUG_GROUP':
+      ProjectSettingsRegistry.set(`editor.debug.${action.group}`, action.value);
+      return { ...state, debugGroups: { ...state.debugGroups, [action.group]: action.value } };
+    case 'LOAD_DEBUG_GROUPS':
+      return { ...state, debugGroups: action.groups };
     default:
       return state;
   }

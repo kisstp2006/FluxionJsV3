@@ -14,7 +14,7 @@ import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
 import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
-import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, AssetHotReload, ColliderGizmoSync, LightGizmoSync, AudioGizmoSync, ParticleGizmoSync } from './EditorLogic';
+import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, AssetHotReload, ColliderGizmoSync, LightGizmoSync, AudioGizmoSync, ParticleGizmoSync, ComponentIconSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene } from '../../core/SceneService';
@@ -26,6 +26,8 @@ import { SettingsService } from '../../core/SettingsService';
 import { ProjectSettingsService } from '../../core/ProjectSettingsService';
 import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
 import { AssetHotReloadService } from '../../core/AssetHotReloadService';
+import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
+import { DebugGroups } from '../../core/EditorState';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
@@ -35,6 +37,7 @@ export const EditorLayout: React.FC = () => {
   const [showSettings, setShowSettings] = React.useState(false);
   const [showProjectSettings, setShowProjectSettings] = React.useState(false);
   const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
   const engineRef = useRef<EngineSubsystems | null>(null);
 
   // Listen for open-visual-material-editor events — open in separate OS window
@@ -120,14 +123,17 @@ export const EditorLayout: React.FC = () => {
       if (!absPath) return;
       const eng = engineRef.current;
       if (!eng) return;
+      setLoadProgress({ loaded: 0, total: 0 });
       try {
-        await loadProjectScene(eng, absPath, handleLog);
+        await loadProjectScene(eng, absPath, handleLog, (loaded, total) => setLoadProgress({ loaded, total }));
         const relPath = projectManager.relativePath(absPath);
         dispatch({ type: 'SET_SCENE_PATH', path: relPath });
         dispatch({ type: 'SET_SCENE_DIRTY', dirty: false });
         log(`Opened scene: ${relPath}`, 'system');
       } catch (err: any) {
         log(`Failed to open scene: ${(err as Error).message}`, 'error');
+      } finally {
+        setLoadProgress(null);
       }
     };
     window.addEventListener('fluxion:open-scene', handler);
@@ -145,16 +151,32 @@ export const EditorLayout: React.FC = () => {
     await SettingsService.init(projectManager.projectDir!);
     await ProjectSettingsService.init();
 
+    // Load debug group toggles from project settings
+    dispatch({
+      type: 'LOAD_DEBUG_GROUPS',
+      groups: {
+        physics:        ProjectSettingsRegistry.get<boolean>('editor.debug.physics')        ?? true,
+        camera:         ProjectSettingsRegistry.get<boolean>('editor.debug.camera')         ?? true,
+        lights:         ProjectSettingsRegistry.get<boolean>('editor.debug.lights')         ?? true,
+        audio:          ProjectSettingsRegistry.get<boolean>('editor.debug.audio')          ?? true,
+        particles:      ProjectSettingsRegistry.get<boolean>('editor.debug.particles')      ?? true,
+        drawInPlayMode: ProjectSettingsRegistry.get<boolean>('editor.debug.drawInPlayMode') ?? true,
+      } as DebugGroups,
+    });
+
     // Load default scene once engine is ready
     const eng = engineRef.current;
     if (eng && config.defaultScene) {
+      setLoadProgress({ loaded: 0, total: 0 });
       try {
         const scenePath = projectManager.resolvePath(config.defaultScene);
-        await loadProjectScene(eng, scenePath, handleLog);
+        await loadProjectScene(eng, scenePath, handleLog, (loaded, total) => setLoadProgress({ loaded, total }));
         dispatch({ type: 'SET_SCENE_PATH', path: config.defaultScene });
         dispatch({ type: 'SET_SCENE_DIRTY', dirty: false });
       } catch (err: any) {
         handleLog(`Failed to load scene: ${err.message}`, 'error');
+      } finally {
+        setLoadProgress(null);
       }
     }
 
@@ -174,12 +196,15 @@ export const EditorLayout: React.FC = () => {
     bindSettings(sys);
 
     if (state.projectLoaded && projectManager.config?.defaultScene) {
+      setLoadProgress({ loaded: 0, total: 0 });
       try {
         const scenePath = projectManager.resolvePath(projectManager.config.defaultScene);
-        await loadProjectScene(sys, scenePath, handleLog);
+        await loadProjectScene(sys, scenePath, handleLog, (loaded, total) => setLoadProgress({ loaded, total }));
         dispatch({ type: 'SET_SCENE_PATH', path: projectManager.config.defaultScene });
       } catch (err: any) {
         handleLog(`Failed to load default scene: ${err.message}`, 'error');
+      } finally {
+        setLoadProgress(null);
       }
     }
   }, [state.projectLoaded, dispatch, handleLog]);
@@ -256,13 +281,16 @@ export const EditorLayout: React.FC = () => {
 
     const eng = engineRef.current;
     if (eng) {
+      setLoadProgress({ loaded: 0, total: 0 });
       try {
-        await loadProjectScene(eng, path, handleLog);
+        await loadProjectScene(eng, path, handleLog, (loaded, total) => setLoadProgress({ loaded, total }));
         const relPath = projectManager.relativePath(path);
         dispatch({ type: 'SET_SCENE_PATH', path: relPath });
         dispatch({ type: 'SET_SCENE_DIRTY', dirty: false });
       } catch (err: any) {
         log(`Failed to open scene: ${err.message}`, 'error');
+      } finally {
+        setLoadProgress(null);
       }
     }
   }, [state.projectLoaded, dispatch, handleLog, log]);
@@ -289,6 +317,7 @@ export const EditorLayout: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        position: 'relative',
       }}>
         {/* Titlebar */}
         <Titlebar
@@ -367,6 +396,42 @@ export const EditorLayout: React.FC = () => {
         </SplitPane>
       </div>
 
+      {/* Scene loading progress popup */}
+      {loadProgress && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'all',
+        }}>
+          <style>{`@keyframes flx-spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{
+            background: 'var(--bg-panel, #1a1d23)',
+            border: '1px solid var(--border, #2a2d35)',
+            borderRadius: 10,
+            padding: '28px 36px',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: 16,
+            minWidth: 260,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ width: 32, height: 32, border: '3px solid var(--accent, #4f8ef7)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'flx-spin 0.8s linear infinite' }} />
+            <span style={{ color: 'var(--text, #e0e0e0)', fontSize: 13, fontWeight: 600 }}>Loading scene...</span>
+            {loadProgress.total > 0 && (() => {
+              const pct = Math.round((loadProgress.loaded / loadProgress.total) * 100);
+              return (
+                <>
+                  <div style={{ width: '100%', height: 4, background: 'var(--bg-input, #252830)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent, #4f8ef7)', borderRadius: 2, transition: 'width 0.1s ease' }} />
+                  </div>
+                  <span style={{ color: 'var(--text-muted, #888)', fontSize: 11 }}>{loadProgress.loaded} / {loadProgress.total} assets ({pct}%)</span>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Invisible logic components */}
       <KeyboardHandler />
       <StatsUpdater />
@@ -379,6 +444,7 @@ export const EditorLayout: React.FC = () => {
       <LightGizmoSync />
       <AudioGizmoSync />
       <ParticleGizmoSync />
+      <ComponentIconSync />
       <AssetHotReload />
 
       {/* Settings Modal */}

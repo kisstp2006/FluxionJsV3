@@ -15,6 +15,7 @@ import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
 import { ScriptSystem } from '../../../src/core/ScriptSystem';
 import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
+import { ComponentIconSystem } from '../../core/ComponentIconSystem';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -146,16 +147,34 @@ export const StatsUpdater: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
 
+    let frameCount = 0;
+    let prevFps = -1, prevEntities = -1, prevDrawCalls = -1, prevTris = -1;
+
     const handler = () => {
+      // Throttle to ~15 Hz (every 4th frame) — stats display doesn't need 60 Hz
+      if ((++frameCount & 3) !== 0) return;
+
       const info = engine.renderer.renderer.info;
+      const fps          = engine.engine.time.smoothFps;
+      const entityCount  = engine.engine.ecs.entityCount;
+      const drawCalls    = info.render.calls;
+      const triangles    = info.render.triangles;
+
+      // Skip dispatch when nothing meaningful changed
+      if (fps === prevFps && entityCount === prevEntities &&
+          drawCalls === prevDrawCalls && triangles === prevTris) return;
+
+      prevFps = fps; prevEntities = entityCount;
+      prevDrawCalls = drawCalls; prevTris = triangles;
+
       dispatch({
         type: 'UPDATE_STATS',
         stats: {
-          fps: engine.engine.time.smoothFps,
-          entityCount: [...engine.engine.ecs.getAllEntities()].length,
+          fps,
+          entityCount,
           frameTime: engine.engine.time.unscaledDeltaTime * 1000,
-          drawCalls: info.render.calls,
-          triangles: info.render.triangles,
+          drawCalls,
+          triangles,
           textures: info.memory.textures,
           geometries: info.memory.geometries,
         },
@@ -285,7 +304,7 @@ export const SimulationSync: React.FC = () => {
 
       // Restore scene to pre-play snapshot
       if (sceneSnapshot.current) {
-        deserializeScene(engine.engine, sceneSnapshot.current, engine.scene);
+        void deserializeScene(engine.engine, sceneSnapshot.current, engine.scene);
         sceneSnapshot.current = null;
       }
     }
@@ -336,36 +355,28 @@ export const CameraGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.camera) return;
       const ecs = engine.engine.ecs;
-      const allEntities = ecs.getAllEntities();
       const aspect = engine.editorCamera.aspect || 16 / 9;
 
-      for (const eid of allEntities) {
-        const cam = ecs.getComponent<CameraComponent>(eid, 'Camera');
-        if (!cam || !cam.enabled) continue;
-
+      for (const [eid, cam] of ecs.getComponentsOfType<CameraComponent>('Camera')) {
+        if (!cam.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
-
-        const isSelected = state.selectedEntity === eid;
-
         GizmoRenderer.drawCameraFrustum(
-          t.position,
-          t.quaternion,
-          cam.fov,
-          cam.near,
-          cam.far,
-          aspect,
-          cam.isOrthographic,
-          cam.orthoSize,
-          isSelected,
+          t.position, t.quaternion,
+          cam.fov, cam.near, cam.far, aspect,
+          cam.isOrthographic, cam.orthoSize,
+          state.selectedEntity === eid,
           engine.editorCamera,
         );
       }
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -584,7 +595,7 @@ export const AssetHotReload: React.FC = () => {
       // Environment skybox — mark for re-apply by clearing the internal skybox texture
       const envs = ecs.getComponentsOfType<any>('Environment');
       for (const [, env] of envs) {
-        if (pathEq(env.skyboxPath) || (env.skyboxFaces && env.skyboxFaces.some(pathEq))) {
+        if (pathEq(env.skyboxPath) || (env.skyboxFaces && Object.values(env.skyboxFaces).some((p: unknown) => pathEq(p as string | undefined)))) {
           env._appliedSkybox = null; // forces EnvironmentSystem to re-apply
         }
       }
@@ -789,10 +800,12 @@ export const ColliderGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.physics) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const col = ecs.getComponent<ColliderComponent>(eid, 'Collider');
-        if (!col || !col.enabled) continue;
+      for (const [eid, col] of ecs.getComponentsOfType<ColliderComponent>('Collider')) {
+        if (!col.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawColliderGizmo(
@@ -804,7 +817,7 @@ export const ColliderGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -817,10 +830,12 @@ export const LightGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.lights) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const light = ecs.getComponent<LightComponent>(eid, 'Light');
-        if (!light || !light.enabled) continue;
+      for (const [eid, light] of ecs.getComponentsOfType<LightComponent>('Light')) {
+        if (!light.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawLightGizmo(
@@ -832,7 +847,7 @@ export const LightGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -845,10 +860,12 @@ export const AudioGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.audio) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const audio = ecs.getComponent<AudioSourceComponent>(eid, 'AudioSource');
-        if (!audio || !audio.enabled) continue;
+      for (const [eid, audio] of ecs.getComponentsOfType<AudioSourceComponent>('AudioSource')) {
+        if (!audio.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawAudioGizmo(
@@ -860,7 +877,7 @@ export const AudioGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -873,10 +890,12 @@ export const ParticleGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.particles) return;
       const ecs = engine.engine.ecs;
-      for (const eid of ecs.getAllEntities()) {
-        const emitter = ecs.getComponent<ParticleEmitterComponent>(eid, 'ParticleEmitter');
-        if (!emitter || !emitter.enabled) continue;
+      for (const [eid, emitter] of ecs.getComponentsOfType<ParticleEmitterComponent>('ParticleEmitter')) {
+        if (!emitter.enabled) continue;
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawParticleGizmo(
@@ -887,7 +906,37 @@ export const ParticleGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
+
+  return null;
+};
+
+// ── Component billboard icon sync ──
+export const ComponentIconSync: React.FC = () => {
+  const engine = useEngine();
+
+  useEffect(() => {
+    if (!engine) return;
+
+    const system = new ComponentIconSystem(engine.renderer.scene);
+    engine.componentIconSystem = system;
+
+    const handler = () => {
+      system.update(
+        engine.engine.ecs,
+        (id) => engine.renderer.getObject(id),
+        engine.editorCamera,
+        !engine.engine.simulationPaused,
+      );
+    };
+    engine.engine.events.on('engine:update', handler);
+
+    return () => {
+      engine.engine.events.off('engine:update', handler);
+      system.dispose();
+      engine.componentIconSystem = null;
+    };
+  }, [engine]);
 
   return null;
 };

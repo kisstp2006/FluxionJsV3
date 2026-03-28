@@ -7,6 +7,8 @@ import { ECSManager } from './ECS';
 import { EventSystem, EngineEvents } from './EventSystem';
 import { Time } from './Time';
 import { ComponentRegistry } from './ComponentRegistry';
+import type { WorkerPool } from './WorkerPool';
+import type { PhysicsWorkerHost } from '../physics/PhysicsWorkerHost';
 
 export interface EngineConfig {
   canvas?: HTMLCanvasElement;
@@ -19,11 +21,30 @@ export interface EngineConfig {
   maxFps?: number;
 }
 
+/** Optional threading configuration — all options default to false/disabled. */
+export interface ThreadingConfig {
+  /** Run Rapier physics in a dedicated worker (requires SharedArrayBuffer / COOP+COEP headers). */
+  physics?: boolean;
+  /** Decode images and audio in a WorkerPool (frees main thread during asset loading). */
+  assets?: boolean;
+  /** Number of asset worker threads (default: max(1, hardwareConcurrency - 1)). */
+  workers?: number;
+}
+
+/** Live threading state — populated by Engine.enableThreading(). */
+export interface ThreadingState {
+  physicsWorker: PhysicsWorkerHost | null;
+  assetPool:     WorkerPool | null;
+}
+
 export class Engine {
   readonly ecs: ECSManager;
   readonly events: EventSystem;
   readonly time: Time;
   readonly config: Required<EngineConfig>;
+
+  /** Threading subsystems — null until enableThreading() is called. */
+  readonly threading: ThreadingState = { physicsWorker: null, assetPool: null };
 
   private running = false;
   private rafId = 0;
@@ -81,6 +102,35 @@ export class Engine {
     this.loop();
   }
 
+  /**
+   * Opt-in threading initialisation — safe to call before or after start().
+   * Gracefully skips unsupported features (e.g. SharedArrayBuffer not available).
+   */
+  async enableThreading(config: ThreadingConfig = {}): Promise<void> {
+    // ── Physics worker ────────────────────────────────────────
+    if (config.physics) {
+      const { SharedTransformBuffer } = await import('./SharedTransformBuffer');
+      if (SharedTransformBuffer.isSupported()) {
+        const { PhysicsWorkerHost } = await import('../physics/PhysicsWorkerHost');
+        const workerUrl = new URL('../physics/physics.worker.ts', import.meta.url);
+        const host = new PhysicsWorkerHost(workerUrl);
+        (this.threading as any).physicsWorker = host;
+        console.info('[Engine] Physics worker enabled.');
+      } else {
+        console.warn('[Engine] Physics worker requested but SharedArrayBuffer is unavailable (missing COOP/COEP headers). Falling back to main-thread physics.');
+      }
+    }
+
+    // ── Asset worker pool ─────────────────────────────────────
+    if (config.assets) {
+      const { WorkerPool } = await import('./WorkerPool');
+      const workerUrl = new URL('../assets/AssetWorker.ts', import.meta.url);
+      const poolSize  = config.workers ?? Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1);
+      (this.threading as any).assetPool = new WorkerPool(workerUrl, poolSize);
+      console.info(`[Engine] Asset worker pool enabled (${poolSize} workers).`);
+    }
+  }
+
   stop(): void {
     this.running = false;
     if (this.rafId) {
@@ -93,6 +143,9 @@ export class Engine {
         sub.dispose();
       }
     }
+    // Terminate threading workers
+    this.threading.physicsWorker?.terminate();
+    this.threading.assetPool?.terminate();
     this.events.emit(EngineEvents.DESTROY);
   }
 

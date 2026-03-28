@@ -46,6 +46,10 @@ export const ComponentSection: React.FC<ComponentSectionProps> = ({
   const icon        = reg?.meta.icon;
   const isRemovable = reg?.meta.removable !== false;
 
+  const missingDeps = (reg?.meta.requires ?? []).filter(
+    reqType => !engine.engine.ecs.hasComponent(entity, reqType)
+  );
+
   const handleToggleEnabled = (e: React.MouseEvent) => {
     e.stopPropagation();
     setProperty(undoManager, comp, 'enabled', !comp.enabled);
@@ -108,6 +112,34 @@ export const ComponentSection: React.FC<ComponentSectionProps> = ({
       actions={actions}
       defaultOpen={defaultOpen}
     >
+      {missingDeps.length > 0 && (
+        <div style={{
+          margin: '6px 8px 2px',
+          padding: '5px 8px',
+          background: 'rgba(255, 200, 0, 0.08)',
+          border: '1px solid rgba(255, 200, 0, 0.35)',
+          borderRadius: '4px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2px',
+        }}>
+          {missingDeps.map(reqType => {
+            const depName = ComponentRegistry.get(reqType)?.meta.displayName ?? reqType;
+            return (
+              <div key={reqType} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '11px',
+                color: 'var(--accent-yellow)',
+              }}>
+                <span style={{ fontWeight: 700 }}>!</span>
+                <span>Requires: <strong>{depName}</strong></span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {children}
     </Section>
   );

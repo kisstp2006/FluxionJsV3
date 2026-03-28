@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Engine } from '../core/Engine';
 import { projectManager } from '../project/ProjectManager';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
+import { TransformSystem } from '../core/TransformSystem';
 import { EngineEvents } from '../core/EventSystem';
 import {
   TransformComponent,
@@ -26,8 +27,10 @@ import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
 import { DebugConsole } from '../core/DebugConsole';
 
-// Module-level scratch — avoids per-frame Vector3 allocations in LightSystem
-const _lightForward = new THREE.Vector3();
+// Module-level scratch — avoids per-frame Vector3 allocations
+const _lightForward  = new THREE.Vector3();
+const _sunDir        = new THREE.Vector3();
+const _csmForward    = new THREE.Vector3();
 
 export interface RendererConfig {
   shadows?: boolean;
@@ -115,6 +118,7 @@ export class FluxionRenderer {
 
     // Register ECS systems
     engine.ecs.addSystem(new TransformNodeSystem(this));
+    engine.ecs.addSystem(new TransformSystem());      // priority -150: computes world matrices
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
     engine.ecs.addSystem(new SpriteRendererSystem(this));
@@ -242,7 +246,7 @@ class TransformNodeSystem implements System {
 class TransformSyncSystem implements System {
   readonly name = 'TransformSync';
   readonly requiredComponents = ['Transform'];
-  priority = -100; // Run first
+  priority = -100;
   enabled = true;
 
   constructor(private renderer: FluxionRenderer) {}
@@ -253,16 +257,24 @@ class TransformSyncSystem implements System {
       const obj = this.renderer.getObject(entity);
       if (!transform || !obj) continue;
 
+      // Always sync local transform — TransformSystem (priority -150) already
+      // cleared dirty/worldDirty before we run (priority -100), so those flags
+      // cannot be used as a gate here.
       obj.position.copy(transform.position);
       obj.quaternion.copy(transform.quaternion);
       obj.scale.copy(transform.scale);
 
-      // Sync world matrix for hierarchy
-      const parent = ecs.getParent(entity);
-      if (parent !== undefined) {
-        const parentObj = this.renderer.getObject(parent);
-        if (parentObj) {
-          transform.worldMatrix = obj.matrixWorld;
+      // Maintain THREE.js parent-child hierarchy so matrixWorld is computed correctly
+      // by Three.js during rendering (shadows, culling, etc.).
+      const parentId = ecs.getParent(entity);
+      if (parentId !== undefined) {
+        const parentObj = this.renderer.getObject(parentId);
+        if (parentObj && obj.parent !== parentObj) {
+          parentObj.add(obj); // removes from previous parent automatically
+        }
+      } else {
+        if (obj.parent !== this.renderer.scene) {
+          this.renderer.scene.add(obj); // move back to scene root
         }
       }
     }
@@ -284,6 +296,32 @@ class MeshRendererSystem implements System {
     this.trackedMesh.clear();
   }
 
+  /** Apply shadow flags and CSM material setup to a mesh/group in one traverse. */
+  private _applyMeshFlags(mesh: THREE.Object3D, cast: boolean, recv: boolean): void {
+    const csm = this.renderer.csm;
+    mesh.castShadow = cast;
+    mesh.receiveShadow = recv;
+    if (mesh instanceof THREE.Group) {
+      mesh.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = cast;
+          child.receiveShadow = recv;
+          if (csm) {
+            const mat = child.material;
+            if (Array.isArray(mat)) mat.forEach(m => csm.setupMaterial(m));
+            else if (mat) csm.setupMaterial(mat);
+          }
+        }
+      });
+    } else if ((mesh as THREE.Mesh).isMesh) {
+      const mat = (mesh as THREE.Mesh).material;
+      if (csm) {
+        if (Array.isArray(mat)) mat.forEach(m => csm.setupMaterial(m));
+        else if (mat) csm.setupMaterial(mat);
+      }
+    }
+  }
+
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     // Add new meshes / detect mesh swaps
     for (const entity of entities) {
@@ -294,53 +332,19 @@ class MeshRendererSystem implements System {
 
       if (!this.tracked.has(entity)) {
         // First time — add to scene
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         this.renderer.addObject(entity, meshComp.mesh);
         this.tracked.add(entity);
         this.trackedMesh.set(entity, meshComp.mesh);
       } else if (currentMesh !== meshComp.mesh) {
         // Mesh reference changed — swap in scene
         this.renderer.removeObject(entity);
-
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         this.renderer.addObject(entity, meshComp.mesh);
         this.trackedMesh.set(entity, meshComp.mesh);
       } else if (isDirty(meshComp)) {
-        // Sync shadow properties when component is dirty (Stride processor pattern)
-        meshComp.mesh.castShadow = meshComp.castShadow;
-        meshComp.mesh.receiveShadow = meshComp.receiveShadow;
-
-        if (meshComp.mesh instanceof THREE.Group) {
-          meshComp.mesh.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-              child.castShadow = meshComp.castShadow;
-              child.receiveShadow = meshComp.receiveShadow;
-            }
-          });
-        }
-
+        // Sync shadow properties when component is dirty
+        this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         clearDirty(meshComp);
       }
     }
@@ -770,17 +774,25 @@ class LightSystem implements System {
   readonly requiredComponents = ['Transform', 'Light'];
   priority = 5;
   enabled = true;
-  private tracked: Set<EntityId> = new Set();
-  private cookieLoading: Set<EntityId> = new Set();
+  private tracked:       Set<EntityId>               = new Set();
+  private cookieLoading: Set<EntityId>               = new Set();
+  private lastLightType: Map<EntityId, string>       = new Map();
+  /** Tracks the cookie path that is currently loaded/loading per entity. */
+  private lastCookiePath: Map<EntityId, string|null> = new Map();
+  /** Separate target store so we can remove targets even after lightComp is gone. */
+  private targets: Map<EntityId, THREE.Object3D>     = new Map();
+  /** Tracks last shadow map size per entity to detect runtime changes. */
+  private lastShadowSize: Map<EntityId, number>      = new Map();
 
   constructor(private renderer: FluxionRenderer) {}
-
-  private lastLightType: Map<EntityId, string> = new Map();
 
   onSceneClear(): void {
     this.tracked.clear();
     this.cookieLoading.clear();
     this.lastLightType.clear();
+    this.lastCookiePath.clear();
+    this.targets.clear();
+    this.lastShadowSize.clear();
   }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
@@ -789,108 +801,165 @@ class LightSystem implements System {
       const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
       if (!lightComp || !transform) continue;
 
-      // Detect lightType change → destroy old light and recreate
-      const prevType = this.lastLightType.get(entity);
-      if (lightComp.light && prevType !== undefined && prevType !== lightComp.lightType) {
-        if ((lightComp.light as any).target) {
-          this.renderer.scene.remove((lightComp.light as any).target);
-        }
+      // ── Detect lightType change → destroy old light and recreate ────────
+      const prevType     = this.lastLightType.get(entity);
+      const prevShadSize = this.lastShadowSize.get(entity);
+      const typeChanged  = prevType !== undefined && prevType !== lightComp.lightType;
+      const shadowResChanged = lightComp.light !== null
+        && prevShadSize !== undefined
+        && prevShadSize !== lightComp.shadowMapSize;
+
+      if (lightComp.light && (typeChanged || shadowResChanged)) {
+        const target = this.targets.get(entity);
+        if (target) { this.renderer.scene.remove(target); this.targets.delete(entity); }
         this.renderer.removeObject(entity);
         lightComp.light = null;
         this.tracked.delete(entity);
+        // Force cookie reload after recreate
+        this.lastCookiePath.delete(entity);
+        this.cookieLoading.delete(entity);
       }
       this.lastLightType.set(entity, lightComp.lightType);
+      this.lastShadowSize.set(entity, lightComp.shadowMapSize);
 
-      // Create light if needed
+      // ── Create light if needed ───────────────────────────────────────────
       if (!lightComp.light) {
         lightComp.light = this.createLight(lightComp);
-        this.renderer.addObject(entity, lightComp.light);
+        const target = (lightComp.light as any).target as THREE.Object3D | undefined;
+        if (target) { this.renderer.scene.add(target); this.targets.set(entity, target); }
+        this.renderer.addObject(entity, lightComp.light!);
         this.tracked.add(entity);
       }
 
-      // Sync properties every frame (Stride EntityProcessor pattern)
-      lightComp.light.color.copy(lightComp.color);
-      lightComp.light.intensity = lightComp.intensity;
+      const light = lightComp.light!;
 
-      // When CSM is active, suppress the user's directional light (CSM provides its own)
-      if (lightComp.light instanceof THREE.DirectionalLight && this.renderer.csm) {
-        lightComp.light.intensity = 0;
-        lightComp.light.castShadow = false;
+      // ── Respect enabled flag — hide/show without removing from scene ─────
+      const shouldBeVisible = lightComp.enabled;
+      light.visible = shouldBeVisible;
+      if (!shouldBeVisible) {
+        // Still clear dirty to avoid stale flags, but skip all further sync
+        if (isDirty(lightComp)) clearDirty(lightComp);
+        continue;
       }
 
-      if (lightComp.light instanceof THREE.PointLight) {
-        lightComp.light.distance = lightComp.range;
-        lightComp.light.castShadow = lightComp.castShadow;
-      }
-      if (lightComp.light instanceof THREE.SpotLight) {
-        lightComp.light.distance = lightComp.range;
-        lightComp.light.angle = THREE.MathUtils.degToRad(lightComp.spotAngle);
-        lightComp.light.penumbra = lightComp.spotPenumbra;
-        lightComp.light.castShadow = lightComp.castShadow;
+      // ── Sync shared properties ───────────────────────────────────────────
+      light.color.copy(lightComp.color);
+      light.intensity = lightComp.intensity;
 
-        // Update target from transform forward direction (local -Z)
+      if (light instanceof THREE.SpotLight) {
+        light.distance   = lightComp.range;
+        light.angle      = THREE.MathUtils.degToRad(lightComp.spotAngle);
+        light.penumbra   = lightComp.spotPenumbra;
+        light.castShadow = lightComp.castShadow;
+
+        // Update target (local -Z direction)
         const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
-        lightComp.light.target.position.copy(transform.position).add(forward);
-        lightComp.light.target.updateMatrixWorld();
+        light.target.position.copy(transform.position).add(forward);
+        light.target.updateMatrixWorld();
 
-        // Cookie / projection texture
-        if (lightComp.cookieTexturePath && !lightComp.cookieTexture && !this.cookieLoading.has(entity)) {
-          this.cookieLoading.add(entity);
-          const absPath = projectManager.resolvePath(lightComp.cookieTexturePath);
-          const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
-          new THREE.TextureLoader().load(
-            url,
-            (tex) => {
-              lightComp.cookieTexture = tex;
-              if (lightComp.light instanceof THREE.SpotLight) {
-                lightComp.light.map = tex;
-              }
-              this.cookieLoading.delete(entity);
-            },
-            undefined,
-            (err) => {
-              DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
-              this.cookieLoading.delete(entity);
-            },
-          );
-        }
-        if (lightComp.cookieTexture) {
-          lightComp.light.map = lightComp.cookieTexture;
-        }
-        if (!lightComp.cookieTexturePath && lightComp.cookieTexture) {
-          lightComp.cookieTexture.dispose();
-          lightComp.cookieTexture = null;
-          lightComp.light.map = null;
-          this.cookieLoading.delete(entity);
-        }
+        // ── Cookie / projection texture ──────────────────────────────────
+        this._syncCookieTexture(entity, lightComp);
       }
-      if (lightComp.light instanceof THREE.DirectionalLight) {
-        if (!this.renderer.csm) {
-          lightComp.light.castShadow = lightComp.castShadow;
+
+      if (light instanceof THREE.PointLight) {
+        light.distance   = lightComp.range;
+        light.castShadow = lightComp.castShadow;
+      }
+
+      if (light instanceof THREE.DirectionalLight) {
+        // When CSM is active, suppress the user's directional light (CSM provides its own)
+        if (this.renderer.csm) {
+          light.intensity   = 0;
+          light.castShadow  = false;
+        } else {
+          light.castShadow = lightComp.castShadow;
         }
 
-        // Update target from transform forward direction (local -Z)
+        // Update target (local -Z direction)
         const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
-        lightComp.light.target.position.copy(transform.position).add(forward);
-        lightComp.light.target.updateMatrixWorld();
+        light.target.position.copy(transform.position).add(forward);
+        light.target.updateMatrixWorld();
       }
 
       if (isDirty(lightComp)) clearDirty(lightComp);
     }
 
-    // Cleanup removed
+    // ── Cleanup removed entities / components ────────────────────────────
     for (const entity of this.tracked) {
       if (!entities.has(entity)) {
+        // Remove target using our own map — safe even if lightComp is already gone
+        const target = this.targets.get(entity);
+        if (target) { this.renderer.scene.remove(target); this.targets.delete(entity); }
+
+        // Dispose cookie texture if still live
         const lightComp = ecs.getComponent<LightComponent>(entity, 'Light');
-        if (lightComp?.light && (lightComp.light as any).target) {
-          this.renderer.scene.remove((lightComp.light as any).target);
+        if (lightComp?.cookieTexture) {
+          lightComp.cookieTexture.dispose();
+          lightComp.cookieTexture = null;
         }
+
         this.renderer.removeObject(entity);
         this.tracked.delete(entity);
         this.lastLightType.delete(entity);
+        this.lastCookiePath.delete(entity);
+        this.lastShadowSize.delete(entity);
         this.cookieLoading.delete(entity);
       }
     }
+  }
+
+  // ── Cookie texture sync ─────────────────────────────────────────────────────
+  private _syncCookieTexture(entity: EntityId, lightComp: LightComponent): void {
+    const currentPath = lightComp.cookieTexturePath ?? null;
+    const loadedPath  = this.lastCookiePath.get(entity);
+
+    // Path changed (including cleared) → dispose old texture and reset
+    if (loadedPath !== currentPath) {
+      if (lightComp.cookieTexture) {
+        lightComp.cookieTexture.dispose();
+        lightComp.cookieTexture = null;
+      }
+      if (lightComp.light instanceof THREE.SpotLight) lightComp.light.map = null;
+      this.lastCookiePath.set(entity, currentPath);
+      this.cookieLoading.delete(entity);
+    }
+
+    if (!currentPath) return;
+
+    // Already loaded for this path → just apply
+    if (lightComp.cookieTexture) {
+      if (lightComp.light instanceof THREE.SpotLight) {
+        lightComp.light.map = lightComp.cookieTexture;
+      }
+      return;
+    }
+
+    // Start loading if not already in-flight
+    if (this.cookieLoading.has(entity)) return;
+    this.cookieLoading.add(entity);
+
+    const absPath = projectManager.resolvePath(currentPath);
+    const url     = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+
+    new THREE.TextureLoader().load(
+      url,
+      (tex) => {
+        // Guard: entity destroyed or path changed while loading
+        if (this.lastCookiePath.get(entity) !== currentPath) {
+          tex.dispose();
+          this.cookieLoading.delete(entity);
+          return;
+        }
+        lightComp.cookieTexture = tex;
+        if (lightComp.light instanceof THREE.SpotLight) lightComp.light.map = tex;
+        this.cookieLoading.delete(entity);
+      },
+      undefined,
+      (_err) => {
+        DebugConsole.LogWarning(`[LightSystem] Failed to load cookie texture: ${url}`);
+        this.cookieLoading.delete(entity);
+      },
+    );
   }
 
   private createLight(comp: LightComponent): THREE.Light {
@@ -1103,7 +1172,7 @@ class EnvironmentSystem implements System {
     // Cloud sun direction derived from sun elevation/azimuth
     const sunElRad = THREE.MathUtils.degToRad(env.sunElevation);
     const sunAzRad = THREE.MathUtils.degToRad(env.sunAzimuth);
-    const sunDir = new THREE.Vector3(
+    const sunDir = _sunDir.set(
       Math.cos(sunElRad) * Math.sin(sunAzRad),
       Math.sin(sunElRad),
       Math.cos(sunElRad) * Math.cos(sunAzRad),
@@ -1325,7 +1394,7 @@ class EnvironmentSystem implements System {
       // Recreate CSM
       this.removeCSM();
 
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+      const forward = _csmForward.set(0, 0, -1).applyQuaternion(dirTransform.quaternion);
 
       this.renderer.csm = new CSM({
         camera,
@@ -1377,7 +1446,7 @@ class EnvironmentSystem implements System {
     const csm = this.renderer.csm!;
 
     // Sync light direction from directional light transform
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(dirTransform.quaternion);
+    const forward = _csmForward.set(0, 0, -1).applyQuaternion(dirTransform.quaternion);
     csm.lightDirection.copy(forward).negate();
 
     // Sync color + intensity
@@ -1385,16 +1454,6 @@ class EnvironmentSystem implements System {
       cl.color.copy(dirLightComp.color);
       cl.intensity = dirLightComp.intensity;
     }
-
-    // Setup new materials that haven't been patched yet
-    this.renderer.scene.traverse((obj: THREE.Object3D) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mat = (obj as THREE.Mesh).material;
-        if (mat && !Array.isArray(mat) && !mat.defines?.USE_CSM) {
-          csm.setupMaterial(mat);
-        }
-      }
-    });
 
     // Update frustums and shadow positions
     csm.update();
@@ -1428,9 +1487,37 @@ class FogVolumeSystem implements System {
   enabled = true;
 
   private _renderer: FluxionRenderer;
+  // Pre-allocated pools — reused every frame, zero clone() allocs
+  private _volPool:   FogVolumeData[] = [];
+  private _lightPool: FogLightData[]  = [];
+  private _dir = new THREE.Vector3();
 
   constructor(renderer: FluxionRenderer) {
     this._renderer = renderer;
+  }
+
+  private _getVol(i: number): FogVolumeData {
+    if (i >= this._volPool.length) {
+      this._volPool.push({
+        position: new THREE.Vector3(), size: new THREE.Vector3(),
+        shape: 0, density: 0,
+        albedo: new THREE.Color(), emission: new THREE.Color(),
+        emissionEnergy: 0, negative: false,
+      });
+    }
+    return this._volPool[i];
+  }
+
+  private _getLight(i: number): FogLightData {
+    if (i >= this._lightPool.length) {
+      this._lightPool.push({
+        type: 0,
+        position: new THREE.Vector3(), direction: new THREE.Vector3(),
+        color: new THREE.Color(),
+        intensity: 0, range: 0, outerCos: 0, innerCos: 0,
+      });
+    }
+    return this._lightPool[i];
   }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
@@ -1443,70 +1530,60 @@ class FogVolumeSystem implements System {
       const fv = ecs.getComponent<FogVolumeComponent>(eid, 'FogVolume');
       const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
       if (!fv || !t || !fv.enabled) continue;
-      volumes.push({
-        position: t.position.clone(),
-        size: t.scale.clone(),
-        shape: fv.shape === 'box' ? 0 : fv.shape === 'ellipsoid' ? 1 : 2,
-        density: fv.density,
-        albedo: fv.albedo.clone(),
-        emission: fv.emission.clone(),
-        emissionEnergy: fv.emissionEnergy,
-        negative: fv.negative,
-      });
+      const vol = this._getVol(volumes.length);
+      vol.position.copy(t.position);
+      vol.size.copy(t.scale);
+      vol.shape = fv.shape === 'box' ? 0 : fv.shape === 'ellipsoid' ? 1 : 2;
+      vol.density = fv.density;
+      vol.albedo.copy(fv.albedo);
+      vol.emission.copy(fv.emission);
+      vol.emissionEnergy = fv.emissionEnergy;
+      vol.negative = fv.negative;
+      volumes.push(vol);
     }
     pp.config.volumetricFog.volumes = volumes;
 
     // ── Light sources ────────────────────────────────────────
     const lights: FogLightData[] = [];
-    const lightEntities = ecs.getAllEntities();
     const DEG2RAD = Math.PI / 180;
 
-    for (const eid of lightEntities) {
+    for (const [eid, lc] of ecs.getComponentsOfType<LightComponent>('Light')) {
       if (lights.length >= 8) break;
-      const lc = ecs.getComponent<LightComponent>(eid, 'Light');
-      const t  = ecs.getComponent<TransformComponent>(eid, 'Transform');
+      const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
       if (!lc || !t || !lc.enabled) continue;
-      if (lc.lightType === 'ambient') continue; // ambient light ≠ volumetric scattering source
+      if (lc.lightType === 'ambient') continue;
 
-      // Forward direction of the light fixture (local -Z rotated by entity quaternion)
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(t.quaternion).normalize();
+      const light = this._getLight(lights.length);
+      this._dir.set(0, 0, -1).applyQuaternion(t.quaternion).normalize();
+      light.direction.copy(this._dir);
 
       if (lc.lightType === 'directional') {
-        lights.push({
-          type: 0,
-          position: new THREE.Vector3(),  // unused for directional
-          direction: dir,
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: 0,
-          outerCos: 0,
-          innerCos: 0,
-        });
+        light.type = 0;
+        light.position.set(0, 0, 0);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = 0; light.outerCos = 0; light.innerCos = 0;
       } else if (lc.lightType === 'point') {
-        lights.push({
-          type: 1,
-          position: t.position.clone(),
-          direction: new THREE.Vector3(),  // unused
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: lc.range,
-          outerCos: 0,
-          innerCos: 0,
-        });
+        light.type = 1;
+        light.position.copy(t.position);
+        light.direction.set(0, 0, 0);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = lc.range; light.outerCos = 0; light.innerCos = 0;
       } else if (lc.lightType === 'spot') {
         const outerAngle = lc.spotAngle * DEG2RAD;
         const innerAngle = outerAngle * Math.max(0, 1 - lc.spotPenumbra);
-        lights.push({
-          type: 2,
-          position: t.position.clone(),
-          direction: dir,
-          color: lc.color.clone(),
-          intensity: lc.intensity,
-          range: lc.range,
-          outerCos: Math.cos(outerAngle),
-          innerCos: Math.cos(innerAngle),
-        });
+        light.type = 2;
+        light.position.copy(t.position);
+        light.color.copy(lc.color);
+        light.intensity = lc.intensity;
+        light.range = lc.range;
+        light.outerCos = Math.cos(outerAngle);
+        light.innerCos = Math.cos(innerAngle);
+      } else {
+        continue;
       }
+      lights.push(light);
     }
     pp.config.volumetricFog.lights = lights;
   }

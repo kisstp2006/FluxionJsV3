@@ -11,6 +11,7 @@ import { ViewCube } from './ViewCube';
 import { CameraComponent } from '../../../src/core/Components';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
+import { applyDebugMode, restoreDebugMode } from '../../core/ViewportDebugMaterials';
 
 export interface ViewportProps {
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
@@ -185,6 +186,13 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     for (const hit of intersects) {
       if (hit.object.type === 'LineSegments') continue;
 
+      // Billboard icon hit — select the associated entity directly
+      const billboardEntity = (hit.object as any).__editorEntityId as number | undefined;
+      if (billboardEntity !== undefined) {
+        dispatch({ type: 'SELECT_ENTITY', entity: billboardEntity });
+        return;
+      }
+
       const entity = engine.renderer.getEntity(hit.object) ??
         (hit.object.parent ? engine.renderer.getEntity(hit.object.parent) : undefined);
       if (entity !== undefined) {
@@ -329,46 +337,9 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   useEffect(() => {
     if (!engine) return;
     const scene = engine.renderer.scene;
-    scene.traverse((obj: THREE.Object3D) => {
-      if (obj instanceof THREE.Mesh) {
-        const mat = obj.material;
-        if (!mat) return;
-        const materials = Array.isArray(mat) ? mat : [mat];
-        for (const m of materials) {
-          if (m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial) {
-            m.wireframe = state.viewportShading === 'wireframe';
-            // For unlit, we use emissive override trick — store original if needed
-            if (state.viewportShading === 'unlit') {
-              (m as any)._origEnvMapIntensity = (m as any)._origEnvMapIntensity ?? m.envMapIntensity;
-              m.envMapIntensity = 0;
-              // Boost emissive slightly so objects are visible
-            } else if ((m as any)._origEnvMapIntensity !== undefined) {
-              m.envMapIntensity = (m as any)._origEnvMapIntensity;
-            }
-          }
-        }
-      }
-    });
-    // Toggle scene lights for unlit
-    scene.traverse((obj: THREE.Object3D) => {
-      if (obj instanceof THREE.Light && !(obj instanceof THREE.AmbientLight)) {
-        if (state.viewportShading === 'unlit') {
-          (obj as any)._origVisible = (obj as any)._origVisible ?? obj.visible;
-          obj.visible = false;
-        } else if ((obj as any)._origVisible !== undefined) {
-          obj.visible = (obj as any)._origVisible;
-        }
-      }
-      // Ensure ambient light for unlit
-      if (obj instanceof THREE.AmbientLight) {
-        if (state.viewportShading === 'unlit') {
-          (obj as any)._origIntensity = (obj as any)._origIntensity ?? obj.intensity;
-          obj.intensity = 2;
-        } else if ((obj as any)._origIntensity !== undefined) {
-          obj.intensity = (obj as any)._origIntensity;
-        }
-      }
-    });
+    const threeRenderer = engine.renderer.renderer;
+    applyDebugMode(state.viewportShading, scene, threeRenderer);
+    return () => restoreDebugMode(scene, threeRenderer);
   }, [engine, state.viewportShading]);
 
   // Camera preset view helper

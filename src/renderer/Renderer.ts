@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Engine } from '../core/Engine';
 import { projectManager } from '../project/ProjectManager';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
+import { TransformSystem } from '../core/TransformSystem';
 import { EngineEvents } from '../core/EventSystem';
 import {
   TransformComponent,
@@ -115,6 +116,7 @@ export class FluxionRenderer {
 
     // Register ECS systems
     engine.ecs.addSystem(new TransformNodeSystem(this));
+    engine.ecs.addSystem(new TransformSystem());      // priority -150: computes world matrices
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
     engine.ecs.addSystem(new SpriteRendererSystem(this));
@@ -242,7 +244,7 @@ class TransformNodeSystem implements System {
 class TransformSyncSystem implements System {
   readonly name = 'TransformSync';
   readonly requiredComponents = ['Transform'];
-  priority = -100; // Run first
+  priority = -100;
   enabled = true;
 
   constructor(private renderer: FluxionRenderer) {}
@@ -253,16 +255,23 @@ class TransformSyncSystem implements System {
       const obj = this.renderer.getObject(entity);
       if (!transform || !obj) continue;
 
+      // Apply local transform so THREE.js (and gizmo service) sees LOCAL position/rotation/scale.
+      // TransformSystem has already computed the correct worldMatrix in TransformComponent.
       obj.position.copy(transform.position);
       obj.quaternion.copy(transform.quaternion);
       obj.scale.copy(transform.scale);
 
-      // Sync world matrix for hierarchy
-      const parent = ecs.getParent(entity);
-      if (parent !== undefined) {
-        const parentObj = this.renderer.getObject(parent);
-        if (parentObj) {
-          transform.worldMatrix = obj.matrixWorld;
+      // Maintain THREE.js parent-child hierarchy so matrixWorld is computed correctly
+      // by Three.js during rendering (shadows, culling, etc.).
+      const parentId = ecs.getParent(entity);
+      if (parentId !== undefined) {
+        const parentObj = this.renderer.getObject(parentId);
+        if (parentObj && obj.parent !== parentObj) {
+          parentObj.add(obj); // removes from previous parent automatically
+        }
+      } else {
+        if (obj.parent !== this.renderer.scene) {
+          this.renderer.scene.add(obj); // move back to scene root
         }
       }
     }

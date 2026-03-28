@@ -6,9 +6,24 @@
 import React from 'react';
 import { Button, Tooltip, Icons, NumberInput, Select } from '../../ui';
 import { useEditor, EditorTool, ViewportShadingMode } from '../../core/EditorContext';
+import { DebugGroups } from '../../core/EditorState';
 
 export const Toolbar: React.FC = () => {
   const { state, dispatch } = useEditor();
+  const [showGizmosMenu, setShowGizmosMenu] = React.useState(false);
+  const gizmosMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close gizmos menu on outside click
+  React.useEffect(() => {
+    if (!showGizmosMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (gizmosMenuRef.current && !gizmosMenuRef.current.contains(e.target as Node)) {
+        setShowGizmosMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showGizmosMenu]);
 
   const tools: Array<{ tool: EditorTool; icon: React.ReactNode; label: string; shortcut: string }> = [
     { tool: 'select', icon: Icons.select, label: 'Select', shortcut: 'Q' },
@@ -125,6 +140,69 @@ export const Toolbar: React.FC = () => {
             {Icons.grid}
           </Button>
         </Tooltip>
+
+        {/* Gizmos dropdown */}
+        <div ref={gizmosMenuRef} style={{ position: 'relative' }}>
+          <Tooltip text="Debug Draw Groups">
+            <Button
+              variant="icon"
+              active={showGizmosMenu}
+              onClick={() => setShowGizmosMenu(v => !v)}
+            >
+              {Icons.eye}
+            </Button>
+          </Tooltip>
+          {showGizmosMenu && (
+            <div style={{
+              position: 'fixed',
+              top: '40px',
+              zIndex: 1000,
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              padding: '6px 0',
+              minWidth: '180px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}>
+              {(([
+                ['physics',   'Physics'],
+                ['camera',    'Camera'],
+                ['lights',    'Lights'],
+                ['audio',     'Audio'],
+                ['particles', 'Particles'],
+              ]) as [keyof DebugGroups, string][]).map(([key, label]) => (
+                <label key={key} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '4px 12px', cursor: 'pointer',
+                  fontSize: '12px', color: 'var(--text-secondary)',
+                  userSelect: 'none',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={state.debugGroups[key]}
+                    onChange={e => dispatch({ type: 'SET_DEBUG_GROUP', group: key, value: e.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+              <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '4px 12px', cursor: 'pointer',
+                fontSize: '12px', color: 'var(--text-secondary)',
+                userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={state.debugGroups.drawInPlayMode}
+                  onChange={e => dispatch({ type: 'SET_DEBUG_GROUP', group: 'drawInPlayMode', value: e.target.checked })}
+                />
+                Draw in Play Mode
+              </label>
+            </div>
+          )}
+        </div>
+
         <Select
           value={state.viewportShading}
           onChange={(v) => dispatch({ type: 'SET_VIEWPORT_SHADING', mode: v as ViewportShadingMode })}

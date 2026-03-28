@@ -11,6 +11,27 @@ import type { DeserializationContext } from './SerializationContext';
 
 // ── Transform ────────────────────────────────────────────────────────────────
 
+// Module-level scratch matrices to avoid per-call allocations in transform helpers
+const _tInvParent = new THREE.Matrix4();
+const _tLocalMat  = new THREE.Matrix4();
+
+/**
+ * Creates a THREE.Vector3 whose x/y/z property setters fire a callback on mutation.
+ * THREE.Vector3 has no built-in _onChange, so we wire it up via Object.defineProperty.
+ * All THREE.js mutating methods (set, copy, add, etc.) ultimately assign x/y/z,
+ * so this approach catches every mutation automatically.
+ */
+function _makeObservableVec3(cb: () => void, x = 0, y = 0, z = 0): THREE.Vector3 {
+  const v = new THREE.Vector3();
+  let _x = x, _y = y, _z = z;
+  Object.defineProperty(v, 'x', { get: () => _x, set: (val: number) => { _x = val; cb(); }, enumerable: true, configurable: true });
+  Object.defineProperty(v, 'y', { get: () => _y, set: (val: number) => { _y = val; cb(); }, enumerable: true, configurable: true });
+  Object.defineProperty(v, 'z', { get: () => _z, set: (val: number) => { _z = val; cb(); }, enumerable: true, configurable: true });
+  return v;
+}
+
+import type { EntityId } from './ECS';
+
 @component({
   typeId: 'Transform',
   displayName: 'Transform',
@@ -21,11 +42,13 @@ import type { DeserializationContext } from './SerializationContext';
 export class TransformComponent extends BaseComponent {
   readonly typeId = 'Transform';
 
+  // ── Local-space transform (serialized, source of truth) ─────────────────
+
   @field({ type: 'vector3', label: 'Position', defaultValue: [0, 0, 0] })
-  position = new THREE.Vector3(0, 0, 0);
+  position: THREE.Vector3;
 
   @field({ type: 'vector3', label: 'Scale', uniformScale: true, defaultValue: [1, 1, 1] })
-  scale = new THREE.Vector3(1, 1, 1);
+  scale: THREE.Vector3;
 
   /**
    * Euler rotation — modifying .x/.y/.z automatically syncs `quaternion`.
@@ -35,29 +58,121 @@ export class TransformComponent extends BaseComponent {
   readonly rotation: THREE.Euler;
   readonly quaternion: THREE.Quaternion;
 
-  private _matrix = new THREE.Matrix4();
-  private _worldMatrix = new THREE.Matrix4();
+  // ── Dirty flags ──────────────────────────────────────────────────────────
+
+  /** True when position/rotation/scale changed — TransformSystem recomputes localMatrix. */
+  dirty = true;
+  /** True when worldMatrix needs recompute (dirty or parent's world changed). */
+  worldDirty = true;
+
+  // ── World-space cache (written exclusively by TransformSystem) ───────────
+
+  /** Cached world-space position. Updated by TransformSystem. */
+  readonly worldPosition = new THREE.Vector3();
+  /** Cached world-space rotation. Updated by TransformSystem. */
+  readonly worldRotation = new THREE.Quaternion();
+  /** Cached world-space scale. Updated by TransformSystem. */
+  readonly worldScale    = new THREE.Vector3(1, 1, 1);
+
+  // ── Hierarchy (mirrored from ECS, kept in sync by ECS.setParent) ─────────
+
+  /** Parent entity ID, or null if this is a root entity. */
+  parent: EntityId | null = null;
+  /** Direct children entity IDs. */
+  children: EntityId[] = [];
+
+  // ── Internal matrices ────────────────────────────────────────────────────
+
+  /** @internal Recomputed from position/quaternion/scale when dirty=true. */
+  _matrix      = new THREE.Matrix4();
+  /** @internal Recomputed from parent.worldMatrix * localMatrix when worldDirty=true. */
+  _worldMatrix = new THREE.Matrix4();
 
   constructor() {
     super();
+
     this.quaternion = new THREE.Quaternion();
-    this.rotation    = new THREE.Euler(0, 0, 0);
-    (this.rotation   as any)._onChange(() => { this.quaternion.setFromEuler(this.rotation, false); });
-    (this.quaternion as any)._onChange(() => { this.rotation.setFromQuaternion(this.quaternion, undefined, false); });
+    this.rotation   = new THREE.Euler(0, 0, 0);
+    this.position   = _makeObservableVec3(() => { this.dirty = true; });
+    this.scale      = _makeObservableVec3(() => { this.dirty = true; }, 1, 1, 1);
+
+    // Euler ↔ Quaternion bidirectional sync
+    // THREE.Euler and THREE.Quaternion natively support _onChange
+    (this.rotation   as any)._onChange(() => {
+      this.quaternion.setFromEuler(this.rotation, false);
+      this.dirty = true;
+    });
+    (this.quaternion as any)._onChange(() => {
+      this.rotation.setFromQuaternion(this.quaternion, undefined, false);
+      this.dirty = true;
+    });
   }
 
-  get localMatrix(): THREE.Matrix4 {
-    this._matrix.compose(this.position, this.quaternion, this.scale);
-    return this._matrix;
-  }
+  // ── Matrix accessors ─────────────────────────────────────────────────────
 
+  /** Local-space matrix (identity-composed from position/quaternion/scale). Read-only after TransformSystem runs. */
+  get localMatrix(): THREE.Matrix4 { return this._matrix; }
+
+  /** World-space matrix. Computed by TransformSystem each frame. */
   get worldMatrix(): THREE.Matrix4 { return this._worldMatrix; }
-  set worldMatrix(m: THREE.Matrix4) { this._worldMatrix.copy(m); }
+
+  // ── World-space API ──────────────────────────────────────────────────────
+
+  /** Read cached world-space position (valid after TransformSystem runs). */
+  getWorldPosition(out?: THREE.Vector3): THREE.Vector3 {
+    return out ? out.copy(this.worldPosition) : this.worldPosition.clone();
+  }
+
+  /**
+   * Set this entity's world-space position.
+   * If the entity has a parent, the local position is back-calculated so world position matches.
+   * @param ecs Pass the ECS manager so the parent transform can be resolved.
+   */
+  setWorldPosition(world: THREE.Vector3, ecs: import('./ECS').ECSManager): void {
+    if (this.parent !== null) {
+      const parentT = ecs.getComponent<TransformComponent>(this.parent, 'Transform');
+      if (parentT) {
+        _tInvParent.copy(parentT._worldMatrix).invert();
+        this.position.copy(world).applyMatrix4(_tInvParent);
+        return;
+      }
+    }
+    this.position.copy(world);
+  }
+
+  /** Read the local position. Equivalent to reading `.position` directly. */
+  getLocalPosition(out?: THREE.Vector3): THREE.Vector3 {
+    return out ? out.copy(this.position) : this.position.clone();
+  }
+
+  /** Set the local position. Equivalent to assigning `.position` directly. */
+  setLocalPosition(pos: THREE.Vector3): void {
+    this.position.copy(pos);
+  }
+
+  // ── Child-aware helpers (prevent misuse on root entities) ────────────────
+
+  /**
+   * Returns the local position if this entity has a parent, otherwise null.
+   * Use this when you explicitly want local-relative semantics.
+   */
+  getLocalPositionIfChild(): THREE.Vector3 | null {
+    return this.parent !== null ? this.position.clone() : null;
+  }
+
+  /**
+   * Sets the local position only if this entity has a parent.
+   * No-op on root entities — prevents misuse of local API on unparented objects.
+   */
+  setLocalPositionIfChild(pos: THREE.Vector3): void {
+    if (this.parent !== null) this.position.copy(pos);
+  }
+
+  // ── Utility ──────────────────────────────────────────────────────────────
 
   lookAt(target: THREE.Vector3): void {
-    const m = new THREE.Matrix4();
-    m.lookAt(this.position, target, new THREE.Vector3(0, 1, 0));
-    this.quaternion.setFromRotationMatrix(m);
+    _tLocalMat.lookAt(this.position, target, new THREE.Vector3(0, 1, 0));
+    this.quaternion.setFromRotationMatrix(_tLocalMat);
   }
 
   override serialize(): Record<string, any> {
@@ -74,6 +189,9 @@ export class TransformComponent extends BaseComponent {
     if (data.rotation) this.rotation.set(data.rotation[0], data.rotation[1], data.rotation[2]);
     if (data.scale)    this.scale.set(data.scale[0], data.scale[1], data.scale[2]);
     this.quaternion.setFromEuler(this.rotation);
+    // Mark dirty so TransformSystem recomputes matrices on first frame
+    this.dirty = true;
+    this.worldDirty = true;
   }
 }
 

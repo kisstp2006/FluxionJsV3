@@ -216,8 +216,8 @@ export class PhysicsBodySystem implements System {
     }
 
     desc
-      .setTranslation(t.position.x, t.position.y, t.position.z)
-      .setRotation({ x: t.quaternion.x, y: t.quaternion.y, z: t.quaternion.z, w: t.quaternion.w })
+      .setTranslation(t.worldPosition.x, t.worldPosition.y, t.worldPosition.z)
+      .setRotation({ x: t.worldRotation.x, y: t.worldRotation.y, z: t.worldRotation.z, w: t.worldRotation.w })
       .setLinearDamping(rb.linearDamping)
       .setAngularDamping(rb.angularDamping)
       .setGravityScale(rb.gravityScale)
@@ -248,8 +248,8 @@ export class PhysicsBodySystem implements System {
     const world  = this.pw.rapierWorld;
 
     const desc = RAPIER.RigidBodyDesc.fixed()
-      .setTranslation(t.position.x, t.position.y, t.position.z)
-      .setRotation({ x: t.quaternion.x, y: t.quaternion.y, z: t.quaternion.z, w: t.quaternion.w });
+      .setTranslation(t.worldPosition.x, t.worldPosition.y, t.worldPosition.z)
+      .setRotation({ x: t.worldRotation.x, y: t.worldRotation.y, z: t.worldRotation.z, w: t.worldRotation.w });
 
     const body = world.createRigidBody(desc);
     this.pw.registerBody(entity, body);

@@ -24,6 +24,7 @@ import { ModelInspector } from './inspector/ModelInspector';
 import { VisualMaterialInspector } from './inspector/VisualMaterialInspector';
 import { FuiInspector } from './inspector/FuiInspector';
 // Import custom component inspectors to trigger self-registration
+import './inspector/TransformInspector';
 import './inspector/MeshRendererInspector';
 import './inspector/ScriptInspector';
 

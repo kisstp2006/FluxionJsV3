@@ -1,7 +1,9 @@
 // ============================================================
-// FluxionJS V2 — Entity Component System
+// FluxionJS V3 — Entity Component System
 // Inspired by Nuake ECS + s&box component model
 // ============================================================
+
+import * as THREE from 'three';
 
 export type EntityId = number;
 
@@ -51,6 +53,10 @@ export interface System {
 // Module-level scratch for query() — avoids spread+filter array allocation per call
 const _queryScratch: EntityId[] = [];
 
+// Module-level scratch matrices for setParent(keepWorldTransform) — zero heap alloc in hot path
+const _invParent   = new THREE.Matrix4();
+const _localResult = new THREE.Matrix4();
+
 export class ECSManager {
   private nextEntityId: EntityId = 1;
   private entities: Set<EntityId> = new Set();
@@ -80,19 +86,27 @@ export class ECSManager {
   }
 
   destroyEntity(entity: EntityId): void {
-    // Destroy children first (recursive, like LumixEngine)
-    const children = this.childrenMap.get(entity);
-    if (children) {
-      for (const child of [...children]) {
-        this.destroyEntity(child);
-      }
+    // Destroy children first (iterative to avoid stack overflow on deep hierarchies)
+    const childrenToDestroy: EntityId[] = [];
+    const childSet = this.childrenMap.get(entity);
+    if (childSet) {
+      for (const child of childSet) childrenToDestroy.push(child);
+    }
+    for (const child of childrenToDestroy) {
+      this.destroyEntity(child);
     }
 
-    // Remove from parent
+    // Remove from parent — also remove from parent's TransformComponent.children
     const parent = this.parentMap.get(entity);
     if (parent !== undefined) {
       this.childrenMap.get(parent)?.delete(entity);
       this.parentMap.delete(entity);
+      type TC = import('./Components').TransformComponent;
+      const parentT = this.getComponent<TC>(parent, 'Transform');
+      if (parentT) {
+        const idx = parentT.children.indexOf(entity);
+        if (idx !== -1) parentT.children.splice(idx, 1);
+      }
     }
 
     // Remove all components
@@ -134,15 +148,99 @@ export class ECSManager {
 
   // ── Hierarchy (like LumixEngine scene tree) ──
 
-  setParent(child: EntityId, parent: EntityId): void {
+  /**
+   * Set the parent of `child` to `newParent`, or remove the parent entirely
+   * when `newParent` is undefined / null (makes the child a root entity).
+   *
+   * @param keepWorldTransform
+   *   When true, the child's WORLD position/rotation/scale is preserved by
+   *   recalculating its local transform relative to the new parent.
+   *   When false (default), the local transform stays the same and world
+   *   position changes to reflect the new parent's world transform.
+   *
+   * Cycle detection: if `newParent` is a descendant of `child`, the call is
+   * silently rejected and a warning is logged.
+   */
+  setParent(child: EntityId, newParent: EntityId | undefined | null, keepWorldTransform = false): void {
+    const resolvedParent = newParent == null ? undefined : newParent as EntityId;
+
+    // Prevent self-parenting
+    if (resolvedParent === child) {
+      console.warn(`[ECS] setParent: cannot parent entity ${child} to itself.`);
+      return;
+    }
+
+    // Cycle detection — walk up from resolvedParent; reject if we reach child
+    if (resolvedParent !== undefined && this._isCyclicParent(child, resolvedParent)) {
+      console.warn(`[ECS] setParent: rejected — would create a hierarchy cycle (entity ${child} is an ancestor of ${resolvedParent}).`);
+      return;
+    }
+
+    // Lazily import TransformComponent to avoid a circular module dependency.
+    // We use a runtime check rather than a static import.
+    type TC = import('./Components').TransformComponent;
+    const childT  = this.getComponent<TC>(child, 'Transform');
+
+    // Save world matrix if keepWorldTransform is requested
+    const savedWorld = (keepWorldTransform && childT)
+      ? childT._worldMatrix.clone()
+      : null;
+
+    // ── Remove from old parent ──────────────────────────────────────────────
     const oldParent = this.parentMap.get(child);
     if (oldParent !== undefined) {
       this.childrenMap.get(oldParent)?.delete(child);
+      // Remove from old parent's TransformComponent.children
+      const oldParentT = this.getComponent<TC>(oldParent, 'Transform');
+      if (oldParentT && childT) {
+        const idx = oldParentT.children.indexOf(child);
+        if (idx !== -1) oldParentT.children.splice(idx, 1);
+      }
+      this.parentMap.delete(child);
     }
-    this.parentMap.set(child, parent);
-    this.childrenMap.get(parent)?.add(child);
-    // child now has a parent → remove from root index
-    this.rootEntities.delete(child);
+
+    // ── Set new parent ──────────────────────────────────────────────────────
+    if (resolvedParent !== undefined) {
+      this.parentMap.set(child, resolvedParent);
+      if (!this.childrenMap.has(resolvedParent)) this.childrenMap.set(resolvedParent, new Set());
+      this.childrenMap.get(resolvedParent)!.add(child);
+      this.rootEntities.delete(child);
+
+      // Mirror in TransformComponent
+      if (childT) childT.parent = resolvedParent;
+      const newParentT = this.getComponent<TC>(resolvedParent, 'Transform');
+      if (newParentT && childT && !newParentT.children.includes(child)) {
+        newParentT.children.push(child);
+      }
+    } else {
+      // Unparented — becomes a root entity
+      this.rootEntities.add(child);
+      if (childT) childT.parent = null;
+    }
+
+    // ── Apply keepWorldTransform ────────────────────────────────────────────
+    if (savedWorld && childT) {
+      if (resolvedParent !== undefined) {
+        const newParentT = this.getComponent<TC>(resolvedParent, 'Transform');
+        if (newParentT) {
+          // newLocal = inverse(parent.worldMatrix) * savedWorld
+          _invParent.copy(newParentT._worldMatrix).invert();
+          _localResult.multiplyMatrices(_invParent, savedWorld);
+          _localResult.decompose(childT.position, childT.quaternion, childT.scale);
+          childT.rotation.setFromQuaternion(childT.quaternion, undefined, false);
+        }
+      } else {
+        // Becoming root: world IS the local transform
+        savedWorld.decompose(childT.position, childT.quaternion, childT.scale);
+        childT.rotation.setFromQuaternion(childT.quaternion, undefined, false);
+      }
+      childT.dirty = true;
+    }
+
+    // Mark world dirty since parent relationship changed
+    if (childT) childT.worldDirty = true;
+
+    this.dirty = true;
   }
 
   getParent(entity: EntityId): EntityId | undefined {
@@ -155,6 +253,16 @@ export class ECSManager {
 
   getRootEntities(): EntityId[] {
     return [...this.rootEntities];
+  }
+
+  /** Returns true if `child` is an ancestor of `potentialDescendant` (cycle check). */
+  private _isCyclicParent(child: EntityId, potentialDescendant: EntityId): boolean {
+    let current: EntityId | undefined = potentialDescendant;
+    while (current !== undefined) {
+      if (current === child) return true;
+      current = this.parentMap.get(current);
+    }
+    return false;
   }
 
   // ── Tags ──

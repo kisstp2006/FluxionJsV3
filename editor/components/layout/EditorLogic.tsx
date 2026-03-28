@@ -336,6 +336,9 @@ export const CameraGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.camera) return;
       const ecs = engine.engine.ecs;
       const allEntities = ecs.getAllEntities();
       const aspect = engine.editorCamera.aspect || 16 / 9;
@@ -365,7 +368,7 @@ export const CameraGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -584,7 +587,7 @@ export const AssetHotReload: React.FC = () => {
       // Environment skybox — mark for re-apply by clearing the internal skybox texture
       const envs = ecs.getComponentsOfType<any>('Environment');
       for (const [, env] of envs) {
-        if (pathEq(env.skyboxPath) || (env.skyboxFaces && env.skyboxFaces.some(pathEq))) {
+        if (pathEq(env.skyboxPath) || (env.skyboxFaces && Object.values(env.skyboxFaces).some((p: unknown) => pathEq(p as string | undefined)))) {
           env._appliedSkybox = null; // forces EnvironmentSystem to re-apply
         }
       }
@@ -789,6 +792,9 @@ export const ColliderGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.physics) return;
       const ecs = engine.engine.ecs;
       for (const eid of ecs.getAllEntities()) {
         const col = ecs.getComponent<ColliderComponent>(eid, 'Collider');
@@ -804,7 +810,7 @@ export const ColliderGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -817,6 +823,9 @@ export const LightGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.lights) return;
       const ecs = engine.engine.ecs;
       for (const eid of ecs.getAllEntities()) {
         const light = ecs.getComponent<LightComponent>(eid, 'Light');
@@ -832,7 +841,7 @@ export const LightGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -845,6 +854,9 @@ export const AudioGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.audio) return;
       const ecs = engine.engine.ecs;
       for (const eid of ecs.getAllEntities()) {
         const audio = ecs.getComponent<AudioSourceComponent>(eid, 'AudioSource');
@@ -860,7 +872,7 @@ export const AudioGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };
@@ -873,6 +885,9 @@ export const ParticleGizmoSync: React.FC = () => {
   useEffect(() => {
     if (!engine) return;
     const handler = () => {
+      const isPlaying = !engine.engine.simulationPaused;
+      if (isPlaying && !state.debugGroups.drawInPlayMode) return;
+      if (!state.debugGroups.particles) return;
       const ecs = engine.engine.ecs;
       for (const eid of ecs.getAllEntities()) {
         const emitter = ecs.getComponent<ParticleEmitterComponent>(eid, 'ParticleEmitter');
@@ -887,7 +902,7 @@ export const ParticleGizmoSync: React.FC = () => {
     };
     engine.engine.events.on('engine:update', handler);
     return () => engine.engine.events.off('engine:update', handler);
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.debugGroups]);
 
   return null;
 };

@@ -18,6 +18,7 @@ ProjectSettingsRegistry.registerCategory('Physics', { label: 'Physics', icon: Ic
 ProjectSettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 ProjectSettingsRegistry.registerCategory('Scene', { label: 'Scene Defaults', icon: Icons.globe, order: 50 });
 ProjectSettingsRegistry.registerCategory('Build', { label: 'Build / Export', icon: Icons.prefab, order: 60 });
+ProjectSettingsRegistry.registerCategory('Editor/Debug', { label: 'Debug Draw', icon: Icons.eye, order: 70 });
 ProjectSettingsRegistry.registerCategory('Scripting', { label: 'Scripting', icon: Icons.script, order: 75 });
 ProjectSettingsRegistry.registerCategory('Scripting/Editor', { label: 'Editor', icon: Icons.file, order: 76 });
 ProjectSettingsRegistry.registerCategory('Scripting/Runtime', { label: 'Runtime', icon: Icons.play, order: 77 });
@@ -592,6 +593,17 @@ const buildSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── Editor Debug Draw ──
+
+const debugDrawSettings: SettingDescriptor[] = [
+  { key: 'editor.debug.physics',        label: 'Physics',           type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 1, description: 'Draw collider wireframes and character controller capsules.' },
+  { key: 'editor.debug.camera',         label: 'Camera',            type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 2, description: 'Draw camera frustum gizmos.' },
+  { key: 'editor.debug.lights',         label: 'Lights',            type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 3, description: 'Draw light range and direction gizmos.' },
+  { key: 'editor.debug.audio',          label: 'Audio',             type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 4, description: 'Draw spatial audio min/max distance spheres.' },
+  { key: 'editor.debug.particles',      label: 'Particles',         type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 5, description: 'Draw particle emitter cone gizmos.' },
+  { key: 'editor.debug.drawInPlayMode', label: 'Draw in Play Mode', type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 6, description: 'Continue drawing debug gizmos while the game is running in the editor.' },
+];
+
 // ── Scripting ──
 
 const scriptingSettings: SettingDescriptor[] = [
@@ -690,5 +702,6 @@ export function registerDefaultProjectSettings(): void {
   ProjectSettingsRegistry.registerMany(audioSettings);
   ProjectSettingsRegistry.registerMany(sceneDefaults);
   ProjectSettingsRegistry.registerMany(buildSettings);
+  ProjectSettingsRegistry.registerMany(debugDrawSettings);
   ProjectSettingsRegistry.registerMany(scriptingSettings);
 }

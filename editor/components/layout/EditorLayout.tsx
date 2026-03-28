@@ -26,6 +26,8 @@ import { SettingsService } from '../../core/SettingsService';
 import { ProjectSettingsService } from '../../core/ProjectSettingsService';
 import { bindSettings, dispose as disposeSettingsBindings } from '../../core/SettingsBindings';
 import { AssetHotReloadService } from '../../core/AssetHotReloadService';
+import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
+import { DebugGroups } from '../../core/EditorState';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
@@ -144,6 +146,19 @@ export const EditorLayout: React.FC = () => {
     // Initialize settings persistence for this project
     await SettingsService.init(projectManager.projectDir!);
     await ProjectSettingsService.init();
+
+    // Load debug group toggles from project settings
+    dispatch({
+      type: 'LOAD_DEBUG_GROUPS',
+      groups: {
+        physics:        ProjectSettingsRegistry.get<boolean>('editor.debug.physics')        ?? true,
+        camera:         ProjectSettingsRegistry.get<boolean>('editor.debug.camera')         ?? true,
+        lights:         ProjectSettingsRegistry.get<boolean>('editor.debug.lights')         ?? true,
+        audio:          ProjectSettingsRegistry.get<boolean>('editor.debug.audio')          ?? true,
+        particles:      ProjectSettingsRegistry.get<boolean>('editor.debug.particles')      ?? true,
+        drawInPlayMode: ProjectSettingsRegistry.get<boolean>('editor.debug.drawInPlayMode') ?? true,
+      } as DebugGroups,
+    });
 
     // Load default scene once engine is ready
     const eng = engineRef.current;

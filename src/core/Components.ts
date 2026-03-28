@@ -422,7 +422,7 @@ export class LightComponent extends BaseComponent {
   @field({ type: 'color', label: 'Color' })
   color = new THREE.Color(1, 1, 1);
 
-  @field({ type: 'slider', label: 'Intensity', min: 0, max: 20, step: 0.1 })
+  @field({ type: 'number', label: 'Intensity', min: 0, step: 0.1 })
   intensity = 1;
 
   @field({ type: 'number', label: 'Range', step: 0.5, visibleIf: s => s.lightType !== 'ambient' && s.lightType !== 'directional', dependsOn: ['lightType'] })

@@ -685,10 +685,6 @@ const App: React.FC = () => {
       });
     }
 
-    // Ctrl+S to save
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      saveActive();
-    });
   }, []);
 
   // Apply settings object to Monaco editor
@@ -809,6 +805,18 @@ const App: React.FC = () => {
       console.error('[ScriptEditor] Failed to save:', err);
     }
   }, [activeTab, tabs]);
+
+  // Re-register Ctrl+S every time saveActive changes so it always sees the
+  // current activeTab and tabs state (avoids stale-closure bug).
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const disposable = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      saveActive();
+    });
+    return () => disposable?.dispose?.();
+  }, [saveActive]);
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (!activeTab) return;

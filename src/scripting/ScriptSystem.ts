@@ -23,6 +23,7 @@ import { EntityRef } from './EntityRef';
 import { FuiRef } from './FuiRef';
 import { MaterialRef } from './MaterialRef';
 import { TextureRef } from './TextureRef';
+import { AnimationRef } from './AnimationRef';
 
 // ── THREE math shortcuts injected into every script's scope ──
 
@@ -88,6 +89,7 @@ function loadScriptClass(
     'FuiRef',
     'MaterialRef',
     'TextureRef',
+    'AnimationRef',
     'console',
     compiledJs,
   )(
@@ -110,6 +112,7 @@ function loadScriptClass(
     FuiRef,
     MaterialRef,
     TextureRef,
+    AnimationRef,
     console,
   );
   return mod.default;
@@ -329,6 +332,9 @@ export class ScriptSystem implements System {
         current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
       } else if (current instanceof TextureRef && val && typeof val === 'object') {
         current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
+      } else if (current instanceof AnimationRef && val && typeof val === 'object') {
+        current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
+        current.clip = typeof (val as any).clip === 'string' ? (val as any).clip : '';
       } else {
         (instance as any)[key] = val;
       }

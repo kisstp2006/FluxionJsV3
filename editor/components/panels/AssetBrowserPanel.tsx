@@ -10,13 +10,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icons, ContextMenu, ContextMenuItem } from '../../ui';
 import { resolveIcon } from '../../ui/Icons';
 import { useEditor } from '../../core/EditorContext';
-import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import type { ScriptTemplate, ScriptLang } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
 import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
+import { loadAnimClipsFor, getCachedAnimClips } from '../../utils/AnimationClipCache';
+import { projectManager } from '../../../src/project/ProjectManager';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
 
 interface DirEntry {
@@ -272,6 +273,8 @@ export const AssetBrowserPanel: React.FC<{
   const lastClickedRef = useRef<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
+  const [modelClips, setModelClips] = useState<Map<string, string[]>>(new Map());
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
 
@@ -437,6 +440,55 @@ export const AssetBrowserPanel: React.FC<{
     } catch (err: any) {
       log(`Failed to duplicate: ${err.message}`, 'error');
     }
+  };
+
+  // Load animation clip names for model / fluxmesh files in the current view
+  useEffect(() => {
+    let cancelled = false;
+    const toLoad = entries.filter(e =>
+      !e.isDirectory &&
+      (isModelOrMeshFile(e.name)) &&
+      !getCachedAnimClips(e.path),
+    );
+    for (const entry of toLoad) {
+      loadAnimClipsFor(entry.path, entry.name).then((clips) => {
+        if (cancelled || clips.length === 0) return;
+        setModelClips((prev) => {
+          const next = new Map(prev);
+          next.set(entry.path, clips);
+          return next;
+        });
+      });
+    }
+    // Sync already-cached entries into state
+    let changed = false;
+    const snapshot = new Map(modelClips);
+    for (const entry of entries) {
+      if (!entry.isDirectory && isModelOrMeshFile(entry.name)) {
+        const cached = getCachedAnimClips(entry.path);
+        if (cached && cached.length > 0 && !snapshot.has(entry.path)) {
+          snapshot.set(entry.path, cached);
+          changed = true;
+        }
+      }
+    }
+    if (changed) setModelClips(snapshot);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
+  const isModelOrMeshFile = (name: string): boolean => {
+    const ext = name.substring(name.lastIndexOf('.')).toLowerCase();
+    return ['.fbx', '.glb', '.gltf', '.obj', '.fluxmesh'].includes(ext);
+  };
+
+  const toggleModelExpand = (path: string) => {
+    setExpandedModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   };
 
   /** Check if a filename is a 3D model (FBX, GLTF, GLB, OBJ) */
@@ -989,9 +1041,16 @@ export const AssetBrowserPanel: React.FC<{
             const fileType = entry.isDirectory ? 'folder' : getFileType(entry.name);
             const isRenaming = renamingEntry === entry.path;
             const isOutdated = outdatedPaths.has(entry.path);
+            const entryClips = !entry.isDirectory && isModelOrMeshFile(entry.name)
+              ? (modelClips.get(entry.path) ?? [])
+              : [];
+            const isExpanded = expandedModels.has(entry.path);
+            const relPath = projectManager.projectDir
+              ? entry.path.replace(projectManager.projectDir, '').replace(/^[\\/]+/, '')
+              : entry.name;
             return (
+              <React.Fragment key={entry.path}>
               <div
-                key={entry.path}
                 draggable={!entry.isDirectory && !isRenaming}
                 onDragStart={(e) => {
                   if (entry.isDirectory) return;
@@ -1032,7 +1091,8 @@ export const AssetBrowserPanel: React.FC<{
                 style={{
                   display: 'flex',
                   position: 'relative',
-                  border: selectedPaths.has(entry.path) ? '1px solid var(--accent)' : '1px solid transparent',
+                  border: selectedPaths.has(entry.path) ? '1px solid var(--accent)' : (isExpanded ? '1px solid rgba(80,150,255,0.3)' : '1px solid transparent'),
+                  boxShadow: isExpanded ? '0 0 0 1px rgba(80,150,255,0.15) inset' : 'none',
                   flexDirection: 'column',
                   alignItems: 'center',
                   padding: '8px 4px',
@@ -1109,7 +1169,69 @@ export const AssetBrowserPanel: React.FC<{
                     {entry.name}
                   </span>
                 )}
+                {/* Animation clips expand badge */}
+                {entryClips.length > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleModelExpand(entry.path); }}
+                    title={`${entryClips.length} clip${entryClips.length !== 1 ? 's' : ''} — click to ${isExpanded ? 'collapse' : 'expand'}`}
+                    style={{
+                      position: 'absolute', bottom: 2, right: 2,
+                      background: isExpanded ? 'rgba(80,150,255,0.25)' : 'rgba(255,255,255,0.08)',
+                      border: 'none', borderRadius: 3, cursor: 'pointer',
+                      color: isExpanded ? 'var(--accent)' : '#777',
+                      fontSize: '9px', lineHeight: 1, padding: '1px 4px',
+                    }}
+                  >
+                    {isExpanded ? '▾' : '▸'}{entryClips.length}
+                  </button>
+                )}
               </div>
+
+              {/* Expanded clip chip row — spans full grid width */}
+              {isExpanded && entryClips.length > 0 && (
+                <div style={{
+                  gridColumn: '1 / -1',
+                  padding: '4px 8px 8px',
+                  background: 'rgba(80,150,255,0.05)',
+                  borderTop: '1px solid rgba(80,150,255,0.15)',
+                  borderBottom: '1px solid rgba(80,150,255,0.15)',
+                  marginBottom: 2,
+                }}>
+                  <div style={{ fontSize: 10, color: '#556', marginBottom: 4 }}>
+                    {entry.name} — {entryClips.length} clip{entryClips.length !== 1 ? 's' : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {entryClips.map((clip) => (
+                      <div
+                        key={clip}
+                        draggable
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          e.dataTransfer.setData(
+                            'application/x-fluxion-anim-clip',
+                            JSON.stringify({ path: relPath.replace(/\\/g, '/'), clip }),
+                          );
+                          e.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        title={`Drag onto Animator to assign — ${clip}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          padding: '3px 8px',
+                          background: 'rgba(80,150,255,0.12)',
+                          border: '1px solid rgba(80,150,255,0.30)',
+                          borderRadius: 12,
+                          fontSize: 11, color: '#90bff0',
+                          cursor: 'grab', userSelect: 'none',
+                        }}
+                      >
+                        <span style={{ fontSize: 9 }}>▶</span>
+                        {clip}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </React.Fragment>
             );
           })}
         </div>

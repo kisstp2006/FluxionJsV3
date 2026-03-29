@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { BaseComponent } from './BaseComponent';
 import { component, field } from './ComponentDecorators';
 import type { DeserializationContext } from './SerializationContext';
+import { AnimationRef } from '../scripting/AnimationRef';
 
 // ── Transform ────────────────────────────────────────────────────────────────
 
@@ -565,7 +566,7 @@ export class ColliderComponent extends BaseComponent {
   @field({
     type: 'asset',
     label: 'Mesh Source',
-    assetType: 'model',
+    assetType: ['model', 'mesh'] as any,
     group: 'Shape',
     visibleIf: s => s.shape === 'mesh' || s.shape === 'convex',
     dependsOn: ['shape'],
@@ -1054,6 +1055,30 @@ export class AnimationComponent extends BaseComponent {
   _prevClip = '';
   /** Tracks the THREE.Object3D root the mixer was built from — for mesh-swap detection */
   _meshRef: import('three').Object3D | null = null;
+
+  /**
+   * Inspector-assigned clip reference (model path + clip name).
+   * When set, keeps `currentClip` in sync.  Serialized manually.
+   */
+  clipRef: AnimationRef | null = null;
+
+  override serialize(): Record<string, any> {
+    const out = super.serialize();
+    if (this.clipRef) {
+      out.clipRef = { path: this.clipRef.path, clip: this.clipRef.clip };
+    }
+    return out;
+  }
+
+  override deserialize(data: Record<string, any>, ctx: DeserializationContext): void {
+    super.deserialize(data, ctx);
+    if (data.clipRef && typeof data.clipRef === 'object') {
+      this.clipRef = new AnimationRef(
+        typeof data.clipRef.path === 'string' ? data.clipRef.path : '',
+        typeof data.clipRef.clip === 'string' ? data.clipRef.clip : '',
+      );
+    }
+  }
 }
 
 // ── Environment ───────────────────────────────────────────────────────────────

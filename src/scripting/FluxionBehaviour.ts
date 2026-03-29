@@ -51,6 +51,7 @@ export { EntityId, ECSManager, Engine, InputManager };
 export { FuiRef } from './FuiRef';
 export { MaterialRef } from './MaterialRef';
 export { TextureRef } from './TextureRef';
+export { AnimationRef } from './AnimationRef';
 
 export class FluxionBehaviour {
   // ── Injected by ScriptSystem (underscore prefix = hidden from Inspector) ──

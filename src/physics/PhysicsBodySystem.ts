@@ -21,6 +21,7 @@ import { TransformComponent, RigidbodyComponent, ColliderComponent } from '../co
 import { DebugConsole } from '../core/DebugConsole';
 import { AssetManager } from '../assets/AssetManager';
 import { PhysicsWorld } from './PhysicsWorld';
+import { projectManager } from '../project/ProjectManager';
 
 // Module-level scratch — zero alloc in _extractGeometry vertex loop
 const _geoScratch = new THREE.Vector3();
@@ -394,11 +395,20 @@ export class PhysicsBodySystem implements System {
       const am = this.pw.engineRef.getSubsystem('assets') as AssetManager;
       let scene: THREE.Group;
 
-      if (meshPath.endsWith('.fluxmesh')) {
-        const result = await am.loadFluxMesh(meshPath);
+      // Resolve project-relative path to absolute so THREE.js loaders can load it
+      let absPath: string;
+      try {
+        absPath = projectManager.resolvePath(meshPath);
+      } catch {
+        absPath = meshPath;
+      }
+
+      if (meshPath.toLowerCase().endsWith('.fluxmesh')) {
+        const result = await am.loadFluxMesh(absPath);
         scene = result.scene;
       } else {
-        const result = await am.loadModel(meshPath);
+        const fileUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+        const result = await am.loadModel(fileUrl);
         scene = result.scene;
       }
 

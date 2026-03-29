@@ -55,6 +55,7 @@ export class GizmoService {
   private _tv2 = new THREE.Vector3();
   private _tv3 = new THREE.Vector3();
   private _tq = new THREE.Quaternion();
+  private _mInvParent = new THREE.Matrix4();
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -370,8 +371,17 @@ export class GizmoService {
       along = Math.round(along / this._translationSnap) * this._translationSnap;
     }
 
-    const worldDelta = this._tv1.copy(this.dragAxisDir).multiplyScalar(along);
-    this.object!.position.copy(this.dragInitialPos).add(worldDelta);
+    // New world position = initial world position (dragPlanePoint) + axis * scalar
+    const newWorldPos = this._tv2.copy(this.dragPlanePoint).addScaledVector(this.dragAxisDir, along);
+
+    // For child objects local != world — convert to local space before writing .position
+    const parent = this.object!.parent;
+    if (parent) {
+      this._mInvParent.copy(parent.matrixWorld).invert();
+      this.object!.position.copy(newWorldPos).applyMatrix4(this._mInvParent);
+    } else {
+      this.object!.position.copy(newWorldPos);
+    }
   }
 
   private performRotate(currentIntersection: THREE.Vector3): void {

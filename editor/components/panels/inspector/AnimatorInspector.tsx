@@ -10,6 +10,7 @@ import { PropertyRow, Checkbox, Slider, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { AnimationComponent, MeshRendererComponent } from '../../../../src/core/Components';
+import { AnimationRef } from '../../../../src/scripting/AnimationRef';
 import { ComponentSection } from './ComponentSection';
 import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { undoManager } from '../../../core/UndoService';
@@ -62,6 +63,23 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
 
   const handleClipChange = (clipName: string) => {
     setField('currentClip', clipName);
+  };
+
+  const handleClipRefDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData('application/x-fluxion-anim-clip');
+    if (!raw) return;
+    try {
+      const { path, clip } = JSON.parse(raw) as { path: string; clip: string };
+      if (!clip) return;
+      anim.clipRef = new AnimationRef(path, clip);
+      setField('currentClip', clip);
+    } catch { /* malformed data — ignore */ }
+  };
+
+  const clearClipRef = () => {
+    anim.clipRef = null;
+    refresh();
   };
 
   const handlePlay = () => {
@@ -120,6 +138,47 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
           No animation clips found in model
         </div>
       )}
+
+      {/* Clip reference drop zone */}
+      <PropertyRow label="Clip Ref">
+        <div
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('application/x-fluxion-anim-clip')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={handleClipRefDrop}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 8px',
+            background: anim.clipRef?.isValid ? 'rgba(80,150,255,0.10)' : 'rgba(255,255,255,0.04)',
+            border: `1px dashed ${anim.clipRef?.isValid ? 'rgba(80,150,255,0.5)' : 'rgba(255,255,255,0.15)'}`,
+            borderRadius: 4,
+            fontSize: 11,
+            color: anim.clipRef?.isValid ? '#90bff0' : '#555',
+            cursor: 'default',
+            minWidth: 0,
+          }}
+        >
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {anim.clipRef?.isValid ? anim.clipRef.label : '— drag clip from Asset Browser —'}
+          </span>
+          {anim.clipRef?.isValid && (
+            <button
+              onClick={clearClipRef}
+              title="Clear clip reference"
+              style={{
+                background: 'none', border: 'none', color: '#888',
+                cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '0 2px', flexShrink: 0,
+              }}
+            >×</button>
+          )}
+        </div>
+      </PropertyRow>
 
       {/* Clip selector */}
       {hasClips && (

@@ -366,7 +366,7 @@ export const CameraGizmoSync: React.FC = () => {
         const t = ecs.getComponent<TransformComponent>(eid, 'Transform');
         if (!t) continue;
         GizmoRenderer.drawCameraFrustum(
-          t.position, t.quaternion,
+          t.worldPosition, t.worldRotation,
           cam.fov, cam.near, cam.far, aspect,
           cam.isOrthographic, cam.orthoSize,
           state.selectedEntity === eid,

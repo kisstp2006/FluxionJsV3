@@ -50,4 +50,8 @@ export interface FieldDef {
   readOnly?: boolean;
   /** For tuple types [T, U, V] — the ordered element types */
   tupleTypes?: string[];
+  /** For type:'button' — name of the method to call on the component when clicked */
+  onClick?: string;
+  /** For type:'textarea' — number of visible text rows (default 3) */
+  rows?: number;
 }

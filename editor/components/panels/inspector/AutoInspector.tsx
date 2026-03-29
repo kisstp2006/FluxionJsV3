@@ -18,7 +18,7 @@
 //                   field key is not present in comp.__dirtyProps
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import {
   Section, PropertyRow,
@@ -172,6 +172,381 @@ const ArrayItemRow: React.FC<ArrayItemRowProps> = ({ index, arr, itemType, comp,
         >×</button>
       </div>
     </PropertyRow>
+  );
+};
+
+// ── Curve editor ─────────────────────────────────────────────────────────────
+
+export interface CurveKeyframe {
+  time: number;
+  value: number;
+  inTangent?: number;
+  outTangent?: number;
+}
+
+const CURVE_W = 220;
+const CURVE_H = 100;
+
+const CurveEditorWidget: React.FC<{
+  keyframes: CurveKeyframe[];
+  min?: number;
+  max?: number;
+  onChange: (kfs: CurveKeyframe[]) => void;
+}> = ({ keyframes, min = 0, max = 1, onChange }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const draggingRef = useRef<number | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  const kfs = keyframes.length ? [...keyframes].sort((a, b) => a.time - b.time) : [
+    { time: 0, value: 0 }, { time: 1, value: 1 },
+  ];
+
+  const toCanvas = (t: number, v: number) => ({
+    x: t * CURVE_W,
+    y: CURVE_H - ((v - min) / (max - min)) * CURVE_H,
+  });
+  const fromCanvas = (cx: number, cy: number) => ({
+    time: Math.max(0, Math.min(1, cx / CURVE_W)),
+    value: min + (1 - cy / CURVE_H) * (max - min),
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, CURVE_W, CURVE_H);
+
+    // Background grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo(CURVE_W * i / 4, 0); ctx.lineTo(CURVE_W * i / 4, CURVE_H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, CURVE_H * i / 4); ctx.lineTo(CURVE_W, CURVE_H * i / 4); ctx.stroke();
+    }
+
+    // Curve path (cubic bezier via tangents)
+    ctx.strokeStyle = '#58a6ff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= kfs.length - 1; i++) {
+      const p0 = toCanvas(kfs[i].time, kfs[i].value);
+      if (i === 0) ctx.moveTo(p0.x, p0.y);
+      if (i < kfs.length - 1) {
+        const p1 = toCanvas(kfs[i + 1].time, kfs[i + 1].value);
+        const dt = (kfs[i + 1].time - kfs[i].time) / 3;
+        const outT = (kfs[i].outTangent ?? 0) * dt * CURVE_W;
+        const inT  = (kfs[i + 1].inTangent  ?? 0) * dt * CURVE_W;
+        ctx.bezierCurveTo(
+          p0.x + outT,  p0.y - (kfs[i].outTangent ?? 0) * dt * CURVE_H,
+          p1.x - inT,   p1.y + (kfs[i + 1].inTangent ?? 0) * dt * CURVE_H,
+          p1.x, p1.y,
+        );
+      }
+    }
+    ctx.stroke();
+
+    // Keyframe dots
+    for (let i = 0; i < kfs.length; i++) {
+      const p = toCanvas(kfs[i].time, kfs[i].value);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = draggingRef.current === i ? '#f0a500' : '#fff';
+      ctx.fill();
+      ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  });
+
+  const hitTest = (cx: number, cy: number): number => {
+    for (let i = 0; i < kfs.length; i++) {
+      const p = toCanvas(kfs[i].time, kfs[i].value);
+      if (Math.hypot(cx - p.x, cy - p.y) <= 7) return i;
+    }
+    return -1;
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const hit = hitTest(cx, cy);
+    if (e.button === 2 && hit >= 0 && kfs.length > 2) {
+      // Right-click: remove keyframe
+      kfs.splice(hit, 1);
+      onChange([...kfs]);
+      forceUpdate(n => n + 1);
+      return;
+    }
+    if (hit >= 0) {
+      draggingRef.current = hit;
+    } else if (e.button === 0) {
+      // Click empty: add keyframe
+      const { time, value } = fromCanvas(cx, cy);
+      const newKf: CurveKeyframe = { time, value };
+      kfs.push(newKf);
+      kfs.sort((a, b) => a.time - b.time);
+      draggingRef.current = kfs.findIndex(k => k === newKf);
+      onChange([...kfs]);
+      forceUpdate(n => n + 1);
+    }
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (draggingRef.current === null) return;
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const pos = fromCanvas(e.clientX - rect.left, e.clientY - rect.top);
+    const idx = draggingRef.current;
+    kfs[idx] = { ...kfs[idx], time: pos.time, value: pos.value };
+    // Re-sort while keeping index tracking
+    const moved = kfs[idx];
+    kfs.sort((a, b) => a.time - b.time);
+    draggingRef.current = kfs.indexOf(moved);
+    onChange([...kfs]);
+    forceUpdate(n => n + 1);
+  };
+
+  const onMouseUp = () => { draggingRef.current = null; };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={CURVE_W}
+      height={CURVE_H}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onContextMenu={e => e.preventDefault()}
+      style={{
+        display: 'block', width: '100%', height: CURVE_H,
+        background: 'var(--bg-deep)', borderRadius: 4,
+        border: '1px solid var(--border)', cursor: 'crosshair',
+      }}
+    />
+  );
+};
+
+// ── Gradient editor ────────────────────────────────────────────────────────────
+
+export interface GradientStop {
+  time: number;
+  color: [number, number, number]; // r, g, b in [0, 1]
+}
+
+const GRAD_W = 220;
+const GRAD_H = 24;
+const STOP_H = 12;
+
+const GradientEditorWidget: React.FC<{
+  stops: GradientStop[];
+  onChange: (stops: GradientStop[]) => void;
+}> = ({ stops, onChange }) => {
+  const barRef = useRef<HTMLCanvasElement>(null);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const draggingRef = useRef<number | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  const sorted = [...stops].sort((a, b) => a.time - b.time);
+
+  useEffect(() => {
+    const canvas = barRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, GRAD_W, GRAD_H + STOP_H);
+
+    // Gradient bar
+    if (sorted.length >= 2) {
+      const grad = ctx.createLinearGradient(0, 0, GRAD_W, 0);
+      for (const s of sorted) {
+        const [r, g, b] = s.color;
+        grad.addColorStop(s.time, `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`);
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, GRAD_W, GRAD_H);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, GRAD_W, GRAD_H);
+
+    // Stop markers
+    for (let i = 0; i < sorted.length; i++) {
+      const s = sorted[i];
+      const x = s.time * GRAD_W;
+      const [r, g, b] = s.color;
+      ctx.beginPath();
+      ctx.moveTo(x, GRAD_H);
+      ctx.lineTo(x - 5, GRAD_H + STOP_H);
+      ctx.lineTo(x + 5, GRAD_H + STOP_H);
+      ctx.closePath();
+      ctx.fillStyle = `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
+      ctx.fill();
+      ctx.strokeStyle = selectedIdx === i ? '#f0a500' : '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  });
+
+  const hitStop = (cx: number): number => {
+    for (let i = 0; i < sorted.length; i++) {
+      if (Math.abs(sorted[i].time * GRAD_W - cx) <= 6) return i;
+    }
+    return -1;
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    const rect = barRef.current!.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const hit = hitStop(cx);
+    if (e.button === 2 && hit >= 0 && sorted.length > 2) {
+      sorted.splice(hit, 1);
+      onChange([...sorted]);
+      setSelectedIdx(null);
+      return;
+    }
+    if (hit >= 0) {
+      draggingRef.current = hit;
+      setSelectedIdx(hit);
+    } else if (e.button === 0) {
+      // Interpolate color at click position
+      const t = Math.max(0, Math.min(1, cx / GRAD_W));
+      let col: [number, number, number] = [1, 1, 1];
+      for (let i = 0; i < sorted.length - 1; i++) {
+        if (t >= sorted[i].time && t <= sorted[i + 1].time) {
+          const alpha = (t - sorted[i].time) / (sorted[i + 1].time - sorted[i].time);
+          col = sorted[i].color.map((c, ci) => c + alpha * (sorted[i + 1].color[ci] - c)) as [number, number, number];
+          break;
+        }
+      }
+      const newStop: GradientStop = { time: t, color: col };
+      sorted.push(newStop);
+      sorted.sort((a, b) => a.time - b.time);
+      const idx = sorted.indexOf(newStop);
+      draggingRef.current = idx;
+      setSelectedIdx(idx);
+      onChange([...sorted]);
+      forceUpdate(n => n + 1);
+    }
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (draggingRef.current === null) return;
+    const rect = barRef.current!.getBoundingClientRect();
+    const t = Math.max(0, Math.min(1, (e.clientX - rect.left) / GRAD_W));
+    const moved = sorted[draggingRef.current];
+    moved.time = t;
+    sorted.sort((a, b) => a.time - b.time);
+    draggingRef.current = sorted.indexOf(moved);
+    setSelectedIdx(draggingRef.current);
+    onChange([...sorted]);
+    forceUpdate(n => n + 1);
+  };
+
+  const onMouseUp = () => { draggingRef.current = null; };
+
+  const selected = selectedIdx !== null ? sorted[selectedIdx] : null;
+
+  return (
+    <div>
+      <canvas
+        ref={barRef}
+        width={GRAD_W}
+        height={GRAD_H + STOP_H}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onContextMenu={e => e.preventDefault()}
+        style={{
+          display: 'block', width: '100%', height: GRAD_H + STOP_H,
+          cursor: 'crosshair',
+        }}
+      />
+      {selected && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            t={selected.time.toFixed(2)}
+          </span>
+          <ColorInput
+            value={`#${selected.color.map(c => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}`}
+            onChange={(hex) => {
+              const r = parseInt(hex.slice(1, 3), 16) / 255;
+              const g = parseInt(hex.slice(3, 5), 16) / 255;
+              const b = parseInt(hex.slice(5, 7), 16) / 255;
+              selected.color = [r, g, b];
+              onChange([...sorted]);
+              forceUpdate(n => n + 1);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Entity picker ─────────────────────────────────────────────────────────────
+
+const EntityPickerWidget: React.FC<{
+  value: number | null;
+  getEntityName: (id: number) => string;
+  onChange: (id: number | null) => void;
+}> = ({ value, getEntityName, onChange }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const displayName = value !== null ? `#${value} ${getEntityName(value)}` : 'None';
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        style={{
+          width: '100%', background: 'var(--bg-input)', border: '1px solid var(--accent)',
+          borderRadius: 3, color: 'var(--text)', padding: '2px 6px', fontSize: '12px',
+        }}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            const id = parseInt(draft, 10);
+            onChange(isNaN(id) ? null : id);
+            setEditing(false);
+          } else if (e.key === 'Escape') {
+            setEditing(false);
+          }
+        }}
+        onBlur={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+      <div
+        style={{
+          flex: 1, background: 'var(--bg-input)', border: '1px solid var(--border)',
+          borderRadius: 3, padding: '2px 6px', fontSize: '12px',
+          color: value !== null ? 'var(--text)' : 'var(--text-muted)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}
+      >
+        {displayName}
+      </div>
+      <button
+        onClick={() => { setDraft(value !== null ? String(value) : ''); setEditing(true); }}
+        style={{
+          background: 'none', border: '1px solid var(--border)', borderRadius: 3,
+          color: 'var(--text-muted)', fontSize: '11px', padding: '0 5px', cursor: 'pointer',
+        }}
+      >⊙</button>
+      {value !== null && (
+        <button
+          onClick={() => onChange(null)}
+          style={{
+            background: 'none', border: 'none', color: 'var(--text-muted)',
+            fontSize: '13px', padding: '0 2px', cursor: 'pointer',
+          }}
+        >×</button>
+      )}
+    </div>
   );
 };
 

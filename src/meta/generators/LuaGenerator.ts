@@ -10,23 +10,28 @@ import type { EngineDef, ComponentDef, FieldDef } from '../MetaTypes';
 
 function _primitiveLuaType(t: string): string {
   switch (t) {
-    case 'number': case 'slider': return 'number';
+    case 'number': case 'slider': case 'int': return 'number';
     case 'boolean': return 'boolean';
-    case 'string': return 'string';
+    case 'string': case 'textarea': return 'string';
     case 'vector3': case 'euler': return 'Vector3';
     case 'vector2': return 'Vector2';
     case 'color': return 'Color';
     case 'asset': return 'string|nil';
+    case 'entity': return 'number|nil';
+    case 'curve': return 'CurveKeyframe[]';
+    case 'gradient': return 'GradientStop[]';
     default: return 'any';
   }
 }
 
-function fieldToLuaType(f: FieldDef): string {
+function fieldToLuaType(f: FieldDef): string | null {
   switch (f.type) {
     case 'number':
-    case 'slider':   return 'number';
+    case 'slider':
+    case 'int':      return 'number';
     case 'boolean':  return 'boolean';
-    case 'string':   return 'string';
+    case 'string':
+    case 'textarea': return 'string';
     case 'vector3':
     case 'euler':    return 'Vector3';
     case 'vector2':  return 'Vector2';
@@ -37,6 +42,9 @@ function fieldToLuaType(f: FieldDef): string {
       }
       return 'string';
     case 'asset':    return 'string|nil';
+    case 'entity':   return 'number|nil';
+    case 'curve':    return 'CurveKeyframe[]';
+    case 'gradient': return 'GradientStop[]';
     case 'array':
       if (f.tupleTypes?.length) return 'table';
       return f.itemType ? `${_primitiveLuaType(f.itemType)}[]` : 'table';
@@ -44,6 +52,10 @@ function fieldToLuaType(f: FieldDef): string {
       return f.unionTypes?.length
         ? f.unionTypes.map(_primitiveLuaType).join('|')
         : 'any';
+    // Inspector-only decorators — no property emitted
+    case 'button':
+    case 'header':
+    case 'separator': return null;
     default:         return 'any';
   }
 }
@@ -64,6 +76,7 @@ function emitComponentLua(c: ComponentDef): string {
   }
   for (const f of c.fields) {
     const luaType = fieldToLuaType(f);
+    if (luaType === null) continue; // button / header / separator — skip
     const opt     = f.optional ? '?' : '';
     const label   = f.label !== f.key ? f.label : f.key;
     const fieldDesc = f.description ? ` — ${f.description}` : '';

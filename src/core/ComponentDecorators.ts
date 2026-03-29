@@ -24,17 +24,25 @@
 
 export type FieldType =
   | 'number'
+  | 'int'       // integer-only number; floors on commit
   | 'slider'
   | 'boolean'
   | 'string'
+  | 'textarea'  // multiline string; use rows? to set height
   | 'select'
   | 'color'
   | 'vector3'
   | 'vector2'
   | 'asset'
-  | 'euler' // euler = display in degrees, store in radians
-  | 'array' // array of elements; use itemType to specify element type
-  | 'union'; // union of multiple types; use unionTypes to list them
+  | 'euler'     // display in degrees, store in radians
+  | 'array'     // array of elements; use itemType to specify element type
+  | 'union'     // union of multiple types; use unionTypes to list them
+  | 'curve'     // AnimationCurve — array of CurveKeyframe { time, value, inTangent?, outTangent? }
+  | 'gradient'  // color gradient — array of GradientStop { time, color: [r, g, b] }
+  | 'entity'    // reference to another entity by numeric ID
+  | 'button'    // inspector-only button; use onClick to specify the method name to call
+  | 'header'    // decorative bold label; no property value
+  | 'separator'; // decorative horizontal rule; no property value
 
 export interface FieldMeta {
   key: string;
@@ -68,6 +76,10 @@ export interface FieldMeta {
   unionTypes?: string[];
   /** For tuple types [T, U, V] — the ordered element types */
   tupleTypes?: string[];
+  /** For type:'button' — name of the method to call on the component when clicked */
+  onClick?: string;
+  /** For type:'textarea' — number of visible text rows (default 3) */
+  rows?: number;
 }
 
 export interface ComponentMeta {

@@ -11,25 +11,30 @@ import type { EngineDef, ComponentDef, FieldDef } from '../MetaTypes';
 
 function _primitiveToTsType(t: string): string {
   switch (t) {
-    case 'number': case 'slider': return 'number';
+    case 'number': case 'slider': case 'int': return 'number';
     case 'boolean': return 'boolean';
-    case 'string': return 'string';
+    case 'string': case 'textarea': return 'string';
     case 'vector3': case 'euler': return 'Vector3';
     case 'vector2': return 'Vector2';
     case 'color': return 'Color';
     case 'asset': return 'string | null';
+    case 'entity': return 'number | null';
+    case 'curve': return 'CurveKeyframe[]';
+    case 'gradient': return 'GradientStop[]';
     default: return 'unknown';
   }
 }
 
-function fieldToTsType(f: FieldDef): string {
+function fieldToTsType(f: FieldDef): string | null {
   switch (f.type) {
     case 'number':
     case 'slider':
+    case 'int':
       return 'number';
     case 'boolean':
       return 'boolean';
     case 'string':
+    case 'textarea':
       return 'string';
     case 'vector3':
     case 'euler':
@@ -45,6 +50,12 @@ function fieldToTsType(f: FieldDef): string {
       return 'string';
     case 'asset':
       return 'string | null';
+    case 'entity':
+      return 'number | null';
+    case 'curve':
+      return 'CurveKeyframe[]';
+    case 'gradient':
+      return 'GradientStop[]';
     case 'array':
       if (f.tupleTypes?.length) {
         return `[${f.tupleTypes.map(_primitiveToTsType).join(', ')}]`;
@@ -54,13 +65,19 @@ function fieldToTsType(f: FieldDef): string {
       return f.unionTypes?.length
         ? f.unionTypes.map(_primitiveToTsType).join(' | ')
         : 'unknown';
+    // Inspector-only decorators — no property emitted
+    case 'button':
+    case 'header':
+    case 'separator':
+      return null;
     default:
       return 'unknown';
   }
 }
 
-function emitField(f: FieldDef, indent = '    '): string {
+function emitField(f: FieldDef, indent = '    '): string | null {
   const tsType = fieldToTsType(f);
+  if (tsType === null) return null; // button / header / separator — no property
   const opt    = f.optional ? '?' : '';
   const rdOnly = f.readOnly ? 'readonly ' : '';
   const range  = f.min !== undefined && f.max !== undefined
@@ -85,7 +102,8 @@ function emitComponent(c: ComponentDef): string {
       `  interface ${c.typeId.replace(/^Script:/, '')} extends FluxionBehaviour {`,
     ];
     for (const f of c.fields) {
-      lines.push(emitField(f));
+      const line = emitField(f);
+      if (line !== null) lines.push(line);
     }
     lines.push(`  }`);
     return lines.join('\n');
@@ -98,7 +116,8 @@ function emitComponent(c: ComponentDef): string {
     `    enabled: boolean;`,
   ];
   for (const f of c.fields) {
-    lines.push(emitField(f));
+    const line = emitField(f);
+    if (line !== null) lines.push(line);
   }
   lines.push(`  }`);
   return lines.join('\n');
@@ -157,6 +176,27 @@ declare namespace FluxionEngine {
     x: number; y: number; z: number; order: string;
     set(x: number, y: number, z: number): this;
     clone(): Euler;
+  }
+
+  // ── Curve & Gradient types ─────────────────────────────────
+  /** A single keyframe in an AnimationCurve field. */
+  interface CurveKeyframe {
+    /** Normalised time position [0, 1]. */
+    time: number;
+    /** Value at this keyframe. */
+    value: number;
+    /** Incoming tangent (slope). Default 0 (linear). */
+    inTangent?: number;
+    /** Outgoing tangent (slope). Default 0 (linear). */
+    outTangent?: number;
+  }
+
+  /** A single color stop in a Gradient field. */
+  interface GradientStop {
+    /** Normalised position [0, 1]. */
+    time: number;
+    /** RGB color components in the [0, 1] range. */
+    color: [number, number, number];
   }
 
   // ── Transform ──────────────────────────────────────────────

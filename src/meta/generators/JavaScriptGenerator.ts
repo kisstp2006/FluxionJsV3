@@ -38,24 +38,29 @@ const JS_SHARED_TYPES = `\
 
 function _primitiveJsType(t: string): string {
   switch (t) {
-    case 'number': case 'slider': return 'number';
+    case 'number': case 'slider': case 'int': return 'number';
     case 'boolean': return 'boolean';
-    case 'string': return 'string';
+    case 'string': case 'textarea': return 'string';
     case 'vector3': return 'Vector3';
     case 'euler':   return 'Euler';
     case 'vector2': return 'Vector2';
     case 'color':   return 'Color';
-    case 'asset': return 'string|null';
+    case 'asset':   return 'string|null';
+    case 'entity':  return 'number|null';
+    case 'curve':   return 'CurveKeyframe[]';
+    case 'gradient': return 'GradientStop[]';
     default: return '*';
   }
 }
 
-function fieldToJsDocType(f: FieldDef): string {
+function fieldToJsDocType(f: FieldDef): string | null {
   switch (f.type) {
     case 'number':
-    case 'slider':   return 'number';
+    case 'slider':
+    case 'int':      return 'number';
     case 'boolean':  return 'boolean';
-    case 'string':   return 'string';
+    case 'string':
+    case 'textarea': return 'string';
     case 'vector3':  return 'Vector3';
     case 'euler':    return 'Euler';
     case 'vector2':  return 'Vector2';
@@ -66,6 +71,9 @@ function fieldToJsDocType(f: FieldDef): string {
       }
       return 'string';
     case 'asset':    return 'string|null';
+    case 'entity':   return 'number|null';
+    case 'curve':    return 'CurveKeyframe[]';
+    case 'gradient': return 'GradientStop[]';
     case 'array':
       if (f.tupleTypes?.length) return `[${f.tupleTypes.map(_primitiveJsType).join(', ')}]`;
       return f.itemType ? `${_primitiveJsType(f.itemType)}[]` : 'Array';
@@ -73,6 +81,10 @@ function fieldToJsDocType(f: FieldDef): string {
       return f.unionTypes?.length
         ? f.unionTypes.map(_primitiveJsType).join('|')
         : '*';
+    // Inspector-only decorators — no property emitted
+    case 'button':
+    case 'header':
+    case 'separator': return null;
     default:         return '*';
   }
 }
@@ -81,10 +93,9 @@ function emitTypedef(c: ComponentDef): string {
   const isScript = c.category === 'Scripts';
   const className = isScript ? c.typeId.replace(/^Script:/, '') : c.typeId;
 
-  const fieldProps = c.fields.map(f => {
-    const jsType = fieldToJsDocType(f);
-    return `${f.key}: ${jsType}`;
-  });
+  const fieldProps = c.fields
+    .map(f => { const t = fieldToJsDocType(f); return t ? `${f.key}: ${t}` : null; })
+    .filter((s): s is string => s !== null);
 
   const compDesc = c.description ? ` — ${c.description}` : '';
 
@@ -115,6 +126,7 @@ function emitTypedef(c: ComponentDef): string {
   );
   for (const f of c.fields) {
     const jsType = fieldToJsDocType(f);
+    if (jsType === null) continue; // button / header / separator — skip
     const label  = f.label !== f.key ? f.label : f.key;
     const fieldDesc = f.description ? ` — ${f.description}` : '';
     if (f.readOnly) lines.push(` * @readonly`);

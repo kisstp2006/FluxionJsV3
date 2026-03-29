@@ -169,7 +169,7 @@ export class ScriptSystem implements System {
         const inst = comp._instances.get(entry.path);
         if (!inst) continue;
 
-        if (this.engine.simulationPaused) continue;
+        if (this.engine.simulationPaused && !inst._isTool) continue;
 
         // Call start() before the very first update() — mirrors Unity behaviour
         if (!inst._started) {
@@ -333,6 +333,7 @@ export class ScriptSystem implements System {
     }
 
     instance._started = false;
+    instance._isTool   = !!(ScriptClass as any).__tool;
     comp._instances.set(entry.path, instance);
     comp._loading.delete(entry.path);
   }

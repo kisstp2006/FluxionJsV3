@@ -114,7 +114,9 @@ export class LuaScriptSystem implements System {
       for (const entry of comp.scripts) {
         if (!entry.enabled || !entry.path || !entry.path.endsWith('.lua')) continue;
         if (comp._instances.has(entry.path) || comp._loading.has(entry.path)) continue;
-        if (this.engine.simulationPaused) continue;
+        // Allow loading even when paused — tool scripts (__tool = true) need to
+        // start running in edit mode; non-tool scripts will simply have their
+        // lifecycle skipped by ScriptSystem until play mode begins.
 
         comp._loading.add(entry.path);
         this._loadScript(entity, comp, entry, ecs).catch((err) => {
@@ -231,6 +233,9 @@ export class LuaScriptSystem implements System {
     for (const fn of ['start', 'update', 'fixedUpdate', 'lateUpdate', 'onDestroy']) {
       (adapter as any)._has[fn] = lua.global.get(fn) != null;
     }
+
+    // Mark as tool script if __tool = true was declared at the top level
+    adapter._isTool = lua.global.get('__tool') === true;
 
     comp._instances.set(entry.path, adapter);
     comp._loading.delete(entry.path);

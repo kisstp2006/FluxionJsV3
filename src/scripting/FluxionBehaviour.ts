@@ -66,6 +66,7 @@ export class FluxionBehaviour {
   /** @internal */ _cleanupFns: (() => void)[] = [];
   /** @internal */ _coroutines: Map<symbol, { gen: Generator; waitUntil: number }> = new Map();
   /** @internal — false until start() has been called in this play session. */ _started = false;
+  /** @internal — true when the script class declares `static __tool = true` (runs in editor). */ _isTool = false;
 
   // ── Convenience getters ──────────────────────────────────────
 

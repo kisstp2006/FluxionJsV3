@@ -88,6 +88,31 @@ declare namespace Debug {
   function drawCross(position: { x:number;y:number;z:number }, size: number, color?: { r:number;g:number;b:number }): void;
   function drawLineBox(min: { x:number;y:number;z:number }, max: { x:number;y:number;z:number }, color?: { r:number;g:number;b:number }): void;
   function drawLineSphere(center: { x:number;y:number;z:number }, radius: number, color?: { r:number;g:number;b:number }, segments?: number): void;
+  /**
+   * Draw a string at a screen-space pixel position for this frame.
+   * Coordinates are in CSS pixels from the top-left of the game canvas.
+   * Call every frame inside update() — the text is cleared automatically each frame.
+   *
+   * @param position  Screen position. Vec2(0, 0) = top-left corner of the canvas.
+   * @param text      The string to render.
+   * @param color     A THREE.Color, hex string ('#ff4400') or CSS color name ('white').
+   * @param fontSize  Font size in CSS pixels. Default 14.
+   *
+   * @example
+   *   update() {
+   *     Debug.drawText(new Vec2(8, 8),  `FPS: ${this.Time.fps}`, '#4ade80');
+   *     Debug.drawText(new Vec2(8, 28), `Pos: ${this.transform.position.x.toFixed(2)}`, new Color(1,0.5,0));
+   *   }
+   */
+  function drawText(
+    position: InstanceType<typeof Vec2>,
+    text: string,
+    color?: InstanceType<typeof Color> | string,
+    fontSize?: number,
+  ): void;
+  function Log(...args: any[]): void;
+  function LogWarning(...args: any[]): void;
+  function LogError(...args: any[]): void;
 }
 
 // ── Component types ──────────────────────────────────────────

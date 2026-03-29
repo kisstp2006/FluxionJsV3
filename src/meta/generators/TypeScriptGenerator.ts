@@ -236,9 +236,29 @@ declare namespace FluxionEngine {
     warn(...args: unknown[]): void;
     error(...args: unknown[]): void;
     drawLine(start: Vector3, end: Vector3, color?: Color): void;
+    drawLineWorld(start: Vector3, end: Vector3, color?: Color): void;
     drawLineSphere(center: Vector3, radius: number, color?: Color, segments?: number): void;
     drawLineBox(min: Vector3, max: Vector3, color?: Color): void;
     drawCross(position: Vector3, size: number, color?: Color): void;
+    /**
+     * Draw a string at a screen-space pixel position for this frame.
+     * Call every frame — the text is cleared automatically after rendering.
+     *
+     * @param position  CSS-pixel position from the top-left of the game canvas.
+     * @param text      The string to render.
+     * @param color     A Color object, hex string ('#ff4400') or CSS color name ('white').
+     * @param fontSize  Font size in CSS pixels. Default 14.
+     *
+     * @example
+     *   update() {
+     *     Debug.drawText(new Vec2(8, 8),  \`FPS: \${this.Time.fps}\`, '#4ade80');
+     *     Debug.drawText(new Vec2(8, 28), \`Pos: \${this.transform.position.x.toFixed(2)}\`, new Color(1, 0.5, 0));
+     *   }
+     */
+    drawText(position: Vector2, text: string, color?: Color | string, fontSize?: number): void;
+    Log(...args: unknown[]): void;
+    LogWarning(...args: unknown[]): void;
+    LogError(...args: unknown[]): void;
   }
 
   interface SceneAPI {

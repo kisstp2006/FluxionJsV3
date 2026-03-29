@@ -21,6 +21,7 @@ import { AssetManager } from '../../src/assets/AssetManager';
 import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 import { CSGSystem } from '../../src/csg/CSGSystem';
 import { ScriptSystem } from '../../src/scripting/ScriptSystem';
+import { DebugDraw } from '../../src/renderer/DebugDraw';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -135,10 +136,24 @@ export async function initEditorEngine(
   renderer.scene.fog = new THREE.FogExp2(0x0a0e17, 0.008);
 
   // Update controls each frame
+  const _dbgPos = new THREE.Vector2();
   engine.events.on('engine:update', () => {
     orbitControls.update();
     // Feed camera to particle system for billboard + soft-particle near/far
     particleSys.setCamera(editorCamera, renderer.renderer.domElement.width, renderer.renderer.domElement.height);
+
+    // Show engine stats via debug text when the simulation is running (game view).
+    // Scene view already has the React stats overlay; debug text covers game view.
+    if (!engine.simulationPaused) {
+      const t    = engine.time;
+      const info = renderer.renderer.info;
+      const fps  = t.smoothFps;
+      const fpsColor = fps >= 55 ? '#4ade80' : fps >= 30 ? '#facc15' : '#f87171';
+      DebugDraw.drawText(_dbgPos.set(8, 8),  `FPS  ${fps}  (${(t.unscaledDeltaTime * 1000).toFixed(1)} ms)`, fpsColor, 13);
+      DebugDraw.drawText(_dbgPos.set(8, 26), `Draw calls  ${info.render.calls}`, '#94a3b8', 12);
+      DebugDraw.drawText(_dbgPos.set(8, 42), `Triangles   ${info.render.triangles.toLocaleString()}`, '#94a3b8', 12);
+      DebugDraw.drawText(_dbgPos.set(8, 58), `Entities    ${engine.ecs.entityCount}`, '#94a3b8', 12);
+    }
   });
 
   // Start engine

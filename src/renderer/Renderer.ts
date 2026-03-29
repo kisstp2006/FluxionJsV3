@@ -129,7 +129,7 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new FogVolumeSystem(this));
 
     // Debug drawing: overlay (gizmoScene) + world (main scene for depth test)
-    DebugDraw.init(this.gizmoScene, this.scene);
+    DebugDraw.init(this.gizmoScene, this.scene, engine.config.canvas);
 
     // Register as subsystem
     engine.registerSubsystem('renderer', this);

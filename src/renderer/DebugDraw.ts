@@ -15,6 +15,15 @@ export interface DebugLine {
   endColor?: THREE.Color;
 }
 
+/** A single screen-space text entry accumulated per-frame. */
+interface DebugTextEntry {
+  x: number;
+  y: number;
+  text: string;
+  cssColor: string;
+  fontSize: number;
+}
+
 const INITIAL_CAPACITY = 4096; // max lines before realloc
 
 /**
@@ -29,6 +38,12 @@ const INITIAL_CAPACITY = 4096; // max lines before realloc
 export class DebugDraw {
   private static scene: THREE.Scene | null = null;
   private static sceneW: THREE.Scene | null = null;
+
+  // ── Screen-space text overlay ─────────────────────────────────────────────
+  private static engineCanvas: HTMLCanvasElement | null = null;
+  private static textCanvas: HTMLCanvasElement | null = null;
+  private static textCtx: CanvasRenderingContext2D | null = null;
+  private static textEntries: DebugTextEntry[] = [];
 
   // Overlay layer (depthTest: false) — gizmos, always on top
   private static mesh: THREE.LineSegments | null = null;
@@ -48,10 +63,32 @@ export class DebugDraw {
   private static lineCountW = 0;
   private static capacityW = INITIAL_CAPACITY;
 
-  /** Initialize with both scenes (called once by FluxionRenderer). */
-  static init(overlayScene: THREE.Scene, mainScene: THREE.Scene): void {
+  /**
+   * Initialize with both scenes and the engine's WebGL canvas.
+   * Called once by FluxionRenderer on startup.
+   */
+  static init(
+    overlayScene: THREE.Scene,
+    mainScene: THREE.Scene,
+    engineCanvas?: HTMLCanvasElement,
+  ): void {
     this.scene = overlayScene;
     this.sceneW = mainScene;
+
+    // Build the text overlay canvas — position:fixed so it aligns to the
+    // engine canvas regardless of the parent element's CSS positioning.
+    if (engineCanvas && typeof document !== 'undefined') {
+      this.engineCanvas = engineCanvas;
+      const tc = document.createElement('canvas');
+      tc.style.position    = 'fixed';
+      tc.style.left        = '0px';
+      tc.style.top         = '0px';
+      tc.style.pointerEvents = 'none';
+      tc.style.zIndex      = '200'; // above FUI (50) and debug overlay (100)
+      (engineCanvas.parentElement ?? document.body).appendChild(tc);
+      this.textCanvas = tc;
+      this.textCtx    = tc.getContext('2d');
+    }
 
     // Overlay (no depth test)
     this.geometry = new THREE.BufferGeometry();
@@ -231,6 +268,94 @@ export class DebugDraw {
     }
   }
 
+  // ── Screen-space text ────────────────────────────────────────────────────
+
+  /**
+   * Draw a string at a screen-space pixel position for this frame.
+   * Coordinates are in CSS pixels from the top-left of the engine canvas.
+   *
+   * @param position  Screen position — Vec2(x, y) where (0,0) is the top-left corner.
+   * @param text      The string to draw.
+   * @param color     A THREE.Color, a CSS hex string ('#ff4400') or a named CSS color ('white').
+   * @param fontSize  Font size in CSS pixels. Default 14.
+   *
+   * @example
+   *   // In a script update():
+   *   Debug.drawText(new Vec2(8, 8),  `FPS: ${this.Time.fps}`, '#00ff88', 14);
+   *   Debug.drawText(new Vec2(8, 28), `Pos: ${this.transform.position.x.toFixed(2)}`, new Color(1,0.5,0));
+   */
+  static drawText(
+    position: THREE.Vector2,
+    text: string,
+    color: THREE.Color | string = '#ffffff',
+    fontSize = 14,
+  ): void {
+    if (!this.textCanvas) return;
+    const cssColor = typeof color === 'string'
+      ? color
+      : `#${color.getHexString()}`;
+    this.textEntries.push({ x: position.x, y: position.y, text, cssColor, fontSize });
+  }
+
+  /** Flush the text overlay — called automatically by flush(). */
+  private static flushText(): void {
+    const entries = this.textEntries;
+    if (entries.length === 0) return;
+
+    const ctx       = this.textCtx;
+    const canvas    = this.textCanvas;
+    const refCanvas = this.engineCanvas;
+
+    if (!ctx || !canvas || !refCanvas) {
+      entries.length = 0;
+      return;
+    }
+
+    // Sync the overlay canvas size and position with the engine canvas every frame
+    // so it stays correct after window resizes or editor panel reflows.
+    const dpr  = window.devicePixelRatio || 1;
+    const rect = refCanvas.getBoundingClientRect();
+    const cssW = rect.width;
+    const cssH = rect.height;
+    const pixW = Math.round(cssW * dpr);
+    const pixH = Math.round(cssH * dpr);
+
+    if (canvas.width !== pixW || canvas.height !== pixH) {
+      canvas.width  = pixW;
+      canvas.height = pixH;
+      canvas.style.width  = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+    }
+
+    const expectLeft = `${rect.left}px`;
+    const expectTop  = `${rect.top}px`;
+    if (canvas.style.left !== expectLeft || canvas.style.top !== expectTop) {
+      canvas.style.left = expectLeft;
+      canvas.style.top  = expectTop;
+    }
+
+    ctx.clearRect(0, 0, pixW, pixH);
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    for (const entry of entries) {
+      ctx.font = `${entry.fontSize}px "JetBrains Mono", "Fira Code", Consolas, monospace`;
+
+      // Dark shadow so text stays readable on any background
+      ctx.shadowColor   = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur    = 4;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
+      ctx.fillStyle = entry.cssColor;
+      // y is the TOP of the text block; canvas baseline = top + fontSize
+      ctx.fillText(entry.text, entry.x, entry.y + entry.fontSize);
+    }
+
+    ctx.restore();
+    entries.length = 0;
+  }
+
   // ── Grid (replaces THREE.GridHelper) ──
 
   /** Draw an XZ grid centered at origin with axis-colored center lines (depth tested). */
@@ -280,7 +405,7 @@ export class DebugDraw {
 
   // ── Lifecycle ──
 
-  /** Commit accumulated lines to the GPU and clear the buffer. Called by renderer each frame. */
+  /** Commit accumulated lines and text to the GPU / canvas. Called by renderer each frame. */
   static flush(): void {
     // Overlay layer
     this.flushLayer(this.geometry, this.mesh, this.positions, this.colors, this.lineCount);
@@ -289,6 +414,9 @@ export class DebugDraw {
     // World layer
     this.flushLayer(this.geometryW, this.meshW, this.positionsW, this.colorsW, this.lineCountW);
     this.lineCountW = 0;
+
+    // Screen-space text overlay
+    this.flushText();
   }
 
   private static flushLayer(
@@ -317,7 +445,7 @@ export class DebugDraw {
     mesh.visible = count > 0;
   }
 
-  /** Dispose all GPU resources. */
+  /** Dispose all GPU resources and DOM elements. */
   static dispose(): void {
     if (this.mesh && this.scene) this.scene.remove(this.mesh);
     if (this.meshW && this.sceneW) this.sceneW.remove(this.meshW);
@@ -333,6 +461,12 @@ export class DebugDraw {
     this.materialW = null;
     this.scene = null;
     this.sceneW = null;
+    // Text overlay
+    this.textCanvas?.remove();
+    this.textCanvas  = null;
+    this.textCtx     = null;
+    this.engineCanvas = null;
+    this.textEntries.length = 0;
   }
 
   // ── Internal ──

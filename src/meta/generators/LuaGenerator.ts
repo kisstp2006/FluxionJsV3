@@ -206,10 +206,40 @@ function DebugAPI:log(...) end
 function DebugAPI:warn(...) end
 --- @param ... any
 function DebugAPI:error(...) end
+--- @param ... any
+function DebugAPI:Log(...) end
+--- @param ... any
+function DebugAPI:LogWarning(...) end
+--- @param ... any
+function DebugAPI:LogError(...) end
 --- @param start Vector3
 --- @param stop Vector3
 --- @param color? Color
 function DebugAPI:drawLine(start, stop, color) end
+--- @param start Vector3
+--- @param stop Vector3
+--- @param color? Color
+function DebugAPI:drawLineWorld(start, stop, color) end
+--- @param center Vector3
+--- @param radius number
+--- @param color? Color
+--- @param segments? integer
+function DebugAPI:drawLineSphere(center, radius, color, segments) end
+--- @param position Vector3
+--- @param size number
+--- @param color? Color
+function DebugAPI:drawCross(position, size, color) end
+--- @param min Vector3
+--- @param max Vector3
+--- @param color? Color
+function DebugAPI:drawLineBox(min, max, color) end
+--- Draw a string at a screen-space pixel position for this frame.
+--- Call every frame from update() — text is cleared automatically each frame.
+--- @param position Vector2   CSS-pixel position from top-left of game canvas
+--- @param text string        The string to render
+--- @param color? Color|string  A Color object, hex string ('#ff4400') or CSS color name ('white')
+--- @param fontSize? number   Font size in CSS pixels (default 14)
+function DebugAPI:drawText(position, text, color, fontSize) end
 
 --- @class SceneAPI
 --- @field name string Current scene name

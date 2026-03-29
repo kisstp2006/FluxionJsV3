@@ -1,0 +1,12 @@
+-- $CLS
+speedX = 0
+speedY = 45
+speedZ = 0
+
+function update(dt)
+    local tf = self.transform
+    if not tf then return end
+    tf.rotation.x = tf.rotation.x + Mathf.Deg2Rad * speedX * dt
+    tf.rotation.y = tf.rotation.y + Mathf.Deg2Rad * speedY * dt
+    tf.rotation.z = tf.rotation.z + Mathf.Deg2Rad * speedZ * dt
+end

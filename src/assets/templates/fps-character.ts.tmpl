@@ -1,0 +1,75 @@
+export default class $CLS extends FluxionBehaviour {
+  // ── Inspector properties ────────────────────────────────────
+  /** Drag a Camera entity here in the Inspector. */
+  camera = new EntityRef('Camera');
+
+  /** Mouse look sensitivity (degrees per pixel). */
+  sensitivity = 0.15;
+  /** Maximum look-up / look-down angle in degrees. */
+  maxPitch = 85;
+  /** Height offset from the character pivot to the camera eye. */
+  headHeight = 1.6;
+
+  // ── Private state ────────────────────────────────────────────
+  _yaw   = 0;
+  _pitch = 0;
+
+  start() {
+    const tf = this.transform;
+    if (tf) this._yaw = tf.rotation.y * Mathf.Rad2Deg;
+    this.Input.lockPointer();
+    this.log('FPS Character ready — click viewport to capture mouse, Escape to release.');
+  }
+
+  update(dt: number) {
+    if (this.Input.isMousePressed(0) && !this.Input.isPointerLocked()) {
+      this.Input.lockPointer();
+    }
+
+    // ── Controls overlay ─────────────────────────────────────────
+    if (!this.Input.isPointerLocked()) {
+      Debug.drawText(new Vec2(8, 8), 'Left-click to capture mouse', '#94a3b8', 12);
+    } else {
+      Debug.drawText(new Vec2(8, 8),  'WASD — move   Space — jump', '#94a3b8', 12);
+      Debug.drawText(new Vec2(8, 22), 'Shift — sprint   Ctrl/C — crouch   Esc — release', '#94a3b8', 12);
+    }
+
+    if (!this.Input.isPointerLocked()) return;
+
+    // ── Mouse look ──────────────────────────────────────────────
+    this._yaw   -= this.Input.mouseDelta.x * this.sensitivity;
+    this._pitch -= this.Input.mouseDelta.y * this.sensitivity;
+    this._pitch  = Mathf.clamp(this._pitch, -this.maxPitch, this.maxPitch);
+
+    const charTf = this.transform;
+    if (charTf) charTf.rotation.set(0, this._yaw * Mathf.Deg2Rad, 0, 'YXZ');
+
+    const camTf = this.getComponentOf(this.camera.entity, 'Transform');
+    if (camTf) camTf.rotation.set(this._pitch * Mathf.Deg2Rad, 0, 0, 'YXZ');
+
+    // ── Run / Crouch ─────────────────────────────────────────────
+    const sprint = this.Input.isKeyDown('ShiftLeft') || this.Input.isKeyDown('ShiftRight');
+    this.Physics.setRunning(sprint);
+
+    const crouch = this.Input.isKeyDown('ControlLeft') || this.Input.isKeyDown('KeyC');
+    this.Physics.crouch(crouch);
+  }
+
+  fixedUpdate(dt: number) {
+    const h = this.Input.getAxis('KeyA', 'KeyD');
+    const v = this.Input.getAxis('KeyS', 'KeyW');
+    this.Physics.move(h, -v);
+
+    if (this.Input.isKeyPressed('Space')) this.Physics.jump();
+
+    const charTf = this.transform;
+    const camTf  = this.getComponentOf(this.camera.entity, 'Transform');
+    if (charTf && camTf) {
+      camTf.position.set(charTf.position.x, charTf.position.y + this.headHeight, charTf.position.z);
+    }
+  }
+
+  onDestroy() {
+    if (this.Input.isPointerLocked()) this.Input.unlockPointer();
+  }
+}

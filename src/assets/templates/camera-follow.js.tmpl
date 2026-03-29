@@ -1,0 +1,23 @@
+export default class $CLS extends FluxionBehaviour {
+  targetName = 'Player';
+  offset = new Vec3(0, 5, -10);
+  smoothSpeed = 5.0;
+
+  _target = -1;
+
+  start() {
+    const found = this.find(this.targetName);
+    if (found !== undefined) this._target = found;
+    else this.warn('Target "' + this.targetName + '" not found');
+  }
+
+  update(dt) {
+    if (this._target < 0) return;
+    const targetTf = this.getComponentOf(this._target, 'Transform');
+    const myTf = this.transform;
+    if (!targetTf || !myTf) return;
+
+    const desired = targetTf.position.clone().add(this.offset);
+    myTf.position.lerp(desired, Mathf.clamp01(this.smoothSpeed * dt));
+  }
+}

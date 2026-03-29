@@ -29,6 +29,11 @@ module.exports = (env = {}) => {
       test: /\.svg$/,
       type: 'asset/source',
     },
+    {
+      // Import script template files as raw strings
+      test: /\.tmpl$/,
+      type: 'asset/source',
+    },
   ];
 
   const resolve = {
@@ -42,6 +47,16 @@ module.exports = (env = {}) => {
       '@audio': path.resolve(__dirname, 'src/audio'),
       '@assets': path.resolve(__dirname, 'src/assets'),
       '@editor': path.resolve(__dirname, 'editor'),
+    },
+    // wasmoon (and other Node-targeting packages) reference built-ins that
+    // webpack 5 no longer polyfills automatically. Stub them out for browser
+    // / Electron renderer targets — wasmoon falls back to fetch-based WASM
+    // loading when these are unavailable.
+    fallback: {
+      url:    false,
+      module: false,
+      path:   false,
+      fs:     false,
     },
   };
 

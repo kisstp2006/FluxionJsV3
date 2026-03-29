@@ -1,0 +1,18 @@
+export default class $CLS extends FluxionBehaviour {
+  update(dt) {
+    const t = this.Time;
+    const tf = this.transform;
+
+    // FPS — colour changes with performance
+    const fpsColor = t.fps >= 55 ? '#4ade80' : t.fps >= 30 ? '#facc15' : '#f87171';
+    Debug.drawText(new Vec2(8, 8), `FPS   ${t.fps.toFixed(0)}  (${(t.deltaTime * 1000).toFixed(1)} ms)`, fpsColor, 13);
+
+    if (tf) {
+      const p = tf.position;
+      Debug.drawText(new Vec2(8, 26), `Pos   ${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`, '#94a3b8', 12);
+    }
+
+    // Add any extra lines below — coordinates are CSS pixels from top-left
+    // Debug.drawText(new Vec2(8, 42), 'custom info here', '#ffffff', 12);
+  }
+}

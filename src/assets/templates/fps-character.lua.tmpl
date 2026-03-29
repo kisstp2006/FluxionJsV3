@@ -1,0 +1,61 @@
+-- $CLS
+sensitivity = 0.15
+maxPitch    = 85.0
+headHeight  = 1.6
+
+local _yaw   = 0
+local _pitch = 0
+
+function start()
+    local tf = self.transform
+    if tf then _yaw = tf.rotation.y * Mathf.Rad2Deg end
+    self.Input.lockPointer()
+    self.log("FPS Character ready — click viewport to capture mouse")
+end
+
+function update(dt)
+    if self.Input.isMousePressed(0) and not self.Input.isPointerLocked() then
+        self.Input.lockPointer()
+    end
+
+    if not self.Input.isPointerLocked() then
+        self.Debug.drawText(Vec2(8, 8), "Left-click to capture mouse", "#94a3b8", 12)
+        return
+    end
+
+    self.Debug.drawText(Vec2(8, 8),  "WASD — move   Space — jump",              "#94a3b8", 12)
+    self.Debug.drawText(Vec2(8, 22), "Shift — sprint   Ctrl/C — crouch   Esc — release", "#94a3b8", 12)
+
+    -- Mouse look
+    local md = self.Input.mouseDelta
+    _yaw   = _yaw   - md.x * sensitivity
+    _pitch = _pitch - md.y * sensitivity
+    _pitch = Mathf.clamp(_pitch, -maxPitch, maxPitch)
+
+    local charTf = self.transform
+    if charTf then
+        charTf.rotation.set(0, _yaw * Mathf.Deg2Rad, 0, "YXZ")
+    end
+
+    -- Sprint / crouch
+    local sprint = self.Input.isKeyDown("ShiftLeft") or self.Input.isKeyDown("ShiftRight")
+    self.Physics.setRunning(sprint)
+    local crouch = self.Input.isKeyDown("ControlLeft") or self.Input.isKeyDown("KeyC")
+    self.Physics.crouch(crouch)
+end
+
+function fixedUpdate(dt)
+    local h = self.Input.getAxis("KeyA", "KeyD")
+    local v = self.Input.getAxis("KeyS", "KeyW")
+    self.Physics.move(h, -v)
+
+    if self.Input.isKeyPressed("Space") then
+        self.Physics.jump()
+    end
+end
+
+function onDestroy()
+    if self.Input.isPointerLocked() then
+        self.Input.unlockPointer()
+    end
+end

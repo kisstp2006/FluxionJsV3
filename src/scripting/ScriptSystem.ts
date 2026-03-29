@@ -262,6 +262,12 @@ export class ScriptSystem implements System {
       absPath = entry.path;
     }
 
+    // Lua scripts are handled by LuaScriptSystem
+    if (absPath.endsWith('.lua') || entry.path.endsWith('.lua')) {
+      comp._loading.delete(entry.path);
+      return;
+    }
+
     const source = await fs.readFile(absPath);
 
     if (!ecs.entityExists(entity)) return;

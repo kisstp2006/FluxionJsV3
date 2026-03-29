@@ -14,7 +14,7 @@ import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
-import type { ScriptTemplate } from '../../../src/assets/AssetTypeRegistry';
+import type { ScriptTemplate, ScriptLang } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
 import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
@@ -249,9 +249,12 @@ export const AssetBrowserPanel: React.FC<{
   } | null>(null);
   const [scriptCreateDialog, setScriptCreateDialog] = useState<{
     templates: ScriptTemplate[];
-    onCreate: (templateId: string, name: string) => void;
+    onCreate: (templateId: string, lang: ScriptLang, name: string) => void;
   } | null>(null);
-  const [scriptCreateStep, setScriptCreateStep] = useState<{ templateId: string } | null>(null);
+  const [scriptCreateStep, setScriptCreateStep] = useState<{
+    templateId: string;
+    lang: ScriptLang | null;
+  } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     message: string;
     onConfirm: () => void;
@@ -576,11 +579,11 @@ export const AssetBrowserPanel: React.FC<{
               setScriptCreateStep(null);
               setScriptCreateDialog({
                 templates: def.templates,
-                onCreate: async (templateId, name) => {
+                onCreate: async (templateId, lang, name) => {
                   if (!selectedFolder || !name.trim() || !def.createDefault) return;
                   try {
                     const fs = getFileSystem();
-                    await def.createDefault(fs, selectedFolder, name.trim(), templateId);
+                    await def.createDefault(fs, selectedFolder, name.trim(), templateId, lang);
                     log(`Created ${def.displayName.toLowerCase()}: ${name.trim()}`, 'system');
                     refresh();
                   } catch (err: any) {
@@ -1145,7 +1148,7 @@ export const AssetBrowserPanel: React.FC<{
                   {scriptCreateDialog.templates.map((tpl) => (
                     <div
                       key={tpl.id}
-                      onClick={() => setScriptCreateStep({ templateId: tpl.id })}
+                      onClick={() => setScriptCreateStep({ templateId: tpl.id, lang: null })}
                       style={{
                         display: 'flex', alignItems: 'flex-start', gap: 10,
                         padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
@@ -1171,61 +1174,138 @@ export const AssetBrowserPanel: React.FC<{
                   }}>Cancel</button>
                 </div>
               </>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Script Name
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                  Template: <span style={{ color: 'var(--accent)' }}>
-                    {scriptCreateDialog.templates.find((t) => t.id === scriptCreateStep.templateId)?.name}
-                  </span>
-                </div>
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const input = (e.currentTarget.elements.namedItem('name') as HTMLInputElement);
-                  if (input?.value?.trim()) {
-                    scriptCreateDialog.onCreate(scriptCreateStep.templateId, input.value.trim());
-                  }
-                  setScriptCreateDialog(null);
-                  setScriptCreateStep(null);
-                }}>
-                  <input
-                    name="name"
-                    autoFocus
-                    defaultValue="NewScript"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        setScriptCreateStep(null); // go back
-                      }
-                    }}
-                    style={{
-                      width: '100%', padding: '6px 8px',
-                      background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: 4, color: 'var(--text-primary)', fontSize: 12,
-                      outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, gap: 8 }}>
-                    <button type="button" onClick={() => setScriptCreateStep(null)} style={{
-                      padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
-                      border: '1px solid var(--border)', borderRadius: 4,
-                      color: 'var(--text-secondary)', cursor: 'pointer',
-                    }}>← Back</button>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }} style={{
+            ) : scriptCreateStep.lang === null ? (
+              /* ── Language Picker ── */
+              (() => {
+                const tpl = scriptCreateDialog.templates.find((t) => t.id === scriptCreateStep.templateId)!;
+                const LANG_META: Record<ScriptLang, { label: string; ext: string; color: string; bg: string }> = {
+                  ts:  { label: 'TypeScript', ext: '.ts',  color: '#3b82f6', bg: '#1e3a5f' },
+                  js:  { label: 'JavaScript', ext: '.js',  color: '#eab308', bg: '#3d3200' },
+                  lua: { label: 'Lua',        ext: '.lua', color: '#a855f7', bg: '#2e1a47' },
+                };
+                return (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      Choose Language
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                      Template: <span style={{ color: 'var(--accent)' }}>{tpl.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {(tpl.languages as ScriptLang[]).map((lang) => {
+                        const m = LANG_META[lang];
+                        return (
+                          <div
+                            key={lang}
+                            onClick={() => setScriptCreateStep({ templateId: scriptCreateStep.templateId, lang })}
+                            style={{
+                              flex: 1, display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', justifyContent: 'center',
+                              gap: 8, padding: '18px 12px', borderRadius: 8, cursor: 'pointer',
+                              border: `2px solid ${m.color}44`,
+                              background: m.bg,
+                              transition: 'border-color 0.15s, transform 0.1s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = m.color;
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = `${m.color}44`;
+                              e.currentTarget.style.transform = '';
+                            }}
+                          >
+                            <div style={{
+                              fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                              color: m.color, textTransform: 'uppercase',
+                            }}>{m.label}</div>
+                            <div style={{
+                              fontSize: 10, color: '#888',
+                              fontFamily: 'monospace',
+                            }}>{m.ext}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
+                      <button onClick={() => setScriptCreateStep(null)} style={{
+                        padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                        border: '1px solid var(--border)', borderRadius: 4,
+                        color: 'var(--text-secondary)', cursor: 'pointer',
+                      }}>← Back</button>
+                      <button onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }} style={{
                         padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
                         border: '1px solid var(--border)', borderRadius: 4,
                         color: 'var(--text-secondary)', cursor: 'pointer',
                       }}>Cancel</button>
-                      <button type="submit" style={{
-                        padding: '4px 14px', fontSize: 11, background: 'var(--accent)',
-                        border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer',
-                      }}>Create</button>
                     </div>
-                  </div>
-                </form>
-              </>
+                  </>
+                );
+              })()
+            ) : (
+              /* ── Name Input ── */
+              (() => {
+                const tpl = scriptCreateDialog.templates.find((t) => t.id === scriptCreateStep.templateId)!;
+                const lang = scriptCreateStep.lang!;
+                const LANG_LABELS: Record<ScriptLang, string> = { ts: 'TypeScript', js: 'JavaScript', lua: 'Lua' };
+                return (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      Script Name
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                      {tpl.name} &mdash; <span style={{ color: 'var(--accent)' }}>{LANG_LABELS[lang]}</span>
+                    </div>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const inp = (e.currentTarget.elements.namedItem('name') as HTMLInputElement);
+                      if (inp?.value?.trim()) {
+                        scriptCreateDialog.onCreate(scriptCreateStep.templateId, lang, inp.value.trim());
+                      }
+                      setScriptCreateDialog(null);
+                      setScriptCreateStep(null);
+                    }}>
+                      <input
+                        name="name"
+                        autoFocus
+                        defaultValue="NewScript"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setScriptCreateStep({ templateId: scriptCreateStep.templateId, lang: null });
+                          }
+                        }}
+                        style={{
+                          width: '100%', padding: '6px 8px',
+                          background: 'var(--bg-input)', border: '1px solid var(--border)',
+                          borderRadius: 4, color: 'var(--text-primary)', fontSize: 12,
+                          outline: 'none', boxSizing: 'border-box',
+                        }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setScriptCreateStep({ templateId: scriptCreateStep.templateId, lang: null })}
+                          style={{
+                            padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                            border: '1px solid var(--border)', borderRadius: 4,
+                            color: 'var(--text-secondary)', cursor: 'pointer',
+                          }}>← Back</button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" onClick={() => { setScriptCreateDialog(null); setScriptCreateStep(null); }} style={{
+                            padding: '4px 14px', fontSize: 11, background: 'var(--bg-hover)',
+                            border: '1px solid var(--border)', borderRadius: 4,
+                            color: 'var(--text-secondary)', cursor: 'pointer',
+                          }}>Cancel</button>
+                          <button type="submit" style={{
+                            padding: '4px 14px', fontSize: 11, background: 'var(--accent)',
+                            border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer',
+                          }}>Create</button>
+                        </div>
+                      </div>
+                    </form>
+                  </>
+                );
+              })()
             )}
           </div>
         </div>

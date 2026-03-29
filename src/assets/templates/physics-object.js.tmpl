@@ -1,0 +1,18 @@
+export default class $CLS extends FluxionBehaviour {
+  forceMagnitude = 10.0;
+  jumpForce = 5.0;
+
+  fixedUpdate(dt) {
+    const h = this.Input.getAxis('KeyA', 'KeyD');
+    const v = this.Input.getAxis('KeyS', 'KeyW');
+
+    if (h !== 0 || v !== 0) {
+      const force = new Vec3(h, 0, v).normalize().multiplyScalar(this.forceMagnitude);
+      this.Physics.applyForce(force);
+    }
+
+    if (this.Input.isKeyPressed('Space')) {
+      this.Physics.applyImpulse(new Vec3(0, this.jumpForce, 0));
+    }
+  }
+}

@@ -1,0 +1,70 @@
+export default class $CLS extends FluxionBehaviour {
+  /** Movement speed in units/second */
+  speed = 10.0;
+  /** Sprint multiplier when holding Shift */
+  sprintMultiplier = 3.0;
+  /** Mouse look sensitivity (degrees per pixel) */
+  sensitivity = 0.15;
+  /** Maximum pitch angle in degrees */
+  maxPitch = 89.0;
+
+  private _yaw = 0;
+  private _pitch = 0;
+
+  start() {
+    const tf = this.transform;
+    if (tf) {
+      this._yaw   = tf.rotation.y * Mathf.Rad2Deg;
+      this._pitch = tf.rotation.x * Mathf.Rad2Deg;
+    }
+    this.log('FlyingCamera ready — right-click to capture mouse');
+  }
+
+  update(dt: number) {
+    const tf = this.transform;
+    if (!tf) return;
+
+    // ── Pointer lock toggle (right mouse button) ──────────────
+    if (this.Input.isMousePressed(2)) {
+      if (this.Input.isPointerLocked()) this.Input.unlockPointer();
+      else this.Input.lockPointer();
+    }
+
+    // ── Controls overlay ──────────────────────────────────────
+    if (!this.Input.isPointerLocked()) {
+      Debug.drawText(new Vec2(8, 8), 'Right-click to capture mouse', '#94a3b8', 12);
+    } else {
+      Debug.drawText(new Vec2(8, 8),  'WASD — move   QE — up / down', '#94a3b8', 12);
+      Debug.drawText(new Vec2(8, 22), 'Shift — sprint   RMB — release mouse', '#94a3b8', 12);
+    }
+
+    // ── Mouse look ────────────────────────────────────────────
+    if (this.Input.isPointerLocked()) {
+      this._yaw   -= this.Input.mouseDelta.x * this.sensitivity;
+      this._pitch -= this.Input.mouseDelta.y * this.sensitivity;
+      this._pitch  = Mathf.clamp(this._pitch, -this.maxPitch, this.maxPitch);
+      tf.rotation.set(this._pitch * Mathf.Deg2Rad, this._yaw * Mathf.Deg2Rad, 0, 'YXZ');
+    }
+
+    // ── Keyboard movement ─────────────────────────────────────
+    const sprint = this.Input.isKeyDown('ShiftLeft') || this.Input.isKeyDown('ShiftRight');
+    const currentSpeed = this.speed * (sprint ? this.sprintMultiplier : 1.0);
+
+    const localMove = new Vec3(
+      this.Input.getAxis('KeyA', 'KeyD'),
+      this.Input.getAxis('KeyQ', 'KeyE'),
+      this.Input.getAxis('KeyW', 'KeyS'),
+    );
+
+    if (localMove.lengthSq() > 0) {
+      localMove.normalize().multiplyScalar(currentSpeed * dt);
+      const yawQ = new Quat().setFromAxisAngle(new Vec3(0, 1, 0), this._yaw * Mathf.Deg2Rad);
+      localMove.applyQuaternion(yawQ);
+      tf.position.add(localMove);
+    }
+  }
+
+  onDestroy() {
+    if (this.Input.isPointerLocked()) this.Input.unlockPointer();
+  }
+}

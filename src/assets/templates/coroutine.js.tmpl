@@ -1,0 +1,15 @@
+export default class $CLS extends FluxionBehaviour {
+  start() {
+    this.startCoroutine(this.introSequence());
+  }
+
+  *introSequence() {
+    this.log('Sequence started');
+    yield { seconds: 1 };
+    this.log('1 second passed');
+    yield { seconds: 2 };
+    this.log('3 seconds total — done');
+  }
+
+  update(dt) {}
+}

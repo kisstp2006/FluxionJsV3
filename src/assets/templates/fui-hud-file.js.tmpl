@@ -1,0 +1,27 @@
+export default class $CLS extends FluxionBehaviour {
+  /** Path to the .fui file (project-relative) */
+  fuiFile = 'UI/HUD.fui';
+
+  score = 0;
+  health = 100;
+
+  start() {
+    this.ui.load(this.fuiFile);
+
+    this.ui.onButtonClick('restart_btn', () => {
+      this.score = 0;
+      this.health = 100;
+      this.updateHUD();
+    });
+  }
+
+  update(dt) {
+    this.score += dt * 10;
+    this.updateHUD();
+  }
+
+  updateHUD() {
+    this.ui.setText('score_label', 'Score: ' + Math.floor(this.score));
+    this.ui.setText('health_label', 'HP: ' + this.health);
+  }
+}

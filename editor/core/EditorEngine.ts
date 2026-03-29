@@ -21,6 +21,7 @@ import { AssetManager } from '../../src/assets/AssetManager';
 import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 import { CSGSystem } from '../../src/csg/CSGSystem';
 import { ScriptSystem } from '../../src/scripting/ScriptSystem';
+import { LuaScriptSystem } from '../../src/scripting/LuaScriptSystem';
 import { DebugDraw } from '../../src/renderer/DebugDraw';
 import { setPlatformBridge } from '../../src/platform/PlatformBridge';
 import { registerSnapshotHelpers } from './UndoService';
@@ -102,7 +103,8 @@ export async function initEditorEngine(
   const csgSystem = new CSGSystem(renderer);
   engine.ecs.addSystem(csgSystem);
 
-  // Script System
+  // Script Systems (LuaScriptSystem runs at priority 99, ScriptSystem at 100)
+  engine.ecs.addSystem(new LuaScriptSystem(engine, input, renderer, audio));
   engine.ecs.addSystem(new ScriptSystem(engine, input, renderer, audio));
 
   // Wire soft-particle depth texture + camera after PP pipeline exists

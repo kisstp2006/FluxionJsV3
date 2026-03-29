@@ -1,0 +1,26 @@
+-- $CLS
+-- Screen-space debug overlay
+
+function update(dt)
+    local t = self.Time
+    local tf = self.transform
+
+    -- FPS — colour changes with performance
+    local fpsColor = "#f87171"
+    if t.fps >= 55 then fpsColor = "#4ade80"
+    elseif t.fps >= 30 then fpsColor = "#facc15" end
+
+    self.Debug.drawText(Vec2(8, 8),
+        "FPS   " .. math.floor(t.fps) .. "  (" .. string.format("%.1f", t.deltaTime * 1000) .. " ms)",
+        fpsColor, 13)
+
+    if tf then
+        local p = tf.position
+        self.Debug.drawText(Vec2(8, 26),
+            string.format("Pos   %.2f, %.2f, %.2f", p.x, p.y, p.z),
+            "#94a3b8", 12)
+    end
+
+    -- Add extra lines below — coordinates are CSS pixels from top-left
+    -- self.Debug.drawText(Vec2(8, 42), "custom info here", "#ffffff", 12)
+end

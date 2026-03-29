@@ -1,0 +1,30 @@
+-- $CLS
+targetName = "Player"
+smoothSpeed = 5.0
+offsetX, offsetY, offsetZ = 0, 5, -10
+
+local _target = -1
+
+function start()
+    local found = self.find(targetName)
+    if found then
+        _target = found
+    else
+        self.warn('Target "' .. targetName .. '" not found')
+    end
+end
+
+function update(dt)
+    if _target < 0 then return end
+    local targetTf = self.getComponentOf(_target, "Transform")
+    local myTf = self.transform
+    if not targetTf or not myTf then return end
+
+    local desired = Vec3(
+        targetTf.position.x + offsetX,
+        targetTf.position.y + offsetY,
+        targetTf.position.z + offsetZ
+    )
+    local alpha = Mathf.clamp01(smoothSpeed * dt)
+    myTf.position.lerp(desired, alpha)
+end

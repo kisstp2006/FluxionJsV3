@@ -169,11 +169,14 @@ Transform = {}
 
 --- @class TimeAPI
 --- @field deltaTime number Seconds since last frame
+--- @field unscaledDeltaTime number Delta time ignoring timeScale
 --- @field fixedDeltaTime number Fixed timestep in seconds
 --- @field elapsed number Total elapsed time
 --- @field frameCount number Total frame count
 --- @field fps number Current frames per second
+--- @field smoothFps number Smoothed frames per second
 --- @field timeScale number Simulation speed multiplier
+--- @field fixedAlpha number Interpolation alpha for fixed-update rendering
 TimeAPI = {}
 
 --- @class InputAPI
@@ -210,6 +213,29 @@ PhysicsAPI = {}
 --- @param maxDistance? number
 --- @return RaycastHit|nil
 function PhysicsAPI:raycast(origin, direction, maxDistance) return nil end
+--- @param x number @param y number @param z number
+function PhysicsAPI:setGravity(x, y, z) end
+--- @param force Vector3
+function PhysicsAPI:applyForce(force) end
+--- @param impulse Vector3
+function PhysicsAPI:applyImpulse(impulse) end
+--- @param torque Vector3
+function PhysicsAPI:applyTorque(torque) end
+--- @param velocity Vector3
+function PhysicsAPI:setVelocity(velocity) end
+--- @return Vector3
+function PhysicsAPI:getVelocity() return {} end
+--- @param x number @param z number
+function PhysicsAPI:move(x, z) end
+function PhysicsAPI:jump() end
+--- @return boolean
+function PhysicsAPI:isGrounded() return false end
+--- @param state boolean
+function PhysicsAPI:crouch(state) end
+--- @return boolean
+function PhysicsAPI:isCrouching() return false end
+--- @param state boolean
+function PhysicsAPI:setRunning(state) end
 
 --- @class DebugAPI
 DebugAPI = {}
@@ -260,6 +286,35 @@ SceneAPI = {}
 --- @param path string
 function SceneAPI:load(path) end
 
+--- @class ApplicationAPI
+--- @field fps number Current frames per second
+--- @field isEditor boolean True when running inside the editor
+--- @field platform string Platform string (e.g. 'electron')
+ApplicationAPI = {}
+function ApplicationAPI:quit() end
+
+--- @class FuiAPI
+FuiAPI = {}
+--- @param path string
+function FuiAPI:load(path) end
+--- @param doc any
+function FuiAPI:create(doc) end
+--- @param nodeId string @param text string
+function FuiAPI:setText(nodeId, text) end
+function FuiAPI:show() end
+function FuiAPI:hide() end
+--- @param visible boolean
+function FuiAPI:setVisible(visible) end
+--- @param id string
+function FuiAPI:playAnimation(id) end
+function FuiAPI:stopAnimation() end
+--- @param x number @param y number
+function FuiAPI:setScreenPosition(x, y) end
+--- @param elementId string @param callback function
+function FuiAPI:onButtonClick(elementId, callback) end
+--- @param callback fun(elementId: string)
+function FuiAPI:onAnyClick(callback) end
+
 --- @class Component
 --- @field enabled boolean
 Component = {}
@@ -288,6 +343,8 @@ const LUA_BEHAVIOUR_HEAD = `\
 --- @field Physics PhysicsAPI
 --- @field Debug DebugAPI
 --- @field Scene SceneAPI
+--- @field Application ApplicationAPI
+--- @field ui FuiAPI
 FluxionBehaviour = {}
 `;
 
@@ -339,6 +396,42 @@ function FluxionBehaviour:addTag(tag, entityId) end
 --- @param entityId? number
 --- @return boolean
 function FluxionBehaviour:hasTag(tag, entityId) return false end
+
+--- @param typeId string
+--- @return any
+function FluxionBehaviour:addComponent(typeId) return nil end
+
+--- @param typeId string
+function FluxionBehaviour:removeComponent(typeId) end
+
+--- @param entityId? number
+--- @return string
+function FluxionBehaviour:getName(entityId) return '' end
+
+--- @param name string
+--- @param entityId? number
+function FluxionBehaviour:setName(name, entityId) end
+
+--- @param entityId? number
+--- @return number|nil Parent entity ID
+function FluxionBehaviour:getParent(entityId) return nil end
+
+--- @param entityId? number
+--- @return number[] Child entity IDs
+function FluxionBehaviour:getChildren(entityId) return {} end
+
+--- @param ... string Component type IDs to query for
+--- @return number[] Entity IDs
+function FluxionBehaviour:query(...) return {} end
+
+--- @param event string
+--- @param callback function
+--- @param priority? number
+function FluxionBehaviour:once(event, callback, priority) end
+
+--- @param audioComp any AudioSourceComponent
+--- @param position? Vector3
+function FluxionBehaviour:playSound(audioComp, position) end
 
 --- @param ... any
 function FluxionBehaviour:log(...) end

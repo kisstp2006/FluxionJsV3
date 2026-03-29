@@ -1,0 +1,19 @@
+export default class $CLS extends FluxionBehaviour {
+  speed = 5.0;
+
+  update(dt: number) {
+    const tf = this.transform;
+    if (!tf) return;
+
+    const move = new Vec3(
+      this.Input.getAxis('KeyA', 'KeyD'),
+      0,
+      this.Input.getAxis('KeyW', 'KeyS'),
+    );
+
+    if (move.lengthSq() > 0) {
+      move.normalize().multiplyScalar(this.speed * dt);
+      tf.position.add(move);
+    }
+  }
+}

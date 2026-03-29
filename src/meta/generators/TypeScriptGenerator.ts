@@ -264,11 +264,18 @@ declare namespace FluxionEngine {
     /** Cast a ray and return the first hit, or null. */
     raycast(origin: Vector3, direction: Vector3, maxDistance?: number): RaycastHit | null;
     setGravity(x: number, y: number, z: number): void;
-    applyForce(entityId: number, force: Vector3): void;
-    applyImpulse(entityId: number, impulse: Vector3): void;
-    applyTorque(entityId: number, torque: Vector3): void;
-    setVelocity(entityId: number, velocity: Vector3): void;
-    getVelocity(entityId: number): Vector3;
+    applyForce(force: Vector3): void;
+    applyImpulse(impulse: Vector3): void;
+    applyTorque(torque: Vector3): void;
+    setVelocity(velocity: Vector3): void;
+    getVelocity(): Vector3;
+    /** CharacterController: move on the XZ plane. */
+    move(x: number, z: number): void;
+    jump(): void;
+    isGrounded(): boolean;
+    crouch(state: boolean): void;
+    isCrouching(): boolean;
+    setRunning(state: boolean): void;
   }
 
   interface DebugAPI {

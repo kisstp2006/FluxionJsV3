@@ -195,6 +195,43 @@ class FluxionBehaviour {
     /** @internal */ this._cleanupFns = [];
     /** @internal */ this._coroutines = new Map();
     /** @internal */ this._started = false;
+
+    // ── Getter stubs for JSDoc type inference ─────────────────────────────
+    /**
+     * Engine time — deltaTime, elapsed, fps, timeScale, etc.
+     * @type {{ deltaTime: number, unscaledDeltaTime: number, fixedDeltaTime: number, timeScale: number, elapsed: number, frameCount: number, fps: number, smoothFps: number, fixedAlpha: number }}
+     */
+    this.Time = null;
+    /**
+     * Input manager — keyboard, mouse, gamepad.
+     * @type {{ isKeyDown(code: string): boolean, isKeyPressed(code: string): boolean, isKeyReleased(code: string): boolean, isMouseDown(btn?: number): boolean, isMousePressed(btn?: number): boolean, isMouseReleased(btn?: number): boolean, isPointerLocked(): boolean, lockPointer(): void, unlockPointer(): void, getAxis(neg: string, pos: string): number, getGamepadAxis(pad: number, axis: number, dz?: number): number, isGamepadButtonDown(pad: number, btn: number): boolean, mousePosition: Vector2, mouseDelta: Vector2, mouseWheel: number, horizontal: number, vertical: number }}
+     */
+    this.Input = null;
+    /**
+     * Physics world — raycast, forces, CharacterController.
+     * @type {{ raycast(origin: Vector3, direction: Vector3, maxDistance?: number): any, setGravity(x: number, y: number, z: number): void, applyForce(force: Vector3): void, applyImpulse(impulse: Vector3): void, applyTorque(torque: Vector3): void, setVelocity(velocity: Vector3): void, getVelocity(): Vector3, move(x: number, z: number): void, jump(): void, isGrounded(): boolean, crouch(state: boolean): void, isCrouching(): boolean, setRunning(state: boolean): void }}
+     */
+    this.Physics = null;
+    /**
+     * Debug draw and console.
+     * @type {{ log(...args: any[]): void, warn(...args: any[]): void, error(...args: any[]): void, Log(...args: any[]): void, LogWarning(...args: any[]): void, LogError(...args: any[]): void, drawLine(start: Vector3, end: Vector3, color?: Color): void, drawLineWorld(start: Vector3, end: Vector3, color?: Color): void, drawLineSphere(center: Vector3, radius: number, color?: Color, segments?: number): void, drawLineBox(min: Vector3, max: Vector3, color?: Color): void, drawCross(position: Vector3, size: number, color?: Color): void, drawText(position: Vector2, text: string, color?: any, fontSize?: number): void }}
+     */
+    this.Debug = null;
+    /**
+     * Scene management.
+     * @type {{ name: string, load(path: string): void }}
+     */
+    this.Scene = null;
+    /**
+     * Application info and control.
+     * @type {{ fps: number, isEditor: boolean, platform: string, quit(): void }}
+     */
+    this.Application = null;
+    /**
+     * FluxionUI API for the FuiComponent on this entity.
+     * @type {{ load(path: string): void, create(doc: any): void, setText(nodeId: string, text: string): void, show(): void, hide(): void, setVisible(v: boolean): void, playAnimation(id: string): void, stopAnimation(): void, setScreenPosition(x: number, y: number): void, onButtonClick(elementId: string, cb: () => void): void, onAnyClick(cb: (elementId: string) => void): void }}
+     */
+    this.ui = null;
   }
 
   // ── Component access ─────────────────────────────────────────────────────

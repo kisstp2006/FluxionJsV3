@@ -1,0 +1,17 @@
+-- $CLS
+speed = 5.0
+
+function update(dt)
+    local tf = self.transform
+    if not tf then return end
+
+    local h = self.Input.getAxis("KeyA", "KeyD")
+    local v = self.Input.getAxis("KeyW", "KeyS")
+    local move = Vec3(h, 0, v)
+
+    if move.lengthSq() > 0 then
+        move.normalize()
+        move.multiplyScalar(speed * dt)
+        tf.position.add(move)
+    end
+end

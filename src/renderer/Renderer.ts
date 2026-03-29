@@ -129,7 +129,7 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new FogVolumeSystem(this));
 
     // Debug drawing: overlay (gizmoScene) + world (main scene for depth test)
-    DebugDraw.init(this.gizmoScene, this.scene, engine.config.canvas);
+    DebugDraw.init(this.gizmoScene, this.scene, engine.config.width, engine.config.height, engine.config.canvas);
 
     // Register as subsystem
     engine.registerSubsystem('renderer', this);
@@ -139,6 +139,7 @@ export class FluxionRenderer {
     this.postProcessing.render(this.engine.time.deltaTime);
     DebugDraw.flush();
     this.postProcessing.renderOverlay(this.gizmoScene, this.activeCamera);
+    DebugDraw.renderText();
   }
 
   setActiveCamera(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera): void {
@@ -197,6 +198,7 @@ export class FluxionRenderer {
     }
 
     this.postProcessing.setSize(width, height);
+    DebugDraw.resize(width, height);
   }
 
   dispose(): void {

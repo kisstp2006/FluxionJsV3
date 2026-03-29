@@ -22,6 +22,7 @@ import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
 import type { TransformComponent } from '../core/Components';
 import { DebugConsole } from '../core/DebugConsole';
+import { DebugDraw } from '../renderer/DebugDraw';
 
 export { EntityId, ECSManager, Engine, InputManager };
 
@@ -338,6 +339,15 @@ export class FluxionBehaviour {
       log:   (...a: any[]) => DebugConsole.Log(`[${name}]`, ...a),
       warn:  (...a: any[]) => DebugConsole.LogWarning(`[${name}]`, ...a),
       error: (...a: any[]) => DebugConsole.LogError(`[${name}]`, ...a),
+      Log:   (...a: any[]) => DebugConsole.Log(`[${name}]`, ...a),
+      LogWarning: (...a: any[]) => DebugConsole.LogWarning(`[${name}]`, ...a),
+      LogError:   (...a: any[]) => DebugConsole.LogError(`[${name}]`, ...a),
+      drawLine:       DebugDraw.drawLine.bind(DebugDraw),
+      drawLineWorld:  DebugDraw.drawLineWorld.bind(DebugDraw),
+      drawLineSphere: DebugDraw.drawLineSphere.bind(DebugDraw),
+      drawLineBox:    DebugDraw.drawLineBox.bind(DebugDraw),
+      drawCross:      DebugDraw.drawCross.bind(DebugDraw),
+      drawText:       DebugDraw.drawText.bind(DebugDraw),
     };
   }
 

@@ -1,0 +1,19 @@
+-- $CLS
+forceMagnitude = 10.0
+jumpForce = 5.0
+
+function fixedUpdate(dt)
+    local h = self.Input.getAxis("KeyA", "KeyD")
+    local v = self.Input.getAxis("KeyS", "KeyW")
+
+    if h ~= 0 or v ~= 0 then
+        local force = Vec3(h, 0, v)
+        force.normalize()
+        force.multiplyScalar(forceMagnitude)
+        self.Physics.applyForce(force)
+    end
+
+    if self.Input.isKeyPressed("Space") then
+        self.Physics.applyImpulse(Vec3(0, jumpForce, 0))
+    end
+end

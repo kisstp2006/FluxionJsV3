@@ -39,11 +39,11 @@ export class DebugDraw {
   private static scene: THREE.Scene | null = null;
   private static sceneW: THREE.Scene | null = null;
 
-  // ── Screen-space text overlay ─────────────────────────────────────────────
-  private static engineCanvas: HTMLCanvasElement | null = null;
-  private static textCanvas: HTMLCanvasElement | null = null;
-  private static textCtx: CanvasRenderingContext2D | null = null;
-  private static textEntries: DebugTextEntry[] = [];
+  // ── Screen-space text overlay (2D canvas) ───────────────────────────────
+  private static overlayCanvas: HTMLCanvasElement | null = null;
+  private static overlayCtx: CanvasRenderingContext2D | null = null;
+  private static pendingTexts: DebugTextEntry[] = [];
+
 
   // Overlay layer (depthTest: false) — gizmos, always on top
   private static mesh: THREE.LineSegments | null = null;
@@ -64,30 +64,34 @@ export class DebugDraw {
   private static capacityW = INITIAL_CAPACITY;
 
   /**
-   * Initialize with both scenes and the engine's WebGL canvas.
+   * Initialize with both scenes, canvas dimensions, and the engine canvas.
    * Called once by FluxionRenderer on startup.
    */
   static init(
     overlayScene: THREE.Scene,
     mainScene: THREE.Scene,
+    width = 1280,
+    height = 720,
     engineCanvas?: HTMLCanvasElement,
   ): void {
     this.scene = overlayScene;
     this.sceneW = mainScene;
 
-    // Build the text overlay canvas — position:fixed so it aligns to the
-    // engine canvas regardless of the parent element's CSS positioning.
-    if (engineCanvas && typeof document !== 'undefined') {
-      this.engineCanvas = engineCanvas;
-      const tc = document.createElement('canvas');
-      tc.style.position    = 'fixed';
-      tc.style.left        = '0px';
-      tc.style.top         = '0px';
-      tc.style.pointerEvents = 'none';
-      tc.style.zIndex      = '200'; // above FUI (50) and debug overlay (100)
-      (engineCanvas.parentElement ?? document.body).appendChild(tc);
-      this.textCanvas = tc;
-      this.textCtx    = tc.getContext('2d');
+    // Create a transparent 2D canvas overlay for screen-space text
+    if (engineCanvas) {
+      const parent = engineCanvas.parentElement;
+      if (parent) {
+        const ps = window.getComputedStyle(parent).position;
+        if (ps === 'static') parent.style.position = 'relative';
+        parent.style.overflow = 'hidden'; // clip overlay to viewport, prevent bleed over editor UI
+      }
+      this.overlayCanvas = document.createElement('canvas');
+      this.overlayCanvas.width = width;
+      this.overlayCanvas.height = height;
+      this.overlayCanvas.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;';
+      (parent ?? document.body).appendChild(this.overlayCanvas);
+      this.overlayCtx = this.overlayCanvas.getContext('2d');
     }
 
     // Overlay (no depth test)
@@ -123,6 +127,13 @@ export class DebugDraw {
     this.meshW.frustumCulled = false;
     this.meshW.renderOrder = 0;
     mainScene.add(this.meshW);
+  }
+
+  /** Update the 2D overlay canvas size when the engine canvas is resized. */
+  static resize(width: number, height: number): void {
+    if (!this.overlayCanvas) return;
+    this.overlayCanvas.width = width;
+    this.overlayCanvas.height = height;
   }
 
   // ── Core API (ezEngine ezDebugRenderer pattern) ──
@@ -276,85 +287,40 @@ export class DebugDraw {
    *
    * @param position  Screen position — Vec2(x, y) where (0,0) is the top-left corner.
    * @param text      The string to draw.
-   * @param color     A THREE.Color, a CSS hex string ('#ff4400') or a named CSS color ('white').
+   * @param color     A THREE.Color or a CSS hex string ('#ff4400').
    * @param fontSize  Font size in CSS pixels. Default 14.
-   *
-   * @example
-   *   // In a script update():
-   *   Debug.drawText(new Vec2(8, 8),  `FPS: ${this.Time.fps}`, '#00ff88', 14);
-   *   Debug.drawText(new Vec2(8, 28), `Pos: ${this.transform.position.x.toFixed(2)}`, new Color(1,0.5,0));
    */
   static drawText(
     position: THREE.Vector2,
     text: string,
-    color: THREE.Color | string = '#ffffff',
+    color: THREE.Color | string = _white,
     fontSize = 14,
   ): void {
-    if (!this.textCanvas) return;
-    const cssColor = typeof color === 'string'
-      ? color
-      : `#${color.getHexString()}`;
-    this.textEntries.push({ x: position.x, y: position.y, text, cssColor, fontSize });
+    const cssColor =
+      typeof color === 'string' ? color : `#${color.getHexString()}`;
+    this.pendingTexts.push({ x: position.x, y: position.y, text, cssColor, fontSize });
   }
 
-  /** Flush the text overlay — called automatically by flush(). */
-  private static flushText(): void {
-    const entries = this.textEntries;
-    if (entries.length === 0) return;
+  /**
+   * Flush pending text entries to the 2D overlay canvas. Call each frame after rendering.
+   * Called automatically by FluxionRenderer.
+   */
+  static renderText(): void {
+    const ctx = this.overlayCtx;
+    const canvas = this.overlayCanvas;
+    if (!ctx || !canvas) return;
 
-    const ctx       = this.textCtx;
-    const canvas    = this.textCanvas;
-    const refCanvas = this.engineCanvas;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!ctx || !canvas || !refCanvas) {
-      entries.length = 0;
-      return;
+    for (const e of this.pendingTexts) {
+      ctx.font = `${e.fontSize}px monospace`;
+      ctx.fillStyle = e.cssColor;
+      ctx.fillText(e.text, e.x, e.y + e.fontSize);
     }
 
-    // Sync the overlay canvas size and position with the engine canvas every frame
-    // so it stays correct after window resizes or editor panel reflows.
-    const dpr  = window.devicePixelRatio || 1;
-    const rect = refCanvas.getBoundingClientRect();
-    const cssW = rect.width;
-    const cssH = rect.height;
-    const pixW = Math.round(cssW * dpr);
-    const pixH = Math.round(cssH * dpr);
-
-    if (canvas.width !== pixW || canvas.height !== pixH) {
-      canvas.width  = pixW;
-      canvas.height = pixH;
-      canvas.style.width  = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-    }
-
-    const expectLeft = `${rect.left}px`;
-    const expectTop  = `${rect.top}px`;
-    if (canvas.style.left !== expectLeft || canvas.style.top !== expectTop) {
-      canvas.style.left = expectLeft;
-      canvas.style.top  = expectTop;
-    }
-
-    ctx.clearRect(0, 0, pixW, pixH);
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    for (const entry of entries) {
-      ctx.font = `${entry.fontSize}px "JetBrains Mono", "Fira Code", Consolas, monospace`;
-
-      // Dark shadow so text stays readable on any background
-      ctx.shadowColor   = 'rgba(0,0,0,0.9)';
-      ctx.shadowBlur    = 4;
-      ctx.shadowOffsetX = 1;
-      ctx.shadowOffsetY = 1;
-
-      ctx.fillStyle = entry.cssColor;
-      // y is the TOP of the text block; canvas baseline = top + fontSize
-      ctx.fillText(entry.text, entry.x, entry.y + entry.fontSize);
-    }
-
-    ctx.restore();
-    entries.length = 0;
+    this.pendingTexts.length = 0;
   }
+
 
   // ── Grid (replaces THREE.GridHelper) ──
 
@@ -415,8 +381,6 @@ export class DebugDraw {
     this.flushLayer(this.geometryW, this.meshW, this.positionsW, this.colorsW, this.lineCountW);
     this.lineCountW = 0;
 
-    // Screen-space text overlay
-    this.flushText();
   }
 
   private static flushLayer(
@@ -461,12 +425,12 @@ export class DebugDraw {
     this.materialW = null;
     this.scene = null;
     this.sceneW = null;
-    // Text overlay
-    this.textCanvas?.remove();
-    this.textCanvas  = null;
-    this.textCtx     = null;
-    this.engineCanvas = null;
-    this.textEntries.length = 0;
+    this.pendingTexts.length = 0;
+    if (this.overlayCanvas) {
+      this.overlayCanvas.parentElement?.removeChild(this.overlayCanvas);
+      this.overlayCanvas = null;
+      this.overlayCtx = null;
+    }
   }
 
   // ── Internal ──

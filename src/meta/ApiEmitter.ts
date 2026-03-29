@@ -86,8 +86,17 @@ const JSCONFIG_SCRIPTS = JSON.stringify(
 const LUA_GLOBALS = [
   'FluxionBehaviour', 'EntityRef', 'Mathf', 'Debug',
   'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat3', 'Mat4',
-  'vec3', 'vec3_add', 'vec3_sub', 'vec3_scale', 'vec3_dot', 'vec3_cross',
-  'vec3_normalize', 'vec3_length', 'vec3_lerp', 'vec3_dist',
+  // constructors
+  'vec3', 'vec2', 'color', 'color_hex',
+  // Vector3 utilities
+  'vec3_add', 'vec3_sub', 'vec3_mul', 'vec3_div', 'vec3_neg',
+  'vec3_dot', 'vec3_cross', 'vec3_length', 'vec3_length_sq',
+  'vec3_normalize', 'vec3_lerp', 'vec3_distance', 'vec3_distance_sq',
+  'vec3_reflect', 'vec3_project', 'vec3_angle',
+  // Vector2 utilities
+  'vec2_add', 'vec2_sub', 'vec2_mul', 'vec2_dot',
+  'vec2_length', 'vec2_normalize', 'vec2_lerp', 'vec2_angle',
+  // Color utilities
   'color_lerp', 'color_mul', 'color_add',
 ];
 

@@ -1,0 +1,14 @@
+export default class $CLS extends FluxionBehaviour {
+  /** Degrees per second on each axis */
+  speedX = 0;
+  speedY = 45;
+  speedZ = 0;
+
+  update(dt: number) {
+    const tf = this.transform;
+    if (!tf) return;
+    tf.rotation.x += Mathf.Deg2Rad * this.speedX * dt;
+    tf.rotation.y += Mathf.Deg2Rad * this.speedY * dt;
+    tf.rotation.z += Mathf.Deg2Rad * this.speedZ * dt;
+  }
+}

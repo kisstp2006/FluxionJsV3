@@ -162,6 +162,11 @@ const ScriptEntryRow: React.FC<{
 
     (async () => {
       try {
+        // Lua scripts are driven by LuaScriptSystem — no JS class to compile
+        if (entry.path.endsWith('.lua')) {
+          if (!cancelled) { setScriptClass(null); setCompileError(null); }
+          return;
+        }
         const fs = getFileSystem();
         let absPath: string;
         try {

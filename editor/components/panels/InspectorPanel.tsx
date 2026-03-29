@@ -27,6 +27,8 @@ import { FuiInspector } from './inspector/FuiInspector';
 import './inspector/TransformInspector';
 import './inspector/MeshRendererInspector';
 import './inspector/ScriptInspector';
+import './inspector/SpriteReactiveInspector';
+import './inspector/AnimatorInspector';
 
 // Register built-in asset inspectors
 AssetInspectorRegistry.register('texture', TextureInspector);

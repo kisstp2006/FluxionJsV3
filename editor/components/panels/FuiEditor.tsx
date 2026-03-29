@@ -18,7 +18,7 @@ import { applyAnimation } from '../../../src/ui/FuiAnimator';
 // ═══════════════════════════════════════════
 
 type SelectedNode = { node: FuiNode; path: number[] } | null;
-type AddNodeType = 'panel' | 'label' | 'button';
+type AddNodeType = 'panel' | 'label' | 'button' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 type AlignType = 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom';
 
 const ANIMATABLE_PROP_OPTIONS: { value: FuiAnimatableProperty; label: string }[] = [
@@ -107,6 +107,14 @@ function makeNode(type: AddNodeType): FuiNode {
     return { id, type: 'panel', rect: { x: 0, y: 0, w: 200, h: 150 }, style: {}, children: [] } as FuiPanelNode;
   if (type === 'label')
     return { id, type: 'label', rect: { x: 10, y: 10, w: 160, h: 30 }, text: 'Label', style: {} } as any;
+  if (type === 'toggle')
+    return { id, type: 'toggle', rect: { x: 10, y: 10, w: 160, h: 28 }, text: 'Toggle', value: false, style: {} } as any;
+  if (type === 'slider')
+    return { id, type: 'slider', rect: { x: 10, y: 10, w: 200, h: 24 }, value: 0, min: 0, max: 1, direction: 'horizontal', style: {} } as any;
+  if (type === 'progressBar')
+    return { id, type: 'progressBar', rect: { x: 10, y: 10, w: 200, h: 16 }, value: 0.5, direction: 'horizontal', style: {} } as any;
+  if (type === 'inputField')
+    return { id, type: 'inputField', rect: { x: 10, y: 10, w: 200, h: 36 }, text: '', placeholder: 'Enter text...', contentType: 'standard', style: {} } as any;
   return { id, type: 'button', rect: { x: 10, y: 10, w: 120, h: 36 }, text: 'Button', style: {} } as any;
 }
 
@@ -266,18 +274,19 @@ const InteractiveCanvas: React.FC<{
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const d = overrideDoc ?? docRef.current;
-    const sc = scaleRef.current;
-    // Use drag path for selection if dragging (before React re-renders with new selectedPath)
+
+    const d   = overrideDoc ?? docRef.current;
+    const sc  = scaleRef.current;
     const selPath = dragRef.current ? dragRef.current.path : selectedPathRef.current;
 
-    const cw = Math.max(1, Math.round(d.canvas.width * sc));
+    const cw = Math.max(1, Math.round(d.canvas.width  * sc));
     const ch = Math.max(1, Math.round(d.canvas.height * sc));
     if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
 
     renderFuiToCanvas(d, ctx, { scaleX: sc, scaleY: sc });
 
-    // Grid overlay
+    // ── Grid + selection handles ──
+
     if (gridEnabledRef.current) {
       const gp = Math.max(2, snapSizeRef.current * sc);
       ctx.save();
@@ -288,11 +297,10 @@ const InteractiveCanvas: React.FC<{
       ctx.restore();
     }
 
-    // Selection + handles
+    const compiled = compileFui(d);
     if (selPath !== null) {
       const selNode = getNodeAtPath(d.root, selPath);
       if (selNode) {
-        const compiled = compileFui(d);
         const cn = compiled.nodeById.get(selNode.id);
         if (cn) {
           const r = cn.rect;
@@ -456,13 +464,15 @@ const InteractiveCanvas: React.FC<{
 
   const cw = doc.canvas.width * scale;
   const ch = doc.canvas.height * scale;
+  const cssW = `${Math.max(1, Math.round(cw))}px`;
+  const cssH = `${Math.max(1, Math.round(ch))}px`;
 
   return (
     <canvas
       ref={canvasRef}
       width={Math.max(1, Math.round(cw))}
       height={Math.max(1, Math.round(ch))}
-      style={{ width: `${cw}px`, height: `${ch}px`, border: '1px solid var(--border)', borderRadius: 4, background: '#0b1020', cursor, display: 'block' }}
+      style={{ display: 'block', border: '1px solid var(--border)', borderRadius: 4, cursor }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
     />
@@ -473,7 +483,7 @@ const InteractiveCanvas: React.FC<{
 // Node Tree Item
 // ═══════════════════════════════════════════
 
-const NODE_ICONS: Record<string, string> = { panel: '□', label: 'T', button: '⬡' };
+const NODE_ICONS: Record<string, string> = { panel: '□', label: 'T', button: '⬡', toggle: '☑', slider: '⇔', progressBar: '▬', inputField: '▭' };
 
 const NodeTreeItem: React.FC<{
   node: FuiNode; depth: number; path: number[]; isSelected: boolean; onClick: () => void;
@@ -559,6 +569,9 @@ const NodeProperties: React.FC<{
 
       {node.type === 'button' && (<>
         <PropertyRow label="Text"><TextInput value={(node as any).text ?? ''} onChange={(v) => onChange((n) => { n.text = v; })} /></PropertyRow>
+        <PropertyRow label="Disabled">
+          <input type="checkbox" checked={(node as any).disabled === true} onChange={(e) => onChange((n) => { n.disabled = e.target.checked; })} />
+        </PropertyRow>
         <PropertyRow label="Background"><ColorInput value={(node as any).style?.backgroundColor ?? '#1f2a44'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Brd Width">
@@ -573,6 +586,98 @@ const NodeProperties: React.FC<{
           <Select value={(node as any).style?.align ?? 'center'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
         <PropertyRow label="Padding"><NumberInput value={(node as any).style?.padding ?? 8} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.padding = v; })} /></PropertyRow>
+        {/* ── Transition ── */}
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Transition</div>
+        <PropertyRow label="Mode">
+          <Select value={(node as any).transition ?? 'colorTint'} options={[{ value: 'colorTint', label: 'Color Tint' }, { value: 'none', label: 'None' }]} onChange={(v) => onChange((n) => { n.transition = v; })} />
+        </PropertyRow>
+        {((node as any).transition ?? 'colorTint') === 'colorTint' && (<>
+          <PropertyRow label="Normal"><ColorInput value={(node as any).colors?.normalColor ?? '#1f2a44'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.normalColor = v; })} /></PropertyRow>
+          <PropertyRow label="Highlighted"><ColorInput value={(node as any).colors?.highlightedColor ?? '#2a3a5a'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.highlightedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Pressed"><ColorInput value={(node as any).colors?.pressedColor ?? '#3a4a70'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.pressedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Selected"><ColorInput value={(node as any).colors?.selectedColor ?? '#1f3060'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.selectedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Disabled"><ColorInput value={(node as any).colors?.disabledColor ?? '#111827'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.disabledColor = v; })} /></PropertyRow>
+          <PropertyRow label="Multiplier"><NumberInput value={(node as any).colors?.colorMultiplier ?? 1} step={0.1} min={1} max={5} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.colorMultiplier = v; })} /></PropertyRow>
+          <PropertyRow label="Fade Dur."><NumberInput value={(node as any).colors?.fadeDuration ?? 0.1} step={0.01} min={0} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.fadeDuration = v; })} /></PropertyRow>
+        </>)}
+        {/* ── Navigation ── */}
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Navigation</div>
+        <PropertyRow label="Mode">
+          <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }, { value: 'explicit', label: 'Explicit' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Click Anim">
+          <Select value={(node as any).clickAnimation ?? 'scale'} options={[{ value: 'scale', label: 'Scale' }, { value: 'flash', label: 'Flash' }, { value: 'none', label: 'None' }]} onChange={(v) => onChange((n) => { n.clickAnimation = v; })} />
+        </PropertyRow>
+      </>)}
+
+      {node.type === 'toggle' && (<>
+        <PropertyRow label="Text"><TextInput value={(node as any).text ?? ''} onChange={(v) => onChange((n) => { n.text = v; })} /></PropertyRow>
+        <PropertyRow label="Checked">
+          <input type="checkbox" checked={(node as any).value === true} onChange={(e) => onChange((n) => { n.value = e.target.checked; })} />
+        </PropertyRow>
+        <PropertyRow label="Box Color"><ColorInput value={(node as any).style?.backgroundColor ?? '#1a2340'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
+        <PropertyRow label="Check Color"><ColorInput value={(node as any).style?.checkColor ?? '#58c4ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.checkColor = v; })} /></PropertyRow>
+        <PropertyRow label="Text Color"><ColorInput value={(node as any).style?.textColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColor = v; })} /></PropertyRow>
+        <PropertyRow label="Font Size">
+          {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
+        </PropertyRow>
+        <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
+        <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
+        <PropertyRow label="Navigation">
+          <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
+        </PropertyRow>
+      </>)}
+
+      {node.type === 'slider' && (<>
+        <PropertyRow label="Value"><NumberInput value={(node as any).value ?? 0} step={0.01} min={(node as any).min ?? 0} max={(node as any).max ?? 1} onChange={(v) => onChange((n) => { n.value = v; })} /></PropertyRow>
+        <PropertyRow label="Min"><NumberInput value={(node as any).min ?? 0} step={1} onChange={(v) => onChange((n) => { n.min = v; })} /></PropertyRow>
+        <PropertyRow label="Max"><NumberInput value={(node as any).max ?? 1} step={1} onChange={(v) => onChange((n) => { n.max = v; })} /></PropertyRow>
+        <PropertyRow label="Whole Nums">
+          <input type="checkbox" checked={(node as any).wholeNumbers === true} onChange={(e) => onChange((n) => { n.wholeNumbers = e.target.checked; })} />
+        </PropertyRow>
+        <PropertyRow label="Direction">
+          <Select value={(node as any).direction ?? 'horizontal'} options={[{ value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.direction = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Track Color"><ColorInput value={(node as any).style?.trackColor ?? '#1a2340'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.trackColor = v; })} /></PropertyRow>
+        <PropertyRow label="Fill Color"><ColorInput value={(node as any).style?.fillColor ?? '#3a6fff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fillColor = v; })} /></PropertyRow>
+        <PropertyRow label="Handle Color"><ColorInput value={(node as any).style?.handleColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.handleColor = v; })} /></PropertyRow>
+        <PropertyRow label="Handle Size"><NumberInput value={(node as any).style?.handleSize ?? 14} step={1} min={4} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.handleSize = v; })} /></PropertyRow>
+        <PropertyRow label="Track Height"><NumberInput value={(node as any).style?.trackHeight ?? 6} step={1} min={2} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.trackHeight = v; })} /></PropertyRow>
+        <PropertyRow label="Navigation">
+          <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
+        </PropertyRow>
+      </>)}
+
+      {node.type === 'progressBar' && (<>
+        <PropertyRow label="Value"><NumberInput value={(node as any).value ?? 0} step={0.01} min={0} max={1} onChange={(v) => onChange((n) => { n.value = Math.max(0, Math.min(1, v)); })} /></PropertyRow>
+        <PropertyRow label="Direction">
+          <Select value={(node as any).direction ?? 'horizontal'} options={[{ value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.direction = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Track Color"><ColorInput value={(node as any).style?.trackColor ?? '#1a2340'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.trackColor = v; })} /></PropertyRow>
+        <PropertyRow label="Fill Color"><ColorInput value={(node as any).style?.fillColor ?? '#3a6fff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fillColor = v; })} /></PropertyRow>
+        <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
+      </>)}
+
+      {node.type === 'inputField' && (<>
+        <PropertyRow label="Text"><TextInput value={(node as any).text ?? ''} onChange={(v) => onChange((n) => { n.text = v; })} /></PropertyRow>
+        <PropertyRow label="Placeholder"><TextInput value={(node as any).placeholder ?? ''} onChange={(v) => onChange((n) => { n.placeholder = v; })} /></PropertyRow>
+        <PropertyRow label="Content Type">
+          <Select value={(node as any).contentType ?? 'standard'} options={[{ value: 'standard', label: 'Standard' }, { value: 'integer', label: 'Integer' }, { value: 'decimal', label: 'Decimal' }, { value: 'password', label: 'Password' }]} onChange={(v) => onChange((n) => { n.contentType = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Background"><ColorInput value={(node as any).style?.backgroundColor ?? '#111827'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
+        <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#374151'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
+        <PropertyRow label="Brd Width">
+          {withKey(<NumberInput value={(node as any).style?.borderWidth ?? 1} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderWidth = v; })} />, 'borderWidth')}
+        </PropertyRow>
+        <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
+        <PropertyRow label="Text Color"><ColorInput value={(node as any).style?.textColor ?? '#e5e7eb'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColor = v; })} /></PropertyRow>
+        <PropertyRow label="Placeholder C."><ColorInput value={(node as any).style?.placeholderColor ?? '#6b7280'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.placeholderColor = v; })} /></PropertyRow>
+        <PropertyRow label="Font Size">
+          {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
+        </PropertyRow>
+        <PropertyRow label="Navigation">
+          <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
+        </PropertyRow>
       </>)}
 
       {node.type === 'panel' && (<>
@@ -1249,7 +1354,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%', marginBottom: 2 }}>
               Add {canAddChild ? 'child to selected' : '(select a panel)'}
             </span>
-            {(['panel', 'label', 'button'] as AddNodeType[]).map((t) => (
+            {(['panel', 'label', 'button', 'toggle', 'slider', 'progressBar', 'inputField'] as AddNodeType[]).map((t) => (
               <button key={t} onClick={() => canAddChild && handleAddNode(t)} style={toolBtn(canAddChild)} title={`Add ${t}`}>
                 {NODE_ICONS[t]} {t}
               </button>

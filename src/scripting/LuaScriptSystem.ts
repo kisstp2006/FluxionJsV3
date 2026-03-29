@@ -186,9 +186,9 @@ export class LuaScriptSystem implements System {
     lua.global.set('Mathf', LUA_MATHF);
 
     // ── Typed ref constructors (mirrors JS/TS API) ──────────────
-    // EntityRef()  → default entity ID -1 (unassigned)
+    // EntityRef(requireComponent?)  → {entity: null, requireComponent?}
     // FuiRef/MaterialRef/TextureRef()  → default empty path string
-    lua.global.set('EntityRef',   () => -1);
+    lua.global.set('EntityRef',   (req?: string) => ({ entity: null, requireComponent: req ?? undefined }));
     lua.global.set('FuiRef',      () => '');
     lua.global.set('MaterialRef', () => '');
     lua.global.set('TextureRef',  () => '');

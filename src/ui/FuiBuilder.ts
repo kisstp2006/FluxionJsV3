@@ -13,7 +13,8 @@
 
 import type {
   FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode,
-  FuiAnimation, FuiAnimatableProperty, FuiAlign,
+  FuiToggleNode, FuiSliderNode, FuiProgressBarNode, FuiInputFieldNode,
+  FuiAnimation, FuiAnimatableProperty, FuiAlign, FuiTransition, FuiNavigation, FuiColorBlock,
 } from './FuiTypes';
 
 // ── Option types ──────────────────────────────────────────────
@@ -45,6 +46,69 @@ export interface FuiButtonOpts {
   radius?: number;
   padding?: number;
   opacity?: number;
+  disabled?: boolean;
+  tooltip?: string;
+  icon?: string;
+  clickAnimation?: 'none' | 'scale' | 'flash';
+  transition?: FuiTransition;
+  colors?: FuiColorBlock;
+  navigation?: FuiNavigation;
+  parent?: string;
+}
+
+export interface FuiToggleOpts {
+  value?: boolean;
+  bg?: string;
+  border?: string;
+  borderWidth?: number;
+  radius?: number;
+  checkColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  opacity?: number;
+  navigation?: FuiNavigation;
+  parent?: string;
+}
+
+export interface FuiSliderOpts {
+  value?: number;
+  min?: number;
+  max?: number;
+  wholeNumbers?: boolean;
+  direction?: 'horizontal' | 'vertical';
+  trackColor?: string;
+  fillColor?: string;
+  handleColor?: string;
+  handleSize?: number;
+  trackHeight?: number;
+  opacity?: number;
+  navigation?: FuiNavigation;
+  parent?: string;
+}
+
+export interface FuiProgressBarOpts {
+  value?: number;
+  direction?: 'horizontal' | 'vertical';
+  trackColor?: string;
+  fillColor?: string;
+  radius?: number;
+  opacity?: number;
+  parent?: string;
+}
+
+export interface FuiInputFieldOpts {
+  text?: string;
+  placeholder?: string;
+  contentType?: 'standard' | 'integer' | 'decimal' | 'password';
+  bg?: string;
+  border?: string;
+  borderWidth?: number;
+  radius?: number;
+  textColor?: string;
+  placeholderColor?: string;
+  fontSize?: number;
+  opacity?: number;
+  navigation?: FuiNavigation;
   parent?: string;
 }
 
@@ -176,6 +240,13 @@ export class FuiBuilder {
       id,
       rect: { x, y, w, h },
       text,
+      ...(opts.disabled !== undefined ? { disabled: opts.disabled } : {}),
+      ...(opts.tooltip   ? { tooltip: opts.tooltip }     : {}),
+      ...(opts.icon      ? { icon:    opts.icon }        : {}),
+      ...(opts.clickAnimation ? { clickAnimation: opts.clickAnimation } : {}),
+      ...(opts.transition ? { transition: opts.transition } : {}),
+      ...(opts.colors     ? { colors:     opts.colors }     : {}),
+      ...(opts.navigation ? { navigation: opts.navigation } : {}),
       style: {
         backgroundColor: opts.bg,
         borderColor: opts.border,
@@ -185,6 +256,108 @@ export class FuiBuilder {
         radius: opts.radius,
         padding: opts.padding,
         opacity: opts.opacity,
+      },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add a toggle (checkbox) node.
+   * @example builder.toggle('sound_toggle', 20, 60, 140, 28, 'Sound', { value: true })
+   */
+  toggle(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    text: string,
+    opts: FuiToggleOpts = {},
+  ): this {
+    const node: FuiToggleNode = {
+      type: 'toggle', id, rect: { x, y, w, h }, text,
+      value: opts.value ?? false,
+      ...(opts.navigation ? { navigation: opts.navigation } : {}),
+      style: {
+        backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
+        radius: opts.radius, checkColor: opts.checkColor, textColor: opts.textColor,
+        fontSize: opts.fontSize, opacity: opts.opacity,
+      },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add a slider node.
+   * @example builder.slider('volume', 20, 100, 200, 24, { value: 0.75, fillColor: '#3a86ff' })
+   */
+  slider(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    opts: FuiSliderOpts = {},
+  ): this {
+    const node: FuiSliderNode = {
+      type: 'slider', id, rect: { x, y, w, h },
+      value: opts.value ?? 0,
+      min:   opts.min   ?? 0,
+      max:   opts.max   ?? 1,
+      ...(opts.wholeNumbers ? { wholeNumbers: true } : {}),
+      direction: opts.direction ?? 'horizontal',
+      ...(opts.navigation ? { navigation: opts.navigation } : {}),
+      style: {
+        trackColor: opts.trackColor, fillColor: opts.fillColor,
+        handleColor: opts.handleColor, handleSize: opts.handleSize,
+        trackHeight: opts.trackHeight, opacity: opts.opacity,
+      },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add a progress bar node.
+   * @example builder.progressBar('hp_bar', 20, 140, 200, 16, { value: 0.6, fillColor: '#4caf50' })
+   */
+  progressBar(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    opts: FuiProgressBarOpts = {},
+  ): this {
+    const node: FuiProgressBarNode = {
+      type: 'progressBar', id, rect: { x, y, w, h },
+      value: opts.value ?? 0,
+      direction: opts.direction ?? 'horizontal',
+      style: {
+        trackColor: opts.trackColor, fillColor: opts.fillColor,
+        radius: opts.radius, opacity: opts.opacity,
+      },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add an input field node.
+   * @example builder.inputField('name_input', 20, 60, 200, 36, { placeholder: 'Your name...' })
+   */
+  inputField(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    opts: FuiInputFieldOpts = {},
+  ): this {
+    const node: FuiInputFieldNode = {
+      type: 'inputField', id, rect: { x, y, w, h },
+      text:        opts.text        ?? '',
+      placeholder: opts.placeholder ?? 'Enter text...',
+      contentType: opts.contentType ?? 'standard',
+      ...(opts.navigation ? { navigation: opts.navigation } : {}),
+      style: {
+        backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
+        radius: opts.radius, textColor: opts.textColor, placeholderColor: opts.placeholderColor,
+        fontSize: opts.fontSize, opacity: opts.opacity,
       },
     };
     this._nodeMap.set(id, node);

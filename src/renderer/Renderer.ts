@@ -20,7 +20,10 @@ import {
   ToneMappingMode,
   SpriteComponent,
   TextRendererComponent,
+  SpriteReactiveComponent,
+  AnimationComponent,
 } from '../core/Components';
+import type { SpriteReactiveEventGroup } from '../core/Components';
 import { PostProcessingPipeline, FogVolumeData, FogLightData } from './PostProcessing';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
@@ -55,6 +58,8 @@ export class FluxionRenderer {
   private objectToEntity: Map<THREE.Object3D, EntityId> = new Map();
   private config: Required<RendererConfig>;
   private eventUnsubs: (() => void)[] = [];
+  private _uiOverlayFn: (() => void) | null = null;
+  private _skeletonHelper: THREE.SkeletonHelper | null = null;
 
   constructor(engine: Engine, config: RendererConfig = {}) {
     this.engine = engine;
@@ -121,7 +126,9 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new TransformSystem());      // priority -150: computes world matrices
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
+    engine.ecs.addSystem(new AnimationSystem(this));
     engine.ecs.addSystem(new SpriteRendererSystem(this));
+    engine.ecs.addSystem(new SpriteReactiveSystem(this));
     engine.ecs.addSystem(new TextRendererSystem(this));
     engine.ecs.addSystem(new CameraSystem(this));
     engine.ecs.addSystem(new LightSystem(this));
@@ -140,6 +147,12 @@ export class FluxionRenderer {
     DebugDraw.flush();
     this.postProcessing.renderOverlay(this.gizmoScene, this.activeCamera);
     DebugDraw.renderText();
+    this._uiOverlayFn?.();
+  }
+
+  /** Register a callback invoked at the very end of each frame to composite UI overlays. */
+  registerUIOverlay(fn: () => void): void {
+    this._uiOverlayFn = fn;
   }
 
   setActiveCamera(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera): void {
@@ -183,6 +196,25 @@ export class FluxionRenderer {
 
   getObject(entity: EntityId): THREE.Object3D | undefined {
     return this.entityToObject.get(entity);
+  }
+
+  /** Show a SkeletonHelper for the given mesh root in the gizmo overlay scene. */
+  showSkeletonHelper(root: THREE.Object3D): void {
+    this.hideSkeletonHelper();
+    const helper = new THREE.SkeletonHelper(root);
+    (helper.material as THREE.LineBasicMaterial).linewidth = 2;
+    this.gizmoScene.add(helper);
+    this._skeletonHelper = helper;
+  }
+
+  /** Remove the current SkeletonHelper from the gizmo scene. */
+  hideSkeletonHelper(): void {
+    if (this._skeletonHelper) {
+      this.gizmoScene.remove(this._skeletonHelper);
+      this._skeletonHelper.geometry?.dispose();
+      (this._skeletonHelper.material as THREE.Material)?.dispose?.();
+      this._skeletonHelper = null;
+    }
   }
 
   getEntity(obj: THREE.Object3D): EntityId | undefined {
@@ -362,6 +394,115 @@ class MeshRendererSystem implements System {
   }
 }
 
+class AnimationSystem implements System {
+  readonly name = 'Animation';
+  readonly requiredComponents = ['Transform', 'MeshRenderer', 'Animation'];
+  priority = 1;
+  enabled = true;
+
+  constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    // Mixers are tied to mesh objects which get cleared with the scene
+  }
+
+  update(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
+    for (const entity of entities) {
+      const meshComp = ecs.getComponent<MeshRendererComponent>(entity, 'MeshRenderer');
+      const animComp = ecs.getComponent<AnimationComponent>(entity, 'Animation');
+      if (!meshComp || !animComp) continue;
+
+      const root = meshComp.mesh;
+      if (!root) continue;
+
+      // ── Initialize mixer + actions when mesh is first ready or changes ──
+      const meshChanged = animComp._meshRef !== root;
+      if (meshChanged) {
+        animComp.mixer?.stopAllAction();
+        animComp.mixer = null;
+        animComp.currentAction = null;
+        animComp.clips.clear();
+        animComp.actions.clear();
+        animComp.availableClips = [];
+        animComp._prevClip = '';
+        animComp._meshRef = root;
+      }
+      if (!animComp.mixer || animComp.clips.size === 0) {
+        const clips: THREE.AnimationClip[] = [];
+
+        // Gather clips stored on the THREE object (FBX puts them on the group)
+        if ((root as any).animations?.length) {
+          clips.push(...(root as any).animations);
+        }
+
+        // Also collect clips from SkinnedMesh children
+        root.traverse((child) => {
+          if ((child as any).animations?.length) {
+            for (const c of (child as any).animations) {
+              if (!clips.find(x => x.name === c.name)) clips.push(c);
+            }
+          }
+        });
+
+        if (clips.length > 0) {
+          animComp.clips.clear();
+          animComp.actions.clear();
+          for (const clip of clips) animComp.clips.set(clip.name, clip);
+          animComp.availableClips = clips.map(c => c.name);
+
+          animComp.mixer = new THREE.AnimationMixer(root);
+          for (const clip of clips) {
+            const action = animComp.mixer.clipAction(clip);
+            action.loop = animComp.loop ? THREE.LoopRepeat : THREE.LoopOnce;
+            action.clampWhenFinished = !animComp.loop;
+            animComp.actions.set(clip.name, action);
+          }
+
+          // Auto-play currentClip or first clip
+          const startClip = animComp.currentClip || clips[0].name;
+          const startAction = animComp.actions.get(startClip);
+          if (startAction) {
+            startAction.timeScale = animComp.speed;
+            startAction.play();
+            animComp.currentAction = startAction;
+            animComp._prevClip = startClip;
+            animComp.currentClip = startClip;
+          }
+        }
+      }
+
+      if (!animComp.mixer) continue;
+
+      // ── Detect clip change and crossfade ──
+      if (animComp.currentClip !== animComp._prevClip) {
+        const nextAction = animComp.actions.get(animComp.currentClip);
+        if (nextAction) {
+          nextAction.loop = animComp.loop ? THREE.LoopRepeat : THREE.LoopOnce;
+          nextAction.clampWhenFinished = !animComp.loop;
+          nextAction.timeScale = animComp.speed;
+          if (animComp.currentAction && animComp.blendTime > 0) {
+            nextAction.reset().play();
+            animComp.currentAction.crossFadeTo(nextAction, animComp.blendTime, true);
+          } else {
+            animComp.currentAction?.stop();
+            nextAction.reset().play();
+          }
+          animComp.currentAction = nextAction;
+        }
+        animComp._prevClip = animComp.currentClip;
+      }
+
+      // ── Sync speed on current action ──
+      if (animComp.currentAction) {
+        animComp.currentAction.timeScale = animComp.speed;
+      }
+
+      // ── Tick the mixer ──
+      animComp.mixer.update(dt);
+    }
+  }
+}
+
 class SpriteRendererSystem implements System {
   readonly name = 'SpriteRenderer';
   readonly requiredComponents = ['Transform', 'Sprite'];
@@ -485,6 +626,106 @@ class SpriteRendererSystem implements System {
       this.loadingTextures.delete(entity);
     }
   }
+}
+
+// ── Scratch objects (avoid per-frame allocation) ──────────────────────────────
+const _reactNdc = new THREE.Vector2();
+const _reactRaycaster = new THREE.Raycaster();
+
+class SpriteReactiveSystem implements System {
+  readonly name = 'SpriteReactive';
+  readonly requiredComponents = ['Transform', 'Sprite', 'SpriteReactive'];
+  priority = 3;
+  enabled = true;
+
+  private hoveredEntities: Set<EntityId> = new Set();
+
+  constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.hoveredEntities.clear();
+  }
+
+  update(entities: Set<EntityId>, ecs: ECSManager): void {
+    const engine = this.renderer.engine;
+    const input  = engine.getSubsystem<any>('input');
+    if (!input) return;
+
+    const camera = this.renderer.getActiveCamera();
+    if (!camera) return;
+
+    const canvas = engine.config.canvas;
+    const rect   = canvas.getBoundingClientRect();
+    const mx     = input.mousePosition.x;
+    const my     = input.mousePosition.y;
+
+    _reactNdc.set(
+      ((mx - rect.left) / rect.width)  *  2 - 1,
+      -((my - rect.top)  / rect.height) *  2 + 1,
+    );
+    _reactRaycaster.setFromCamera(_reactNdc, camera);
+
+    const nowHovered = new Set<EntityId>();
+
+    for (const entity of entities) {
+      const sprite = ecs.getComponent<SpriteComponent>(entity, 'Sprite');
+      if (!sprite || !sprite.enabled || !sprite.spriteMesh) continue;
+      const hits = _reactRaycaster.intersectObject(sprite.spriteMesh, false);
+      if (hits.length > 0) nowHovered.add(entity);
+    }
+
+    const ev = engine.events;
+    const mousePressed  = input.isMousePressed(0);
+    const mouseReleased = input.isMouseReleased(0);
+
+    for (const entity of nowHovered) {
+      const rc = ecs.getComponent<SpriteReactiveComponent>(entity, 'SpriteReactive');
+      if (!rc || !rc.enabled) continue;
+
+      if (!this.hoveredEntities.has(entity)) {
+        ev.emit('sprite:pointerenter', { entity });
+        this._fire(rc.onPointerEnter, ecs);
+      }
+      if (mousePressed) {
+        ev.emit('sprite:pointerdown', { entity, button: 0 });
+        this._fire(rc.onPointerDown, ecs);
+      }
+      if (mouseReleased) {
+        ev.emit('sprite:pointerup',  { entity, button: 0 });
+        ev.emit('sprite:click',      { entity, button: 0 });
+        this._fire(rc.onPointerUp, ecs);
+        this._fire(rc.onClick, ecs);
+      }
+    }
+
+    for (const entity of this.hoveredEntities) {
+      if (!nowHovered.has(entity)) {
+        const rc = ecs.getComponent<SpriteReactiveComponent>(entity, 'SpriteReactive');
+        if (rc?.enabled) {
+          ev.emit('sprite:pointerexit', { entity });
+          this._fire(rc.onPointerExit, ecs);
+        }
+      }
+    }
+
+    this.hoveredEntities = nowHovered;
+  }
+
+  private _fire(group: SpriteReactiveEventGroup, ecs: ECSManager): void {
+    for (const entry of group.entries) {
+      if (!entry.targetEntityId || !entry.methodName) continue;
+      const scriptComp = ecs.getComponent<any>(entry.targetEntityId, 'Script');
+      if (!scriptComp) continue;
+      for (const [, instance] of scriptComp._instances as Map<string, any>) {
+        const fn = (instance as any)[entry.methodName];
+        if (typeof fn === 'function') {
+          try { fn.call(instance); } catch (e) { DebugConsole.LogError(`[SpriteReactive] ${e}`); }
+          break;
+        }
+      }
+    }
+  }
+
 }
 
 class TextRendererSystem implements System {

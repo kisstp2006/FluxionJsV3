@@ -336,6 +336,8 @@ export class Scene {
           applyMaterialsToModel(scene, result.slots, loadedMats);
         }
 
+        meshComp.isSkinnedMesh = result.hasSkinnedMesh;
+        if (result.animations.length > 0) (scene as any).animations = result.animations;
         meshComp.mesh = scene;
       } else {
         // Raw model — legacy flow
@@ -348,6 +350,8 @@ export class Scene {
             child.receiveShadow = meshComp.receiveShadow;
           }
         });
+        meshComp.isSkinnedMesh = gltf.hasSkinnedMesh;
+        if (gltf.animations.length > 0) (scene as any).animations = gltf.animations;
         meshComp.mesh = scene;
       }
     } catch (err) {

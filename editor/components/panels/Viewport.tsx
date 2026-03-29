@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
-import { CameraComponent } from '../../../src/core/Components';
+import { CameraComponent, MeshRendererComponent } from '../../../src/core/Components';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
 import { applyDebugMode, restoreDebugMode } from '../../core/ViewportDebugMaterials';
@@ -225,6 +225,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     if (state.isPlaying) {
       engine.gizmoService.detach();
       engine.selectionOutline.visible = false;
+      engine.renderer.hideSkeletonHelper();
       return;
     }
     if (state.selectedEntity !== null) {
@@ -234,6 +235,13 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           engine.gizmoService.attach(obj);
           engine.selectionOutline.setFromObject(obj);
           engine.selectionOutline.visible = true;
+          // Show skeleton helper if entity has a skinned mesh
+          const meshComp = engine.engine.ecs.getComponent<MeshRendererComponent>(state.selectedEntity!, 'MeshRenderer');
+          if (meshComp?.isSkinnedMesh && meshComp.mesh) {
+            engine.renderer.showSkeletonHelper(meshComp.mesh);
+          } else {
+            engine.renderer.hideSkeletonHelper();
+          }
           return true;
         }
         return false;
@@ -244,6 +252,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           if (!tryAttach()) {
             engine.gizmoService.detach();
             engine.selectionOutline.visible = false;
+            engine.renderer.hideSkeletonHelper();
           }
         });
         return () => cancelAnimationFrame(rafId);
@@ -251,6 +260,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     } else {
       engine.gizmoService.detach();
       engine.selectionOutline.visible = false;
+      engine.renderer.hideSkeletonHelper();
     }
   }, [engine, state.selectedEntity, state.isPlaying]);
 

@@ -76,11 +76,71 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
     case 'button': {
       const fallback: FuiRect = { x: 0, y: 0, w: 180, h: 44 };
       const rect = ensureRect(node?.rect, fallback);
+      const TRANSITIONS = ['none', 'colorTint'];
+      const NAVIGATIONS = ['none', 'automatic', 'horizontal', 'vertical', 'explicit'];
       return {
         id,
         type: 'button',
         rect,
         text: typeof node?.text === 'string' ? node.text : 'Button',
+        icon: typeof node?.icon === 'string' ? node.icon : undefined,
+        tooltip: typeof node?.tooltip === 'string' ? node.tooltip : undefined,
+        disabled: node?.disabled === true,
+        clickAnimation: ['none','scale','flash'].includes(node?.clickAnimation) ? node.clickAnimation : undefined,
+        transition: TRANSITIONS.includes(node?.transition) ? node.transition : undefined,
+        colors: isRecord(node?.colors) ? node.colors : undefined,
+        navigation: NAVIGATIONS.includes(node?.navigation) ? node.navigation : undefined,
+        style: isRecord(node?.style) ? node.style : undefined,
+        hoverStyle: isRecord(node?.hoverStyle) ? node.hoverStyle : undefined,
+        activeStyle: isRecord(node?.activeStyle) ? node.activeStyle : undefined,
+        disabledStyle: isRecord(node?.disabledStyle) ? node.disabledStyle : undefined,
+      };
+    }
+    case 'toggle': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 160, h: 28 };
+      const rect = ensureRect(node?.rect, fallback);
+      return {
+        id, type: 'toggle', rect,
+        text: typeof node?.text === 'string' ? node.text : 'Toggle',
+        value: node?.value === true,
+        navigation: ['none','automatic','horizontal','vertical','explicit'].includes(node?.navigation) ? node.navigation : undefined,
+        style: isRecord(node?.style) ? node.style : undefined,
+      };
+    }
+    case 'slider': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 24 };
+      const rect = ensureRect(node?.rect, fallback);
+      return {
+        id, type: 'slider', rect,
+        value: typeof node?.value === 'number' ? node.value : 0,
+        min: typeof node?.min === 'number' ? node.min : 0,
+        max: typeof node?.max === 'number' ? node.max : 1,
+        wholeNumbers: node?.wholeNumbers === true,
+        direction: node?.direction === 'vertical' ? 'vertical' : 'horizontal',
+        navigation: ['none','automatic','horizontal','vertical','explicit'].includes(node?.navigation) ? node.navigation : undefined,
+        style: isRecord(node?.style) ? node.style : undefined,
+      };
+    }
+    case 'progressBar': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 16 };
+      const rect = ensureRect(node?.rect, fallback);
+      return {
+        id, type: 'progressBar', rect,
+        value: typeof node?.value === 'number' ? Math.max(0, Math.min(1, node.value)) : 0,
+        direction: node?.direction === 'vertical' ? 'vertical' : 'horizontal',
+        style: isRecord(node?.style) ? node.style : undefined,
+      };
+    }
+    case 'inputField': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 36 };
+      const rect = ensureRect(node?.rect, fallback);
+      const CT = ['standard','integer','decimal','password'];
+      return {
+        id, type: 'inputField', rect,
+        text: typeof node?.text === 'string' ? node.text : '',
+        placeholder: typeof node?.placeholder === 'string' ? node.placeholder : 'Enter text...',
+        contentType: CT.includes(node?.contentType) ? node.contentType : 'standard',
+        navigation: ['none','automatic','horizontal','vertical','explicit'].includes(node?.navigation) ? node.navigation : undefined,
         style: isRecord(node?.style) ? node.style : undefined,
       };
     }

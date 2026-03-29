@@ -10,6 +10,7 @@ import { undoManager } from '../../../core/UndoService';
 import { setProperty } from '../../../core/ComponentService';
 import { AssetTypeRegistry } from '../../../../src/assets/AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshMaterialSlot } from '../../../../src/assets/FluxMeshData';
+import type { ModelResult } from '../../../../src/assets/AssetManager';
 import { applyMaterialsToModel } from '../../../../src/assets/FluxMeshData';
 import type { VisualMaterialFile } from '../../../../src/materials/VisualMaterialGraph';
 
@@ -198,6 +199,8 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           applyMaterialsToModel(cloned, result.slots, loadedMats);
         }
 
+        mr.isSkinnedMesh = result.hasSkinnedMesh;
+        if (result.animations.length > 0) (cloned as any).animations = result.animations;
         mr.mesh = cloned;
       } else {
         // Raw model drop — check for companion .fluxmesh
@@ -250,13 +253,15 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
             applyMaterialsToModel(cloned, result.slots, loadedMats);
           }
 
+          mr.isSkinnedMesh = result.hasSkinnedMesh;
+          if (result.animations.length > 0) (cloned as any).animations = result.animations;
           mr.mesh = cloned;
         } else {
           // Legacy raw model
           mr.modelPath = assetPath;
           const absPath = projectManager.resolvePath(assetPath);
           const fileUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
-          const gltf = await assets.loadModel(fileUrl);
+          const gltf = await assets.loadModel(fileUrl) as ModelResult;
           const cloned = gltf.scene.clone();
           cloned.traverse((child: THREE.Object3D) => {
             if (child instanceof THREE.Mesh) {
@@ -264,6 +269,8 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
               child.receiveShadow = mr.receiveShadow;
             }
           });
+          mr.isSkinnedMesh = gltf.hasSkinnedMesh;
+          if (gltf.animations.length > 0) (cloned as any).animations = gltf.animations;
           mr.mesh = cloned;
         }
       }
@@ -401,6 +408,25 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           </span>
         </PropertyRow>
       ) : null}
+
+      {/* Skinned mesh + animation info badge */}
+      {mr.isSkinnedMesh && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '3px 8px',
+          marginBottom: 4,
+          background: 'rgba(100,200,120,0.1)',
+          border: '1px solid rgba(100,200,120,0.25)',
+          borderRadius: 4,
+          fontSize: 11,
+          color: '#80e0a0',
+        }}>
+          <span>🦴</span>
+          <span>Skinned Mesh</span>
+        </div>
+      )}
 
       {!mr.modelPath && (
         <div

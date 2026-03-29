@@ -202,14 +202,21 @@ AssetTypeRegistry.register({
       // Load the model to inspect sub-meshes
       const fileUrl = `file:///${importedPath.replace(/\\/g, '/')}`;
       let root: InstanceType<typeof THREEModule.Object3D>;
+      let embeddedClips: InstanceType<typeof THREEModule.AnimationClip>[] = [];
       if (format === 'fbx') {
-        root = await new Promise<InstanceType<typeof THREEModule.Group>>((res, rej) => new FBXLoader().load(fileUrl, res, undefined, rej));
+        const fbxGroup = await new Promise<InstanceType<typeof THREEModule.Group>>((res, rej) => new FBXLoader().load(fileUrl, res, undefined, rej));
+        root = fbxGroup;
+        embeddedClips = (fbxGroup as any).animations ?? [];
       } else if (format === 'obj') {
         root = await new Promise<InstanceType<typeof THREEModule.Group>>((res, rej) => new OBJLoader().load(fileUrl, res, undefined, rej));
       } else {
         const gltf = await new Promise<any>((res, rej) => new GLTFLoader().load(fileUrl, res, undefined, rej));
         root = gltf.scene;
+        embeddedClips = gltf.animations ?? [];
       }
+      const animationClipNames: string[] = embeddedClips.map((c: any) => c.name as string).filter(Boolean);
+      let hasSkinnedMeshFlag = false;
+      root.traverse((child: any) => { if (child.isSkinnedMesh) hasSkinnedMeshFlag = true; });
 
       // Collect child meshes in depth-first order
       const meshes: InstanceType<typeof THREEModule.Mesh>[] = [];
@@ -352,6 +359,8 @@ AssetTypeRegistry.register({
         sourceModel: modelFileName,
         materialSlots: slots,
         ...(importScale !== 1 ? { importScale } : {}),
+        ...(animationClipNames.length > 0 ? { animationClips: animationClipNames } : {}),
+        ...(hasSkinnedMeshFlag ? { hasSkinnedMesh: true } : {}),
       };
       await _fs.writeFile(fluxmeshPath, JSON.stringify(fluxmeshData, null, 2));
 
@@ -383,6 +392,20 @@ AssetTypeRegistry.register({
   loader: async (fs, path) => {
     const text = await fs.readFile(path);
     return JSON.parse(text) as FluxMeshData;
+  },
+  serializable: false,
+});
+
+AssetTypeRegistry.register({
+  type: 'animation',
+  displayName: 'Animation Clip',
+  icon: 'model',
+  extensions: ['.fluxanim'],
+  category: 'Animations',
+  color: '#ffcc80',
+  loader: async (fs, path) => {
+    const text = await fs.readFile(path);
+    return JSON.parse(text);
   },
   serializable: false,
 });

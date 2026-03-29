@@ -1,5 +1,24 @@
 export type FuiMode = 'screen' | 'world';
-export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon';
+export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
+
+/** How a button visually responds to interaction. */
+export type FuiTransition = 'none' | 'colorTint';
+
+/** Gamepad/keyboard navigation mode. */
+export type FuiNavigation = 'none' | 'automatic' | 'horizontal' | 'vertical' | 'explicit';
+
+/** Unity-style color block used by the colorTint transition. */
+export interface FuiColorBlock {
+  normalColor?:      string;
+  highlightedColor?: string;
+  pressedColor?:     string;
+  selectedColor?:    string;
+  disabledColor?:    string;
+  /** Multiplier applied to all colors (1–5). Default: 1. */
+  colorMultiplier?:  number;
+  /** Blend duration in seconds. Default: 0.1. */
+  fadeDuration?:     number;
+}
 
 export interface FuiRect {
   x: number;
@@ -68,6 +87,12 @@ export interface FuiButtonNode extends FuiBaseNode {
   disabled?: boolean;
   /** Click animation. 'scale' shrinks the button on press; 'flash' briefly flashes it white. */
   clickAnimation?: 'none' | 'scale' | 'flash';
+  /** Visual transition mode. Default: 'colorTint'. */
+  transition?: FuiTransition;
+  /** Color block used when transition === 'colorTint'. */
+  colors?: FuiColorBlock;
+  /** Keyboard/gamepad navigation behaviour. Default: 'automatic'. */
+  navigation?: FuiNavigation;
   style?: FuiButtonStyle;
   /** Style overrides merged on top of base style while the mouse is hovering. */
   hoverStyle?: Partial<FuiButtonStyle>;
@@ -102,7 +127,74 @@ export interface FuiIconNode extends FuiBaseNode {
   };
 }
 
-export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiIconNode;
+export interface FuiToggleNode extends FuiBaseNode {
+  type: 'toggle';
+  text?: string;
+  value?: boolean;
+  navigation?: FuiNavigation;
+  style?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    radius?: number;
+    checkColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    opacity?: number;
+  };
+}
+
+export interface FuiSliderNode extends FuiBaseNode {
+  type: 'slider';
+  /** Normalised value 0–1 (or min–max if those are set). */
+  value?: number;
+  min?: number;
+  max?: number;
+  wholeNumbers?: boolean;
+  direction?: 'horizontal' | 'vertical';
+  navigation?: FuiNavigation;
+  style?: {
+    trackColor?: string;
+    fillColor?: string;
+    handleColor?: string;
+    handleSize?: number;
+    trackHeight?: number;
+    opacity?: number;
+  };
+}
+
+export interface FuiProgressBarNode extends FuiBaseNode {
+  type: 'progressBar';
+  /** 0–1 fill fraction. */
+  value?: number;
+  direction?: 'horizontal' | 'vertical';
+  style?: {
+    trackColor?: string;
+    fillColor?: string;
+    radius?: number;
+    opacity?: number;
+  };
+}
+
+export interface FuiInputFieldNode extends FuiBaseNode {
+  type: 'inputField';
+  text?: string;
+  placeholder?: string;
+  contentType?: 'standard' | 'integer' | 'decimal' | 'password';
+  navigation?: FuiNavigation;
+  style?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    radius?: number;
+    textColor?: string;
+    placeholderColor?: string;
+    fontSize?: number;
+    opacity?: number;
+  };
+}
+
+export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiIconNode | FuiToggleNode | FuiSliderNode | FuiProgressBarNode | FuiInputFieldNode;
 
 // ── Animation ──
 

@@ -222,6 +222,8 @@ export class MeshRendererComponent extends BaseComponent {
 
   /** Tracks the primitive type used to create this mesh */
   primitiveType?: string;
+  /** True when the loaded model contains SkinnedMesh nodes — set at runtime, NOT serialized */
+  isSkinnedMesh = false;
   /** Project-relative path to a 3D model asset */
   modelPath?: string;
   /** Project-relative path to a .fluxmat material asset */
@@ -854,6 +856,70 @@ export class SpriteComponent extends BaseComponent {
   spriteTexture: THREE.Texture | null = null;
 }
 
+// ── Sprite Reactive ───────────────────────────────────────────────────────────
+
+export interface SpriteReactiveEntry {
+  /** Target entity whose script method will be called. */
+  targetEntityId: EntityId | null;
+  /** Name of the method to call on the target entity's scripts. */
+  methodName: string;
+}
+
+export interface SpriteReactiveEventGroup {
+  entries: SpriteReactiveEntry[];
+}
+
+function _makeSRGroup(): SpriteReactiveEventGroup { return { entries: [] }; }
+
+@component({
+  typeId: 'SpriteReactive',
+  displayName: 'Sprite Reactive',
+  icon: '◎',
+  category: 'Interaction',
+})
+export class SpriteReactiveComponent extends BaseComponent {
+  readonly typeId = 'SpriteReactive';
+
+  onClick:        SpriteReactiveEventGroup = _makeSRGroup();
+  onPointerEnter: SpriteReactiveEventGroup = _makeSRGroup();
+  onPointerExit:  SpriteReactiveEventGroup = _makeSRGroup();
+  onPointerDown:  SpriteReactiveEventGroup = _makeSRGroup();
+  onPointerUp:    SpriteReactiveEventGroup = _makeSRGroup();
+
+  serialize(): Record<string, any> {
+    const sg = (g: SpriteReactiveEventGroup) => ({
+      entries: g.entries.map(e => ({ targetEntityId: e.targetEntityId, methodName: e.methodName })),
+    });
+    return {
+      __v: 1,
+      enabled: this.enabled,
+      onClick:        sg(this.onClick),
+      onPointerEnter: sg(this.onPointerEnter),
+      onPointerExit:  sg(this.onPointerExit),
+      onPointerDown:  sg(this.onPointerDown),
+      onPointerUp:    sg(this.onPointerUp),
+    };
+  }
+
+  deserialize(data: Record<string, any>, _ctx: any): void {
+    if (typeof data.enabled === 'boolean') this.enabled = data.enabled;
+    const rg = (raw: any): SpriteReactiveEventGroup => {
+      if (!raw || !Array.isArray(raw.entries)) return _makeSRGroup();
+      return {
+        entries: raw.entries.map((e: any) => ({
+          targetEntityId: typeof e.targetEntityId === 'number' ? e.targetEntityId as EntityId : null,
+          methodName: typeof e.methodName === 'string' ? e.methodName : '',
+        })),
+      };
+    };
+    this.onClick        = rg(data.onClick);
+    this.onPointerEnter = rg(data.onPointerEnter);
+    this.onPointerExit  = rg(data.onPointerExit);
+    this.onPointerDown  = rg(data.onPointerDown);
+    this.onPointerUp    = rg(data.onPointerUp);
+  }
+}
+
 // ── Text Renderer ─────────────────────────────────────────────────────────────
 
 export type TextAlignment = 'left' | 'center' | 'right';
@@ -943,20 +1009,17 @@ export class FuiComponent extends BaseComponent {
   _inlineDoc: unknown = undefined;
 }
 
-// ── Animation ─────────────────────────────────────────────────────────────────
+// ── Animation ─────────────────────────────────────────────────────────────
 
 @component({
   typeId: 'Animation',
-  displayName: 'Animation',
+  displayName: 'Animator',
   icon: '▶',
   category: 'Animation',
   requires: ['MeshRenderer'],
 })
 export class AnimationComponent extends BaseComponent {
   readonly typeId = 'Animation';
-
-  /** Runtime animation clips — NOT serialized (loaded from model) */
-  clips: Map<string, THREE.AnimationClip> = new Map();
 
   @field({ type: 'string', label: 'Current Clip' })
   currentClip = '';
@@ -971,8 +1034,18 @@ export class AnimationComponent extends BaseComponent {
   blendTime = 0.3;
 
   /** Runtime — NOT serialized */
-  mixer:         THREE.AnimationMixer | null = null;
-  currentAction: THREE.AnimationAction | null = null;
+  mixer:          THREE.AnimationMixer | null = null;
+  currentAction:  THREE.AnimationAction | null = null;
+  /** All loaded clips by name — populated by AnimationSystem at load time */
+  clips:          Map<string, THREE.AnimationClip> = new Map();
+  /** All prepared actions by clip name — populated by AnimationSystem */
+  actions:        Map<string, THREE.AnimationAction> = new Map();
+  /** Clip names available in the loaded model — shown in inspector */
+  availableClips: string[] = [];
+  /** Tracks the clip name that is currently fading in/out for change detection */
+  _prevClip = '';
+  /** Tracks the THREE.Object3D root the mixer was built from — for mesh-swap detection */
+  _meshRef: import('three').Object3D | null = null;
 }
 
 // ── Environment ───────────────────────────────────────────────────────────────

@@ -296,31 +296,32 @@ export class FluxionBehaviour {
 
   // ── FUI (Fluxion UI) ─────────────────────────────────────────
 
-  get ui() {
+  /** @internal — builds a UI accessor object targeting `targetEntity`. */
+  private _makeUiAccessor(targetEntity: EntityId) {
     const ecs      = this._ecs;
     const engine   = this._engine;
-    const entity   = this.entity;
     const cleanups = this._cleanupFns;
-    const getComp  = () => ecs.getComponent<any>(entity, 'Fui');
+    const tgt      = targetEntity;
+    const getComp  = () => ecs.getComponent<any>(tgt, 'Fui');
     const getRT    = () => ecs.getSystem<any>('FuiRuntime');
 
     return {
       load(path: string): void {
         let c = getComp();
-        if (!c) c = ecs.addComponent(entity, new FuiComponent());
+        if (!c) c = ecs.addComponent(tgt, new FuiComponent());
         c.fuiPath = path;
         c._inlineDoc = undefined;
         markDirty(c);
       },
       create(doc: unknown): void {
         let c = getComp();
-        if (!c) c = ecs.addComponent(entity, new FuiComponent());
+        if (!c) c = ecs.addComponent(tgt, new FuiComponent());
         c._inlineDoc = doc;
         c.fuiPath = '';
         markDirty(c);
       },
       setText(nodeId: string, text: string): void {
-        getRT()?.setNodeText?.(entity, nodeId, text);
+        getRT()?.setNodeText?.(tgt, nodeId, text);
       },
       show(): void  { const c = getComp(); if (c) c.enabled = true; },
       hide(): void  { const c = getComp(); if (c) c.enabled = false; },
@@ -334,16 +335,63 @@ export class FluxionBehaviour {
       onButtonClick(elementId: string, cb: () => void): void {
         const unsub = engine.events.on<{ entity: number; elementId: string }>(
           'ui:click',
-          (d) => { if (d.entity === entity && d.elementId === elementId) cb(); },
+          (d) => { if (d.entity === tgt && d.elementId === elementId) cb(); },
         );
         cleanups.push(unsub);
       },
       onAnyClick(cb: (elementId: string) => void): void {
         const unsub = engine.events.on<{ entity: number; elementId: string }>(
           'ui:click',
-          (d) => { if (d.entity === entity) cb(d.elementId); },
+          (d) => { if (d.entity === tgt) cb(d.elementId); },
         );
         cleanups.push(unsub);
+      },
+      onToggle(elementId: string, cb: (value: boolean) => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string; value: boolean }>(
+          'ui:toggle',
+          (d) => { if (d.entity === tgt && d.elementId === elementId) cb(d.value); },
+        );
+        cleanups.push(unsub);
+      },
+      onSliderChange(elementId: string, cb: (value: number) => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string; value: number }>(
+          'ui:slider-change',
+          (d) => { if (d.entity === tgt && d.elementId === elementId) cb(d.value); },
+        );
+        cleanups.push(unsub);
+      },
+      /** Find the first node ID of the given type in this entity's FUI document. */
+      findByType(type: string): string | null {
+        return getRT()?.getCompiled(tgt)?.drawOrder.find((n: any) => n.type === type)?.id ?? null;
+      },
+      /** Find all node IDs of the given type in this entity's FUI document. */
+      findAllByType(type: string): string[] {
+        return (getRT()?.getCompiled(tgt)?.drawOrder ?? [])
+          .filter((n: any) => n.type === type)
+          .map((n: any) => n.id as string);
+      },
+    };
+  }
+
+  get ui() {
+    const self = this;
+    const accessor = this._makeUiAccessor(this.entity);
+    return {
+      ...accessor,
+      /**
+       * Get a UI accessor targeting another entity's FUI component.
+       * Accepts an EntityId (number), an EntityRef object, or null/undefined.
+       * @example
+       *   const hud = this.ui.fromEntity(this.hudRef);
+       *   hud.setText('score', '100');
+       *   hud.onButtonClick('start', () => { ... });
+       */
+      fromEntity(entityOrRef: EntityId | { entity: EntityId | null } | null | undefined) {
+        if (entityOrRef == null) return self._makeUiAccessor(-1 as EntityId);
+        const eid = typeof entityOrRef === 'number'
+          ? entityOrRef
+          : ((entityOrRef as any).entity ?? -1);
+        return self._makeUiAccessor((eid ?? -1) as EntityId);
       },
     };
   }

@@ -154,10 +154,12 @@ function parseLuaProperties(source: string, overrides: Record<string, any>): Scr
           } else if (/^-?[0-9]+(\.[0-9]+)?$/.test(raw)) {
             const def = Number(raw);
             props.push({ key, type: 'number', default: def, value: override !== undefined ? override : def });
-          // EntityRef() — entity picker
+          // EntityRef() — entity picker (optional requireComponent arg)
           } else if (/^EntityRef\s*\(/.test(raw)) {
+            const argMatch = raw.match(/^EntityRef\s*\(\s*["']([^"']+)["']\s*\)/);
+            const requireComponent: string | undefined = argMatch ? argMatch[1] : undefined;
             const entityId = override?.entity !== undefined ? override.entity : null;
-            props.push({ key, type: 'entity', default: null, value: { entity: entityId, requireComponent: undefined } });
+            props.push({ key, type: 'entity', requireComponent, default: null, value: { entity: entityId } });
           // FuiRef() — fui asset picker
           } else if (/^FuiRef\s*\(/.test(raw)) {
             const path = typeof override?.path === 'string' ? override.path : '';

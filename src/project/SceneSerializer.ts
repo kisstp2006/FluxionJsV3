@@ -268,6 +268,8 @@ export async function loadDeferredFluxMesh(
 
     const loadedMaterials = await Promise.all(matPromises);
     applyMaterialsToModel(scene, result.slots, loadedMaterials);
+    meshComp.isSkinnedMesh = result.hasSkinnedMesh;
+    if (result.animations.length > 0) (scene as any).animations = result.animations;
     meshComp.mesh = scene;
     applyComponentUvTransform(meshComp);
   } catch (err) {
@@ -299,6 +301,8 @@ export async function loadDeferredModel(
         child.receiveShadow = meshComp.receiveShadow;
       }
     });
+    meshComp.isSkinnedMesh = gltf.hasSkinnedMesh;
+    if (gltf.animations.length > 0) (scene as any).animations = gltf.animations;
     meshComp.mesh = scene;
     applyComponentUvTransform(meshComp);
   } catch (err) {

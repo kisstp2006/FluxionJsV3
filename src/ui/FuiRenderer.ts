@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiDocument, FuiIconNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiIconNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -32,9 +32,20 @@ export interface FuiCompiledNode {
   cursor?: string;
   disabled?: boolean;
   clickAnimation?: string;
+  transition?: string;
+  colors?: FuiColorBlock;
+  navigation?: string;
   hoverStyle?: Partial<FuiButtonStyle>;
   activeStyle?: Partial<FuiButtonStyle> & { scale?: number };
   disabledStyle?: Partial<FuiButtonStyle>;
+  // ── Toggle/Slider/ProgressBar/InputField shared fields ──
+  value?: number | boolean;
+  min?: number;
+  max?: number;
+  wholeNumbers?: boolean;
+  direction?: string;
+  placeholder?: string;
+  contentType?: string;
 }
 
 /** Per-node render state injected by the runtime (hover / active). */
@@ -193,7 +204,11 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       h: rect.h,
     };
 
-    const btn = node.type === 'button' ? (node as FuiButtonNode) : null;
+    const btn  = node.type === 'button'      ? (node as FuiButtonNode)      : null;
+    const tog  = node.type === 'toggle'       ? (node as FuiToggleNode)      : null;
+    const sld  = node.type === 'slider'       ? (node as FuiSliderNode)      : null;
+    const pb   = node.type === 'progressBar'  ? (node as FuiProgressBarNode) : null;
+    const inp  = node.type === 'inputField'   ? (node as FuiInputFieldNode)  : null;
     const compiled: FuiCompiledNode = {
       id: node.id,
       type: node.type,
@@ -202,17 +217,23 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       text: (node as any).text,
       src: node.type === 'icon' ? (node as FuiIconNode).src : undefined,
       children: [],
-      // Copy button extended fields
       ...(btn ? {
         icon:           btn.icon,
         tooltip:        btn.tooltip,
         cursor:         btn.cursor,
         disabled:       btn.disabled,
         clickAnimation: btn.clickAnimation,
+        transition:     btn.transition,
+        colors:         btn.colors,
+        navigation:     btn.navigation,
         hoverStyle:     btn.hoverStyle,
         activeStyle:    btn.activeStyle,
         disabledStyle:  btn.disabledStyle,
       } : {}),
+      ...(tog ? { value: tog.value, navigation: tog.navigation } : {}),
+      ...(sld ? { value: sld.value, min: sld.min, max: sld.max, wholeNumbers: sld.wholeNumbers, direction: sld.direction, navigation: sld.navigation } : {}),
+      ...(pb  ? { value: pb.value,  direction: pb.direction }  : {}),
+      ...(inp ? { placeholder: inp.placeholder, contentType: inp.contentType, navigation: inp.navigation } : {}),
     };
 
     nodeById.set(compiled.id, compiled);
@@ -307,17 +328,29 @@ export function renderCompiledFuiToCanvas(
       ctx.fillText(text, tx, ty);
       ctx.restore();
     } else if (n.type === 'button') {
-      // Resolve which style layer applies (disabled → active → hover → base)
       const st = opts?.nodeStates?.get(n.id);
       const isDisabled = n.disabled === true;
       const isActive   = !isDisabled && (st?.active === true);
       const isHover    = !isDisabled && !isActive && (st?.hover === true);
+      const isSelected = !isDisabled && !isActive && !isHover && (st as any)?.selected === true;
+
+      // Resolve colorTint block colours
+      const useTint  = (n.transition ?? 'colorTint') === 'colorTint';
+      const cb: FuiColorBlock = n.colors ?? {};
+      const tintBg =
+        isDisabled ? (cb.disabledColor  ?? undefined) :
+        isActive   ? (cb.pressedColor   ?? undefined) :
+        isSelected ? (cb.selectedColor  ?? undefined) :
+        isHover    ? (cb.highlightedColor ?? undefined) :
+        (cb.normalColor ?? undefined);
+
+      const styleOverrideBg = useTint && tintBg ? { backgroundColor: tintBg } : {};
 
       const overlay: Partial<FuiButtonStyle> =
-        isDisabled ? (n.disabledStyle ?? { opacity: 0.38 }) :
-        isActive   ? (n.activeStyle   ?? { backgroundColor: '#3a4a70', borderColor: '#a0b8ff' }) :
-        isHover    ? (n.hoverStyle    ?? { backgroundColor: '#2a3a5a', borderColor: '#8aabff' }) :
-        {};
+        isDisabled ? { ...(n.disabledStyle ?? { opacity: 0.38 }), ...styleOverrideBg } :
+        isActive   ? { ...(n.activeStyle   ?? { backgroundColor: '#3a4a70', borderColor: '#a0b8ff' }), ...styleOverrideBg } :
+        isHover    ? { ...(n.hoverStyle    ?? { backgroundColor: '#2a3a5a', borderColor: '#8aabff' }), ...styleOverrideBg } :
+        styleOverrideBg;
 
       const merged = { ...n.style, ...overlay };
       const bg          = resolveBackground(merged)  ?? '#1f2a44';
@@ -398,6 +431,141 @@ export function renderCompiledFuiToCanvas(
       ctx.fillText(text, tx, ty);
 
       ctx.restore();
+    } else if (n.type === 'toggle') {
+      const val = n.value === true;
+      const st = n.style as any ?? {};
+      const opacity = Math.min(1, Math.max(0, withDefaultNumber(st.opacity, 1)));
+      const bg          = st.backgroundColor ?? '#1a2340';
+      const borderColor = st.borderColor     ?? '#6b8cff';
+      const bw          = withDefaultNumber(st.borderWidth, 2) * Math.min(scaleX, scaleY);
+      const radius      = withDefaultNumber(st.radius, 4)      * Math.min(scaleX, scaleY);
+      const checkColor  = st.checkColor  ?? '#58c4ff';
+      const textColor   = st.textColor   ?? '#ffffff';
+      const fontSize    = withDefaultNumber(st.fontSize, 14)  * Math.min(scaleX, scaleY);
+      const boxSize     = h * 0.72;
+      const boxX        = x + 2 * scaleX;
+      const boxY        = y + (h - boxSize) / 2;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      // Box background
+      ctx.fillStyle = val ? checkColor : bg;
+      drawRoundedRect(ctx, boxX, boxY, boxSize, boxSize, radius);
+      ctx.fill();
+      ctx.strokeStyle = val ? checkColor : borderColor;
+      ctx.lineWidth   = bw;
+      ctx.stroke();
+      // Checkmark when checked
+      if (val) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth   = Math.max(1.5, 2 * Math.min(scaleX, scaleY));
+        ctx.beginPath();
+        const cx = boxX + boxSize * 0.2; const cy = boxY + boxSize * 0.5;
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(boxX + boxSize * 0.45, boxY + boxSize * 0.75);
+        ctx.lineTo(boxX + boxSize * 0.85, boxY + boxSize * 0.2);
+        ctx.stroke();
+      }
+      // Label
+      if (n.text) {
+        ctx.fillStyle = textColor;
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(n.text, boxX + boxSize + 8 * scaleX, y + h / 2);
+      }
+      ctx.restore();
+    } else if (n.type === 'slider') {
+      const val       = withDefaultNumber(n.value as number, 0);
+      const minV      = withDefaultNumber(n.min, 0);
+      const maxV      = withDefaultNumber(n.max, 1);
+      const fraction  = maxV > minV ? Math.max(0, Math.min(1, (val - minV) / (maxV - minV))) : 0;
+      const isVert    = (n.direction === 'vertical');
+      const st        = n.style as any ?? {};
+      const opacity   = Math.min(1, Math.max(0, withDefaultNumber(st.opacity, 1)));
+      const trackColor  = st.trackColor  ?? '#1a2340';
+      const fillColor   = st.fillColor   ?? '#3a6fff';
+      const handleColor = st.handleColor ?? '#ffffff';
+      const trackH      = withDefaultNumber(st.trackHeight, 6) * Math.min(scaleX, scaleY);
+      const handleSz    = withDefaultNumber(st.handleSize,  14) * Math.min(scaleX, scaleY);
+      const trackR      = trackH / 2;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      if (isVert) {
+        const tx = x + w / 2 - trackH / 2;
+        const ty = y; const th = h;
+        drawRoundedRect(ctx, tx, ty, trackH, th, trackR); ctx.fillStyle = trackColor; ctx.fill();
+        const fillH = th * fraction;
+        drawRoundedRect(ctx, tx, ty + th - fillH, trackH, fillH, trackR); ctx.fillStyle = fillColor; ctx.fill();
+        const hy = ty + th - th * fraction;
+        ctx.beginPath(); ctx.arc(tx + trackH / 2, hy, handleSz / 2, 0, Math.PI * 2);
+        ctx.fillStyle = handleColor; ctx.fill();
+      } else {
+        const ty = y + h / 2 - trackH / 2;
+        drawRoundedRect(ctx, x, ty, w, trackH, trackR); ctx.fillStyle = trackColor; ctx.fill();
+        drawRoundedRect(ctx, x, ty, w * fraction, trackH, trackR); ctx.fillStyle = fillColor; ctx.fill();
+        const hx = x + w * fraction;
+        ctx.beginPath(); ctx.arc(hx, y + h / 2, handleSz / 2, 0, Math.PI * 2);
+        ctx.fillStyle = handleColor; ctx.fill();
+      }
+      ctx.restore();
+    } else if (n.type === 'progressBar') {
+      const val     = withDefaultNumber(n.value as number, 0);
+      const fraction = Math.max(0, Math.min(1, val));
+      const isVert   = (n.direction === 'vertical');
+      const st       = n.style as any ?? {};
+      const opacity  = Math.min(1, Math.max(0, withDefaultNumber(st.opacity, 1)));
+      const trackColor = st.trackColor ?? '#1a2340';
+      const fillColor  = st.fillColor  ?? '#3a6fff';
+      const radius     = withDefaultNumber(st.radius, 4) * Math.min(scaleX, scaleY);
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      drawRoundedRect(ctx, x, y, w, h, radius); ctx.fillStyle = trackColor; ctx.fill();
+      if (isVert) {
+        const fh = h * fraction;
+        drawRoundedRect(ctx, x, y + h - fh, w, fh, radius); ctx.fillStyle = fillColor; ctx.fill();
+      } else {
+        drawRoundedRect(ctx, x, y, w * fraction, h, radius); ctx.fillStyle = fillColor; ctx.fill();
+      }
+      ctx.restore();
+    } else if (n.type === 'inputField') {
+      const st       = n.style as any ?? {};
+      const opacity  = Math.min(1, Math.max(0, withDefaultNumber(st.opacity, 1)));
+      const bg       = st.backgroundColor ?? '#111827';
+      const bc       = st.borderColor     ?? '#374151';
+      const bw       = withDefaultNumber(st.borderWidth, 1) * Math.min(scaleX, scaleY);
+      const radius   = withDefaultNumber(st.radius, 4)      * Math.min(scaleX, scaleY);
+      const textColor= st.textColor    ?? '#e5e7eb';
+      const phColor  = st.placeholderColor ?? '#6b7280';
+      const fontSize = withDefaultNumber(st.fontSize, 14)   * Math.min(scaleX, scaleY);
+      const padding  = 8 * Math.min(scaleX, scaleY);
+      const display  = n.text ? n.text : null;
+      const isPassword = n.contentType === 'password';
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = bg;
+      drawRoundedRect(ctx, x, y, w, h, radius); ctx.fill();
+      ctx.strokeStyle = bc; ctx.lineWidth = bw;
+      drawRoundedRect(ctx, x, y, w, h, radius); ctx.stroke();
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      if (display) {
+        ctx.fillStyle = textColor;
+        const shown = isPassword ? '•'.repeat(display.length) : display;
+        ctx.fillText(shown, x + padding, y + h / 2);
+      } else {
+        ctx.fillStyle = phColor;
+        ctx.fillText(n.placeholder ?? 'Enter text...', x + padding, y + h / 2);
+      }
+      // Cursor blink indicator
+      ctx.fillStyle = textColor;
+      ctx.globalAlpha = opacity * 0.5;
+      ctx.fillRect(x + padding + (display ? ctx.measureText(isPassword ? '•'.repeat(display.length) : display).width + 2 : 0), y + (h - fontSize) / 2, 1.5 * scaleX, fontSize);
+      ctx.restore();
     }
 
     else if (n.type === 'icon') {
@@ -474,6 +642,30 @@ export function hitTestFuiButtons(
     const n = compiled.drawOrder[i];
     if (n.type !== 'button') continue;
     if (!includeDisabled && n.disabled) continue; // skip disabled buttons for click events
+    const r = n.rect;
+    if (docX >= r.x && docX <= r.x + r.w && docY >= r.y && docY <= r.y + r.h) {
+      return n;
+    }
+  }
+  return null;
+}
+
+const INTERACTABLE_TYPES = new Set(['button', 'toggle', 'slider', 'inputField']);
+
+/**
+ * Hit-test all interactable node types (button, toggle, slider, inputField).
+ * Returns the topmost hit node, or null.
+ */
+export function hitTestInteractable(
+  compiled: FuiCompiled,
+  docX: number,
+  docY: number,
+  { includeDisabled = false } = {},
+): FuiCompiledNode | null {
+  for (let i = compiled.drawOrder.length - 1; i >= 0; i--) {
+    const n = compiled.drawOrder[i];
+    if (!INTERACTABLE_TYPES.has(n.type)) continue;
+    if (!includeDisabled && n.disabled) continue;
     const r = n.rect;
     if (docX >= r.x && docX <= r.x + r.w && docY >= r.y && docY <= r.y + r.h) {
       return n;

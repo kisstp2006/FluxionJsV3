@@ -33,6 +33,7 @@ import {
   EnvironmentComponent,
   CSGBrushComponent,
   FogVolumeComponent,
+  SpriteReactiveComponent,
 } from './Components';
 
 // ── Public API types ──────────────────────────────────────────────────────────
@@ -229,4 +230,5 @@ export const ComponentRegistry = new ComponentRegistryImpl();
   EnvironmentComponent,
   CSGBrushComponent,
   FogVolumeComponent,
+  SpriteReactiveComponent,
 ].forEach(ctor => ComponentRegistry.register(ctor));

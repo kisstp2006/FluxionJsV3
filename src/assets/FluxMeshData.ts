@@ -37,6 +37,10 @@ export interface FluxMeshData {
   materialSlots: FluxMeshMaterialSlot[];
   /** Uniform scale applied to the model scene at load time (from import settings) */
   importScale?: number;
+  /** Names of embedded animation clips extracted at import time */
+  animationClips?: string[];
+  /** True when the model contains at least one SkinnedMesh */
+  hasSkinnedMesh?: boolean;
 }
 
 /** Per-slot override stored on MeshRendererComponent */
@@ -50,6 +54,10 @@ export interface FluxMeshLoadResult {
   scene: THREE.Group;
   slots: FluxMeshMaterialSlot[];
   data: FluxMeshData;
+  /** Animation clips from the source model */
+  animations: THREE.AnimationClip[];
+  /** True when the source model contains at least one SkinnedMesh */
+  hasSkinnedMesh: boolean;
 }
 
 // ── Utilities ──

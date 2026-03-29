@@ -16,6 +16,10 @@ import type { FluxMeshData, FluxMeshLoadResult } from './FluxMeshData';
 /** Unified model result — all formats return { scene: THREE.Group } */
 export interface ModelResult {
   scene: THREE.Group;
+  /** Animation clips embedded in the model (FBX/GLTF). Empty for OBJ. */
+  animations: THREE.AnimationClip[];
+  /** True when the model contains at least one SkinnedMesh node. */
+  hasSkinnedMesh: boolean;
 }
 
 export type AssetType = 'texture' | 'model' | 'audio' | 'json' | 'shader' | string;
@@ -128,6 +132,13 @@ export class AssetManager {
     });
   }
 
+  /** Check whether a scene graph contains any SkinnedMesh nodes. */
+  private hasSkinnedMesh(root: THREE.Object3D): boolean {
+    let found = false;
+    root.traverse((child) => { if (child instanceof THREE.SkinnedMesh) found = true; });
+    return found;
+  }
+
   async loadModel(path: string): Promise<ModelResult> {
     const cached = this.getFromCache<ModelResult>(path);
     if (cached) return cached;
@@ -144,7 +155,11 @@ export class AssetManager {
             path,
             (group) => {
               this.enableShadows(group);
-              const result: ModelResult = { scene: group };
+              const result: ModelResult = {
+                scene: group,
+                animations: (group as any).animations ?? [],
+                hasSkinnedMesh: this.hasSkinnedMesh(group),
+              };
               this.addToCache(path, 'model', result, 0);
               this.loading.delete(path);
               resolve(result);
@@ -171,7 +186,11 @@ export class AssetManager {
             path,
             (group) => {
               this.enableShadows(group);
-              const result: ModelResult = { scene: group };
+              const result: ModelResult = {
+                scene: group,
+                animations: [],
+                hasSkinnedMesh: false,
+              };
               this.addToCache(path, 'model', result, 0);
               this.loading.delete(path);
               resolve(result);
@@ -198,7 +217,11 @@ export class AssetManager {
             path,
             (gltf) => {
               this.enableShadows(gltf.scene);
-              const result: ModelResult = { scene: gltf.scene };
+              const result: ModelResult = {
+                scene: gltf.scene,
+                animations: gltf.animations ?? [],
+                hasSkinnedMesh: this.hasSkinnedMesh(gltf.scene),
+              };
               this.addToCache(path, 'model', result, 0);
               this.loading.delete(path);
               resolve(result);
@@ -263,7 +286,13 @@ export class AssetManager {
           : s.defaultMaterial,
       }));
 
-      const result: FluxMeshLoadResult = { scene, slots: resolvedSlots, data };
+      const result: FluxMeshLoadResult = {
+        scene,
+        slots: resolvedSlots,
+        data,
+        animations: modelResult.animations,
+        hasSkinnedMesh: modelResult.hasSkinnedMesh,
+      };
       this.addToCache(path, 'mesh', result, 0);
       this.loading.delete(path);
       return result;

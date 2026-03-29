@@ -145,14 +145,11 @@ Euler = {}
 
 --- @class Transform
 --- @field position Vector3 Local position
---- @field rotation Euler Local Euler rotation
+--- @field rotation Euler Local Euler rotation (radians)
 --- @field scale Vector3 Local scale
---- @field quaternion Quaternion Local quaternion
---- @field worldPosition Vector3 World-space position (read-only)
---- @field worldRotation Quaternion World-space rotation (read-only)
---- @field localPosition Vector3 Local-space position
---- @field localRotation Euler Local-space rotation
---- @field localScale Vector3 Local-space scale
+--- @field worldPosition Vector3 World-space position (readonly)
+--- @field worldRotation Euler World-space Euler rotation (readonly)
+--- @field worldScale Vector3 World-space scale (readonly)
 --- @field parent number|nil Parent entity ID
 --- @field children number[] Child entity IDs
 Transform = {}
@@ -226,28 +223,32 @@ Component = {}
 
 `;
 
-const LUA_BEHAVIOUR = `\
+const LUA_BEHAVIOUR_HEAD = `\
 -- ── FluxionBehaviour base class ─────────────────────────────
+--
+-- Two access layers are available:
+--
+--   gameObject  (high-level) — preferred API for component access,
+--               hierarchy traversal, and scene queries.
+--               Example: local rb = self:getComponent("Rigidbody")
+--
+--   entity      (low-level)  — raw ECS entity ID (integer).
+--               Use only when a function explicitly requires a numeric ID,
+--               e.g. getComponentOf, getParent, physics force calls.
+--               gameObject wraps this same ID internally.
 
 --- @class FluxionBehaviour
---- @field entity number The entity ID this script is attached to
---- @field transform Transform Shortcut to this entity's Transform
+--- @field entity number Low-level ECS entity ID. Prefer gameObject for most operations.
+--- @field transform Transform Shortcut to this entity's Transform (high-level alias).
 --- @field Time TimeAPI
 --- @field Input InputAPI
 --- @field Physics PhysicsAPI
 --- @field Debug DebugAPI
 --- @field Scene SceneAPI
 FluxionBehaviour = {}
+`;
 
---- @param typeId string
---- @return any|nil
-function FluxionBehaviour:getComponent(typeId) return nil end
-
---- @param entityId number
---- @param typeId string
---- @return any|nil
-function FluxionBehaviour:getComponentOf(entityId, typeId) return nil end
-
+const LUA_BEHAVIOUR_TAIL = `\
 --- @param typeId string
 --- @return boolean
 function FluxionBehaviour:hasComponent(typeId) return false end
@@ -323,6 +324,45 @@ function FluxionBehaviour:onEnable() end
 function FluxionBehaviour:onDisable() end
 `;
 
+// ── Component access emitter ──────────────────────────────────
+
+function emitLuaComponentAccess(def: EngineDef): string {
+  const nonScripts = def.components.filter(c => c.category !== 'Scripts');
+
+  const aliasLines = nonScripts.map(c => `  | "${c.typeId}"`).join('\n');
+
+  const gcOverloads = nonScripts
+    .map(c => `--- @overload fun(self: FluxionBehaviour, typeId: "${c.typeId}"): ${c.typeId}|nil`)
+    .join('\n');
+
+  const gcoOverloads = nonScripts
+    .map(c => `--- @overload fun(self: FluxionBehaviour, entityId: number, typeId: "${c.typeId}"): ${c.typeId}|nil`)
+    .join('\n');
+
+  return [
+    `-- ── Component type alias ───────────────────────────────────`,
+    ``,
+    `--- @alias ComponentType`,
+    aliasLines,
+    ``,
+    ``,
+    gcOverloads,
+    `--- @param typeId ComponentType`,
+    `--- @return any|nil`,
+    `function FluxionBehaviour:getComponent(typeId) return nil end`,
+    ``,
+    `-- Low-level: takes a raw entity ID. Prefer self:getComponent() on this entity.`,
+    gcoOverloads,
+    `--- @param entityId number Raw ECS entity ID (low-level)`,
+    `--- @param typeId ComponentType`,
+    `--- @return any|nil`,
+    `function FluxionBehaviour:getComponentOf(entityId, typeId) return nil end`,
+    ``,
+  ].join('\n');
+}
+
+// ── Main export ──────────────────────────────────────────────
+
 export class LuaGenerator {
   static generate(def: EngineDef): string {
     const parts: string[] = [LUA_STATIC_HEADER];
@@ -343,7 +383,156 @@ export class LuaGenerator {
       }
     }
 
-    parts.push(LUA_BEHAVIOUR);
+    parts.push(LUA_BEHAVIOUR_HEAD);
+    parts.push(emitLuaComponentAccess(def));
+    parts.push(LUA_BEHAVIOUR_TAIL);
+    parts.push(LUA_UTIL_FUNCTIONS);
     return parts.join('\n');
   }
 }
+
+const LUA_UTIL_FUNCTIONS = `
+-- ── Pure utility functions ───────────────────────────────────
+-- Stateless functional alternatives to class methods.
+-- All functions return new values — inputs are never mutated.
+
+-- ── Constructors ─────────────────────────────────────────────
+
+--- @param x number @param y number @param z number @return Vector3
+function vec3(x, y, z) return Vector3:new(x, y, z) end
+
+--- @param x number @param y number @return Vector2
+function vec2(x, y) return { x=x, y=y } end
+
+--- Create a Color from r/g/b components in the [0, 1] range.
+--- @param r number @param g number @param b number @return Color
+function color(r, g, b) return { r=r, g=g, b=b } end
+
+--- Create a Color from a CSS hex string, e.g. "#ff8800".
+--- @param hex string @return Color
+function color_hex(hex) return { r=0, g=0, b=0 } end
+
+-- ── Vector3 ──────────────────────────────────────────────────
+
+--- @param a Vector3 @param b Vector3 @return Vector3
+function vec3_add(a, b) return vec3(a.x+b.x, a.y+b.y, a.z+b.z) end
+
+--- @param a Vector3 @param b Vector3 @return Vector3
+function vec3_sub(a, b) return vec3(a.x-b.x, a.y-b.y, a.z-b.z) end
+
+--- Multiply a Vector3 by a scalar.
+--- @param a Vector3 @param s number @return Vector3
+function vec3_mul(a, s) return vec3(a.x*s, a.y*s, a.z*s) end
+
+--- Divide a Vector3 by a scalar.
+--- @param a Vector3 @param s number @return Vector3
+function vec3_div(a, s) return vec3(a.x/s, a.y/s, a.z/s) end
+
+--- Negate a Vector3 (all components × -1).
+--- @param a Vector3 @return Vector3
+function vec3_neg(a) return vec3(-a.x, -a.y, -a.z) end
+
+--- @param a Vector3 @param b Vector3 @return number
+function vec3_dot(a, b) return a.x*b.x + a.y*b.y + a.z*b.z end
+
+--- @param a Vector3 @param b Vector3 @return Vector3
+function vec3_cross(a, b)
+  return vec3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x)
+end
+
+--- Euclidean length of a Vector3.
+--- @param a Vector3 @return number
+function vec3_length(a) return math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z) end
+
+--- Squared length — avoids a sqrt; useful for comparisons.
+--- @param a Vector3 @return number
+function vec3_length_sq(a) return a.x*a.x + a.y*a.y + a.z*a.z end
+
+--- @param a Vector3 @return Vector3
+function vec3_normalize(a)
+  local l = vec3_length(a)
+  return l > 0 and vec3_div(a, l) or vec3(0, 0, 0)
+end
+
+--- Linearly interpolate between a and b by t in [0, 1].
+--- @param a Vector3 @param b Vector3 @param t number @return Vector3
+function vec3_lerp(a, b, t)
+  return vec3(a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, a.z+(b.z-a.z)*t)
+end
+
+--- @param a Vector3 @param b Vector3 @return number
+function vec3_distance(a, b) return vec3_length(vec3_sub(a, b)) end
+
+--- Squared distance — avoids a sqrt.
+--- @param a Vector3 @param b Vector3 @return number
+function vec3_distance_sq(a, b) return vec3_length_sq(vec3_sub(a, b)) end
+
+--- Reflect a direction vector off a surface with the given outward normal.
+--- @param dir Vector3 @param normal Vector3 @return Vector3
+function vec3_reflect(dir, normal)
+  local d = 2 * vec3_dot(dir, normal)
+  return vec3_sub(dir, vec3_mul(normal, d))
+end
+
+--- Project vector a onto vector b.
+--- @param a Vector3 @param b Vector3 @return Vector3
+function vec3_project(a, b)
+  local bb = vec3_length_sq(b)
+  return bb > 0 and vec3_mul(b, vec3_dot(a, b) / bb) or vec3(0, 0, 0)
+end
+
+--- Unsigned angle in radians between two direction vectors.
+--- @param a Vector3 @param b Vector3 @return number
+function vec3_angle(a, b)
+  local d = vec3_dot(vec3_normalize(a), vec3_normalize(b))
+  return math.acos(math.max(-1, math.min(1, d)))
+end
+
+-- ── Vector2 ──────────────────────────────────────────────────
+
+--- @param a Vector2 @param b Vector2 @return Vector2
+function vec2_add(a, b) return vec2(a.x+b.x, a.y+b.y) end
+
+--- @param a Vector2 @param b Vector2 @return Vector2
+function vec2_sub(a, b) return vec2(a.x-b.x, a.y-b.y) end
+
+--- @param a Vector2 @param s number @return Vector2
+function vec2_mul(a, s) return vec2(a.x*s, a.y*s) end
+
+--- @param a Vector2 @param b Vector2 @return number
+function vec2_dot(a, b) return a.x*b.x + a.y*b.y end
+
+--- @param a Vector2 @return number
+function vec2_length(a) return math.sqrt(a.x*a.x + a.y*a.y) end
+
+--- @param a Vector2 @return Vector2
+function vec2_normalize(a)
+  local l = vec2_length(a)
+  return l > 0 and vec2_mul(a, 1/l) or vec2(0, 0)
+end
+
+--- @param a Vector2 @param b Vector2 @param t number @return Vector2
+function vec2_lerp(a, b, t) return vec2(a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t) end
+
+--- Unsigned angle in radians between two Vector2 directions.
+--- @param a Vector2 @param b Vector2 @return number
+function vec2_angle(a, b)
+  local d = vec2_dot(a, b) / (vec2_length(a) * vec2_length(b))
+  return math.acos(math.max(-1, math.min(1, d)))
+end
+
+-- ── Color ─────────────────────────────────────────────────────
+
+--- @param a Color @param b Color @param t number @return Color
+function color_lerp(a, b, t)
+  return color(a.r+(b.r-a.r)*t, a.g+(b.g-a.g)*t, a.b+(b.b-a.b)*t)
+end
+
+--- Scale all color components by a scalar.
+--- @param c Color @param s number @return Color
+function color_mul(c, s) return color(c.r*s, c.g*s, c.b*s) end
+
+--- Add two colors component-wise.
+--- @param a Color @param b Color @return Color
+function color_add(a, b) return color(a.r+b.r, a.g+b.g, a.b+b.b) end
+`;

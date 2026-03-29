@@ -19,6 +19,21 @@ const JS_SHARED_TYPES = `\
 /** @typedef {{ x: number, y: number, z: number, order: string }} Euler */
 /** @typedef {{ x: number, y: number, z: number, w: number }} Quaternion */
 /** @typedef {{ r: number, g: number, b: number }} Color */
+
+// ── Engine types ─────────────────────────────────────────────────────────────
+
+/**
+ * Local and world-space transform of an entity.
+ * @typedef {Object} Transform
+ * @property {Vector3} position Local position
+ * @property {Euler}   rotation Local Euler rotation (radians)
+ * @property {Vector3} scale    Local scale
+ * @property {Vector3} worldPosition World-space position — do not assign
+ * @property {Euler}   worldRotation World-space Euler rotation — do not assign
+ * @property {Vector3} worldScale    World-space scale — do not assign
+ * @property {number|null} parent    Parent entity ID, or null if root
+ * @property {number[]}    children  Child entity IDs
+ */
 `;
 
 function _primitiveJsType(t: string): string {
@@ -121,6 +136,19 @@ const JS_RUNTIME = `\
 /**
  * Base class for all FluxionJS user scripts (JavaScript version).
  *
+ * ## High-level vs Low-level API
+ *
+ * FluxionJS exposes two access layers:
+ *
+ *   - **\`gameObject\`** — high-level wrapper. Preferred for component access,
+ *     hierarchy traversal, and scene queries. Example:
+ *       \`const rb = this.gameObject.getComponent('Rigidbody');\`
+ *
+ *   - **\`entity\`** — low-level raw ECS entity ID (a number). Use only when
+ *     calling APIs that explicitly require an ID, such as \`getComponentOf\`,
+ *     physics force functions, or \`getParent\`. Internally, \`gameObject\`
+ *     wraps this same ID.
+ *
  * Usage:
  *   const { FluxionBehaviour } = require('./fluxion');
  *   module.exports = class MyScript extends FluxionBehaviour {
@@ -130,8 +158,23 @@ const JS_RUNTIME = `\
  */
 class FluxionBehaviour {
   constructor() {
-    /** @type {number} The entity ID this script is attached to. */
+    /**
+     * Low-level ECS entity ID for this script's entity.
+     * Prefer {@link gameObject} for most operations.
+     * @type {number}
+     */
     this.entity = 0;
+    /**
+     * High-level entity wrapper — the preferred scripting API.
+     * Use for component access, parent/children traversal, and find queries.
+     * @type {any}
+     */
+    this.gameObject = null;
+    /**
+     * Shortcut to this entity's Transform component.
+     * @type {Transform}
+     */
+    this.transform = null;
     /** @internal */ this._ecs = null;
     /** @internal */ this._engine = null;
     /** @internal */ this._input = null;
@@ -141,6 +184,29 @@ class FluxionBehaviour {
     /** @internal */ this._coroutines = new Map();
     /** @internal */ this._started = false;
   }
+
+  // ── Component access ─────────────────────────────────────────────────────
+  // Prefer this.gameObject.getComponent() for high-level access.
+  // getComponentOf() is low-level: it takes a raw entity ID.
+
+  /**
+   * Get a component on **this** entity by type ID.
+   * Equivalent to \`this.gameObject.getComponent(typeId)\`.
+   * @template {keyof ComponentMap} K
+   * @param {K} typeId
+   * @returns {ComponentMap[K] | null}
+   */
+  getComponent(typeId) { return null; }
+
+  /**
+   * Get a component on **another** entity by its raw ECS entity ID.
+   * Low-level — prefer obtaining the target's \`gameObject\` when possible.
+   * @template {keyof ComponentMap} K
+   * @param {number} entityId  Raw ECS entity ID
+   * @param {K} typeId
+   * @returns {ComponentMap[K] | null}
+   */
+  getComponentOf(entityId, typeId) { return null; }
 
   // Lifecycle stubs — override in subclass
   start() {}
@@ -155,9 +221,182 @@ class FluxionBehaviour {
 module.exports = { FluxionBehaviour };
 `;
 
+const JS_UTIL_FUNCTIONS = `
+// ── Pure utility functions ────────────────────────────────────────────────────
+// Stateless functional alternatives to class methods.
+// All functions return new values — inputs are never mutated.
+
+// ── Constructors ─────────────────────────────────────────────────────────────
+
+/**
+ * Create a Vector3.
+ * @param {number} x @param {number} y @param {number} z
+ * @returns {Vector3}
+ */
+function vec3(x, y, z) { return { x, y, z }; }
+
+/**
+ * Create a Vector2.
+ * @param {number} x @param {number} y
+ * @returns {Vector2}
+ */
+function vec2(x, y) { return { x, y }; }
+
+/**
+ * Create a Color from r/g/b components in the [0, 1] range.
+ * @param {number} r @param {number} g @param {number} b
+ * @returns {Color}
+ */
+function color(r, g, b) { return { r, g, b }; }
+
+/**
+ * Create a Color from a CSS hex string, e.g. \`"#ff8800"\`.
+ * @param {string} hex
+ * @returns {Color}
+ */
+function color_hex(hex) { return { r: 0, g: 0, b: 0 }; }
+
+// ── Vector3 ───────────────────────────────────────────────────────────────────
+
+/** @param {Vector3} a @param {Vector3} b @returns {Vector3} */
+function vec3_add(a, b) { return { x: a.x+b.x, y: a.y+b.y, z: a.z+b.z }; }
+
+/** @param {Vector3} a @param {Vector3} b @returns {Vector3} */
+function vec3_sub(a, b) { return { x: a.x-b.x, y: a.y-b.y, z: a.z-b.z }; }
+
+/**
+ * Multiply a Vector3 by a scalar.
+ * @param {Vector3} a @param {number} s @returns {Vector3}
+ */
+function vec3_mul(a, s) { return { x: a.x*s, y: a.y*s, z: a.z*s }; }
+
+/**
+ * Divide a Vector3 by a scalar.
+ * @param {Vector3} a @param {number} s @returns {Vector3}
+ */
+function vec3_div(a, s) { return { x: a.x/s, y: a.y/s, z: a.z/s }; }
+
+/** Negate a Vector3 (all components × −1). @param {Vector3} a @returns {Vector3} */
+function vec3_neg(a) { return { x: -a.x, y: -a.y, z: -a.z }; }
+
+/** @param {Vector3} a @param {Vector3} b @returns {number} */
+function vec3_dot(a, b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+
+/** @param {Vector3} a @param {Vector3} b @returns {Vector3} */
+function vec3_cross(a, b) {
+  return { x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x };
+}
+
+/** Euclidean length of a Vector3. @param {Vector3} a @returns {number} */
+function vec3_length(a) { return Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z); }
+
+/** Squared length — avoids a sqrt. @param {Vector3} a @returns {number} */
+function vec3_length_sq(a) { return a.x*a.x + a.y*a.y + a.z*a.z; }
+
+/** @param {Vector3} a @returns {Vector3} */
+function vec3_normalize(a) { const l = vec3_length(a); return l > 0 ? vec3_div(a, l) : vec3(0,0,0); }
+
+/**
+ * Linearly interpolate between a and b by t ∈ [0, 1].
+ * @param {Vector3} a @param {Vector3} b @param {number} t @returns {Vector3}
+ */
+function vec3_lerp(a, b, t) { return { x: a.x+(b.x-a.x)*t, y: a.y+(b.y-a.y)*t, z: a.z+(b.z-a.z)*t }; }
+
+/** @param {Vector3} a @param {Vector3} b @returns {number} */
+function vec3_distance(a, b) { return vec3_length(vec3_sub(a, b)); }
+
+/** Squared distance — avoids a sqrt. @param {Vector3} a @param {Vector3} b @returns {number} */
+function vec3_distance_sq(a, b) { return vec3_length_sq(vec3_sub(a, b)); }
+
+/**
+ * Reflect a direction vector off a surface with the given outward normal.
+ * @param {Vector3} dir @param {Vector3} normal @returns {Vector3}
+ */
+function vec3_reflect(dir, normal) {
+  const d = 2 * vec3_dot(dir, normal);
+  return vec3_sub(dir, vec3_mul(normal, d));
+}
+
+/**
+ * Project vector a onto vector b (component of a along b).
+ * @param {Vector3} a @param {Vector3} b @returns {Vector3}
+ */
+function vec3_project(a, b) {
+  const bb = vec3_length_sq(b);
+  return bb > 0 ? vec3_mul(b, vec3_dot(a, b) / bb) : vec3(0,0,0);
+}
+
+/**
+ * Unsigned angle in radians between two direction vectors.
+ * @param {Vector3} a @param {Vector3} b @returns {number}
+ */
+function vec3_angle(a, b) {
+  const d = vec3_dot(vec3_normalize(a), vec3_normalize(b));
+  return Math.acos(Math.max(-1, Math.min(1, d)));
+}
+
+// ── Vector2 ───────────────────────────────────────────────────────────────────
+
+/** @param {Vector2} a @param {Vector2} b @returns {Vector2} */
+function vec2_add(a, b) { return { x: a.x+b.x, y: a.y+b.y }; }
+
+/** @param {Vector2} a @param {Vector2} b @returns {Vector2} */
+function vec2_sub(a, b) { return { x: a.x-b.x, y: a.y-b.y }; }
+
+/** @param {Vector2} a @param {number} s @returns {Vector2} */
+function vec2_mul(a, s) { return { x: a.x*s, y: a.y*s }; }
+
+/** @param {Vector2} a @param {Vector2} b @returns {number} */
+function vec2_dot(a, b) { return a.x*b.x + a.y*b.y; }
+
+/** @param {Vector2} a @returns {number} */
+function vec2_length(a) { return Math.sqrt(a.x*a.x + a.y*a.y); }
+
+/** @param {Vector2} a @returns {Vector2} */
+function vec2_normalize(a) { const l = vec2_length(a); return l > 0 ? vec2_mul(a, 1/l) : vec2(0,0); }
+
+/** @param {Vector2} a @param {Vector2} b @param {number} t @returns {Vector2} */
+function vec2_lerp(a, b, t) { return { x: a.x+(b.x-a.x)*t, y: a.y+(b.y-a.y)*t }; }
+
+/** Unsigned angle in radians between two Vector2 directions. @param {Vector2} a @param {Vector2} b @returns {number} */
+function vec2_angle(a, b) {
+  const d = vec2_dot(a, b) / (vec2_length(a) * vec2_length(b) || 1);
+  return Math.acos(Math.max(-1, Math.min(1, d)));
+}
+
+// ── Color ─────────────────────────────────────────────────────────────────────
+
+/** @param {Color} a @param {Color} b @param {number} t @returns {Color} */
+function color_lerp(a, b, t) { return { r: a.r+(b.r-a.r)*t, g: a.g+(b.g-a.g)*t, b: a.b+(b.b-a.b)*t }; }
+
+/** Scale all color components by a scalar. @param {Color} c @param {number} s @returns {Color} */
+function color_mul(c, s) { return { r: c.r*s, g: c.g*s, b: c.b*s }; }
+
+/** Add two colors component-wise. @param {Color} a @param {Color} b @returns {Color} */
+function color_add(a, b) { return { r: a.r+b.r, g: a.g+b.g, b: a.b+b.b }; }
+`;
+
+function emitJsComponentMap(def: EngineDef): string {
+  const lines: string[] = [
+    `// ── Component map ───────────────────────────────────────────────────────────`,
+    `/**`,
+    ` * Maps every component type ID to its typedef.`,
+    ` * Enables typed getComponent calls:`,
+    ` *   const rb = this.getComponent('Rigidbody'); // → Rigidbody | null`,
+    ` * @typedef {Object} ComponentMap`,
+  ];
+  for (const c of def.components) {
+    if (c.category === 'Scripts') continue;
+    lines.push(` * @property {${c.typeId}} ${c.typeId}`);
+  }
+  lines.push(` */`);
+  return lines.join('\n');
+}
+
 export class JavaScriptGenerator {
   static generate(def: EngineDef): string {
     const typedefs = def.components.map(emitTypedef).join('\n\n');
-    return `${JS_SHARED_TYPES}\n${typedefs}\n\n${JS_RUNTIME}`;
+    const componentMap = emitJsComponentMap(def);
+    return `${JS_SHARED_TYPES}\n${typedefs}\n\n${componentMap}\n\n${JS_RUNTIME}\n${JS_UTIL_FUNCTIONS}`;
   }
 }

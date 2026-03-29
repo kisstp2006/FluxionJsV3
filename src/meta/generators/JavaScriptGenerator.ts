@@ -37,6 +37,7 @@ function fieldToJsDocType(f: FieldDef): string {
       return 'string';
     case 'asset':    return 'string|null';
     case 'array':
+      if (f.tupleTypes?.length) return `[${f.tupleTypes.map(_primitiveJsType).join(', ')}]`;
       return f.itemType ? `${_primitiveJsType(f.itemType)}[]` : 'Array';
     case 'union':
       return f.unionTypes?.length
@@ -86,6 +87,7 @@ function emitTypedef(c: ComponentDef): string {
     const jsType = fieldToJsDocType(f);
     const label  = f.label !== f.key ? f.label : f.key;
     const fieldDesc = f.description ? ` — ${f.description}` : '';
+    if (f.readOnly) lines.push(` * @readonly`);
     lines.push(` * @property {${jsType}} ${f.optional ? `[${f.key}]` : f.key} ${label}${fieldDesc}`);
   }
   lines.push(` */`);

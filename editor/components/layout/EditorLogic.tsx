@@ -717,10 +717,8 @@ export const AssetHotReload: React.FC = () => {
       try {
         const { MetaRegistry } = await import('../../../src/meta/MetaRegistry');
         const { ApiEmitter }   = await import('../../../src/meta/ApiEmitter');
-        const { pathJoin }     = await import('../../../src/filesystem/FileSystem');
         if (projectManager.projectDir) {
-          const scriptsDir = pathJoin(projectManager.projectDir, 'Assets', 'Scripts');
-          await MetaRegistry.registerApi(scriptsDir);
+          await MetaRegistry.refreshScriptFile(changedPath);
           await ApiEmitter.emit(projectManager.projectDir);
         }
       } catch { /* non-fatal — IDE files are best-effort */ }
@@ -761,9 +759,23 @@ export const AssetHotReload: React.FC = () => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.path) return;
       const { path, assetType, eventType } = detail as { path: string; assetType: string; eventType: string };
-      // Skip delete events — no point reloading a deleted asset
-      if (eventType === 'delete') return;
       if (isDuplicate(path)) return;
+
+      // Handle script deletions: remove type info from MetaRegistry
+      if (eventType === 'delete') {
+        if (assetType === 'script') {
+          try {
+            const { MetaRegistry } = await import('../../../src/meta/MetaRegistry');
+            const { ApiEmitter }   = await import('../../../src/meta/ApiEmitter');
+            const { projectManager } = await import('../../../src/project/ProjectManager');
+            MetaRegistry.removeScriptFile(path);
+            if (projectManager.projectDir) {
+              await ApiEmitter.emit(projectManager.projectDir);
+            }
+          } catch { /* non-fatal */ }
+        }
+        return;
+      }
 
       switch (assetType) {
         case 'material':

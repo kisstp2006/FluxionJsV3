@@ -38,6 +38,7 @@ function fieldToLuaType(f: FieldDef): string {
       return 'string';
     case 'asset':    return 'string|nil';
     case 'array':
+      if (f.tupleTypes?.length) return 'table';
       return f.itemType ? `${_primitiveLuaType(f.itemType)}[]` : 'table';
     case 'union':
       return f.unionTypes?.length
@@ -66,7 +67,8 @@ function emitComponentLua(c: ComponentDef): string {
     const opt     = f.optional ? '?' : '';
     const label   = f.label !== f.key ? f.label : f.key;
     const fieldDesc = f.description ? ` — ${f.description}` : '';
-    lines.push(`--- @field ${f.key}${opt} ${luaType} ${label}${fieldDesc}`);
+    const rdOnly  = f.readOnly ? ' (readonly)' : '';
+    lines.push(`--- @field ${f.key}${opt} ${luaType} ${label}${rdOnly}${fieldDesc}`);
   }
   lines.push(`${className} = {}`);
   lines.push('');

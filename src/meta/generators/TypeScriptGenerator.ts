@@ -46,6 +46,9 @@ function fieldToTsType(f: FieldDef): string {
     case 'asset':
       return 'string | null';
     case 'array':
+      if (f.tupleTypes?.length) {
+        return `[${f.tupleTypes.map(_primitiveToTsType).join(', ')}]`;
+      }
       return f.itemType ? `${_primitiveToTsType(f.itemType)}[]` : 'unknown[]';
     case 'union':
       return f.unionTypes?.length
@@ -59,6 +62,7 @@ function fieldToTsType(f: FieldDef): string {
 function emitField(f: FieldDef, indent = '    '): string {
   const tsType = fieldToTsType(f);
   const opt    = f.optional ? '?' : '';
+  const rdOnly = f.readOnly ? 'readonly ' : '';
   const range  = f.min !== undefined && f.max !== undefined
     ? `range ${f.min}–${f.max}`
     : f.min !== undefined ? `min ${f.min}`
@@ -66,7 +70,7 @@ function emitField(f: FieldDef, indent = '    '): string {
   const parts = [f.label !== f.key ? f.label : '', range, f.description].filter(Boolean);
   const doc = parts.join(', ');
   const comment = doc ? `${indent}/** ${doc} */\n` : '';
-  return `${comment}${indent}${f.key}${opt}: ${tsType};`;
+  return `${comment}${indent}${rdOnly}${f.key}${opt}: ${tsType};`;
 }
 
 function emitComponent(c: ComponentDef): string {

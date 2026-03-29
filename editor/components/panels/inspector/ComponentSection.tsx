@@ -140,6 +140,23 @@ export const ComponentSection: React.FC<ComponentSectionProps> = ({
           })}
         </div>
       )}
+      {reg?.meta.deprecated && (
+        <div style={{
+          margin: '6px 8px 2px',
+          padding: '5px 8px',
+          background: 'rgba(255, 200, 0, 0.08)',
+          border: '1px solid rgba(255, 200, 0, 0.35)',
+          borderRadius: '4px',
+          fontSize: '11px',
+          color: 'var(--accent-yellow)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+        }}>
+          <span style={{ fontWeight: 700 }}>!</span>
+          <span><strong>{displayName}</strong> is deprecated and may be removed in a future version.</span>
+        </div>
+      )}
       {children}
     </Section>
   );

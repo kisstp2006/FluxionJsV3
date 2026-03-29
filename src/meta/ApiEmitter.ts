@@ -15,6 +15,7 @@ import { MetaRegistry } from './MetaRegistry';
 import { TypeScriptGenerator } from './generators/TypeScriptGenerator';
 import { JavaScriptGenerator } from './generators/JavaScriptGenerator';
 import { LuaGenerator } from './generators/LuaGenerator';
+import { RegistryReporter } from './RegistryReporter';
 
 /** VS Code jsconfig.json placed in the api output directory. */
 const JSCONFIG = JSON.stringify(
@@ -72,13 +73,23 @@ export class ApiEmitter {
     const js   = JavaScriptGenerator.generate(def);
     const lua  = LuaGenerator.generate(def);
 
-    await Promise.all([
+    const report = RegistryReporter.generate(def, MetaRegistry.getLastBuildWarnings());
+
+    const writes: Promise<void>[] = [
       fs.writeFile(pathJoin(outDir, 'fluxion.d.ts'), dts),
       fs.writeFile(pathJoin(outDir, 'fluxion.js'),   js),
       fs.writeFile(pathJoin(outDir, 'fluxion.lua'),  lua),
       fs.writeFile(pathJoin(outDir, 'jsconfig.json'), JSCONFIG),
       fs.writeFile(pathJoin(outDir, '.luarc.json'),   LUARC),
-    ]);
+      fs.writeFile(
+        pathJoin(outDir, 'registry-report.json'),
+        JSON.stringify(report, null, 2),
+      ).catch(e => {
+        DebugConsole.LogWarning(`[ApiEmitter] Could not write registry-report.json: ${e}`);
+      }),
+    ];
+
+    await Promise.all(writes);
 
     DebugConsole.Log(
       `[ApiEmitter] Generated API: ${def.components.length} components → ${outDir}`,

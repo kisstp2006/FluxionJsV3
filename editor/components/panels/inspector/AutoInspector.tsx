@@ -6,14 +6,16 @@
 //
 // Supported field types:
 //   number, slider, boolean, string, select, color,
-//   vector3 (+ uniformScale), vector2, euler, asset
+//   vector3 (+ uniformScale), vector2, euler, asset,
+//   array (editable list), union (type picker)
 //
 // Extra features:
-//   · group  — fields with the same group key render inside a
-//              collapsible sub-Section
-//   · visibleIf — field shown only when predicate returns true
+//   · group       — fields with the same group key render inside a
+//                   collapsible sub-Section
+//   · visibleIf   — field shown only when predicate returns true
+//   · description — hover tooltip on the field label (shows ⓘ icon)
 //   · diff-based memo — AutoProperty skips re-render when the
-//              field key is not present in comp.__dirtyProps
+//                   field key is not present in comp.__dirtyProps
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
@@ -35,6 +37,144 @@ import { setProperty, setColorProperty, markComponentDirty } from '../../../core
 const RAD2DEG = 180 / Math.PI;
 const DEG2RAD = Math.PI / 180;
 
+// ── Default value factory ──────────────────────────────────────────────────────
+
+function _defaultValueForType(type?: string): unknown {
+  switch (type) {
+    case 'number': case 'slider': return 0;
+    case 'boolean': return false;
+    case 'string': return '';
+    case 'vector3': case 'euler': return new THREE.Vector3();
+    case 'vector2': return new THREE.Vector2();
+    case 'color': return new THREE.Color(1, 1, 1);
+    default: return null;
+  }
+}
+
+// ── Label with optional description tooltip ───────────────────────────────────
+
+function _fieldLabel(field: FieldMeta): React.ReactNode {
+  const text = field.label || field.key;
+  if (!field.description) return text;
+  return (
+    <span title={field.description} style={{ cursor: 'help' }}>
+      {text} <span style={{ fontSize: '10px', opacity: 0.6 }}>ⓘ</span>
+    </span>
+  );
+}
+
+// ── Per-element row inside an array field ─────────────────────────────────────
+
+interface ArrayItemRowProps {
+  index: number;
+  arr: unknown[];
+  itemType?: string;
+  comp: BaseComponent;
+  fieldKey: string;
+  onUpdate: () => void;
+}
+
+const ArrayItemRow: React.FC<ArrayItemRowProps> = ({ index, arr, itemType, comp, fieldKey, onUpdate }) => {
+  const value = arr[index];
+
+  const commit = (newVal: unknown) => {
+    arr[index] = newVal;
+    markComponentDirty(comp, fieldKey);
+    onUpdate();
+  };
+
+  const removeItem = () => {
+    arr.splice(index, 1);
+    markComponentDirty(comp, fieldKey);
+    onUpdate();
+  };
+
+  const rowLabel = (
+    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+      [{index}]
+    </span>
+  );
+
+  let widget: React.ReactNode = null;
+  switch (itemType) {
+    case 'number': case 'slider':
+      widget = (
+        <NumberInput
+          value={typeof value === 'number' ? value : 0}
+          onChange={commit}
+        />
+      );
+      break;
+    case 'boolean':
+      widget = (
+        <Checkbox
+          checked={!!value}
+          onChange={commit}
+        />
+      );
+      break;
+    case 'string':
+      widget = (
+        <TextInput
+          value={typeof value === 'string' ? value : ''}
+          onChange={commit}
+        />
+      );
+      break;
+    case 'vector3': case 'euler': {
+      const v3 = (value instanceof THREE.Vector3 || value instanceof THREE.Euler)
+        ? value
+        : new THREE.Vector3();
+      widget = (
+        <Vector3Input
+          value={v3 as any}
+          onChange={(axis, val) => { (v3 as any)[axis] = val; commit(v3); }}
+        />
+      );
+      break;
+    }
+    case 'vector2': {
+      const v2 = value instanceof THREE.Vector2 ? value : new THREE.Vector2();
+      widget = (
+        <Vector2Input
+          value={v2}
+          onChange={(axis, val) => { (v2 as any)[axis] = val; commit(v2); }}
+        />
+      );
+      break;
+    }
+    case 'color': {
+      const col = value instanceof THREE.Color ? value : new THREE.Color(1, 1, 1);
+      widget = (
+        <ColorInput
+          value={`#${col.getHexString()}`}
+          onChange={(hex) => { col.set(hex); commit(col); }}
+        />
+      );
+      break;
+    }
+    default:
+      widget = <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{String(value ?? '')}</span>;
+  }
+
+  return (
+    <PropertyRow label={rowLabel}>
+      <div style={{ display: 'flex', gap: '4px', flex: 1, alignItems: 'center' }}>
+        <div style={{ flex: 1 }}>{widget}</div>
+        <button
+          onClick={removeItem}
+          title="Remove element"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1,
+            padding: '0 2px', flexShrink: 0,
+          }}
+        >×</button>
+      </div>
+    </PropertyRow>
+  );
+};
+
 // ── Single field renderer ─────────────────────────────────────────────────────
 
 interface AutoPropertyProps {
@@ -48,8 +188,12 @@ interface AutoPropertyProps {
 const AutoProperty = React.memo<AutoPropertyProps>(
   ({ comp, field, onUpdate }) => {
     const value = (comp as any)[field.key];
-    const label = field.label || field.key;
+    const label = _fieldLabel(field);
     const [uniformLocked, setUniformLocked] = useState(false);
+    const [arrayOpen, setArrayOpen] = useState(true);
+    const [activeUnionType, setActiveUnionType] = useState<string>(
+      field.unionTypes?.[0] ?? 'string',
+    );
 
     switch (field.type) {
       case 'number':
@@ -226,6 +370,84 @@ const AutoProperty = React.memo<AutoPropertyProps>(
               onChange={(v) => { setProperty(undoManager, comp, field.key, v || null); onUpdate(); }}
             />
           </PropertyRow>
+        );
+      }
+
+      case 'array': {
+        const arr: unknown[] = Array.isArray(value) ? value : [];
+        // Ensure the component property always holds the array reference
+        if (!Array.isArray((comp as any)[field.key])) {
+          (comp as any)[field.key] = arr;
+        }
+        return (
+          <div>
+            <PropertyRow label={label}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '11px', flex: 1 }}>
+                  {field.itemType ?? 'any'} × {arr.length}
+                </span>
+                <button
+                  onClick={() => setArrayOpen(o => !o)}
+                  title={arrayOpen ? 'Collapse' : 'Expand'}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-muted)', fontSize: '11px', padding: '0 3px',
+                  }}
+                >
+                  {arrayOpen ? '▾' : '▸'}
+                </button>
+                <button
+                  onClick={() => {
+                    arr.push(_defaultValueForType(field.itemType));
+                    markComponentDirty(comp, field.key);
+                    onUpdate();
+                  }}
+                  title="Add element"
+                  style={{
+                    background: 'none', border: '1px solid var(--border)',
+                    borderRadius: '3px', cursor: 'pointer',
+                    color: 'var(--text-muted)', fontSize: '12px',
+                    padding: '0 5px', lineHeight: '16px',
+                  }}
+                >+</button>
+              </div>
+            </PropertyRow>
+            {arrayOpen && arr.map((_, i) => (
+              <ArrayItemRow
+                key={i}
+                index={i}
+                arr={arr}
+                itemType={field.itemType}
+                comp={comp}
+                fieldKey={field.key}
+                onUpdate={onUpdate}
+              />
+            ))}
+          </div>
+        );
+      }
+
+      case 'union': {
+        const types = field.unionTypes ?? [];
+        if (types.length === 0) return null;
+        // Build a synthetic FieldMeta for the active type's widget
+        const syntheticField: FieldMeta = {
+          ...field,
+          type: activeUnionType as any,
+          label: '',
+          key: field.key,
+        };
+        return (
+          <div>
+            <PropertyRow label={label}>
+              <Select
+                value={activeUnionType}
+                options={types.map(t => ({ value: t, label: t }))}
+                onChange={t => setActiveUnionType(t)}
+              />
+            </PropertyRow>
+            <AutoProperty comp={comp} field={syntheticField} onUpdate={onUpdate} _rev={0} />
+          </div>
         );
       }
 

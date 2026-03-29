@@ -66,8 +66,6 @@ export interface FieldMeta {
   itemType?: string;
   /** For type:'union' — the possible field types */
   unionTypes?: string[];
-  /** True for readonly arrays/tuples — emits readonly keyword in TypeScript */
-  readOnly?: boolean;
   /** For tuple types [T, U, V] — the ordered element types */
   tupleTypes?: string[];
 }

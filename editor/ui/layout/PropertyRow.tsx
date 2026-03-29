@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface PropertyRowProps {
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
   labelWidth?: number;
 }

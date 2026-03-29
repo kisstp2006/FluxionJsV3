@@ -168,7 +168,7 @@ export class FluxionRenderer {
     // Idempotent: remove previous object if one already exists for this entity
     const prev = this.entityToObject.get(entity);
     if (prev) {
-      this.scene.remove(prev);
+      prev.removeFromParent(); // works even when prev is parented to another Object3D, not scene root
       this.objectToEntity.delete(prev);
     }
     this.scene.add(obj);
@@ -179,7 +179,7 @@ export class FluxionRenderer {
   removeObject(entity: EntityId): void {
     const obj = this.entityToObject.get(entity);
     if (obj) {
-      this.scene.remove(obj);
+      obj.removeFromParent(); // works even when obj is parented to another Object3D, not scene root
       this.entityToObject.delete(entity);
       this.objectToEntity.delete(obj);
     }
@@ -188,7 +188,7 @@ export class FluxionRenderer {
   /** Remove all tracked objects from the Three.js scene. Called on scene switch. */
   clearSceneObjects(): void {
     for (const [, obj] of this.entityToObject) {
-      this.scene.remove(obj);
+      obj.removeFromParent(); // works even when obj is parented to another Object3D, not scene root
     }
     this.entityToObject.clear();
     this.objectToEntity.clear();
@@ -989,9 +989,10 @@ class CameraSystem implements System {
         camComp.camera.updateProjectionMatrix();
       }
 
-      // Sync transform
-      camComp.camera.position.copy(transform.position);
-      camComp.camera.quaternion.copy(transform.quaternion);
+      // Sync transform — use world-space values because the THREE.js camera
+      // is NOT in the scene hierarchy, so local != world for child entities.
+      camComp.camera.position.copy(transform.worldPosition);
+      camComp.camera.quaternion.copy(transform.worldRotation);
 
       if (isDirty(camComp)) clearDirty(camComp);
 

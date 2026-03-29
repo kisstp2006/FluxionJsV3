@@ -23,6 +23,7 @@ import { CSGSystem } from '../../src/csg/CSGSystem';
 import { ScriptSystem } from '../../src/scripting/ScriptSystem';
 import { LuaScriptSystem } from '../../src/scripting/LuaScriptSystem';
 import { DebugDraw } from '../../src/renderer/DebugDraw';
+import { PhysicsGizmoSystem } from '../../src/physics/PhysicsGizmoSystem';
 import { setPlatformBridge } from '../../src/platform/PlatformBridge';
 import { registerSnapshotHelpers } from './UndoService';
 import { snapshotEntitySubtree, restoreEntitySubtree } from '../../src/project/SceneSerializer';
@@ -106,6 +107,9 @@ export async function initEditorEngine(
   // Script Systems (LuaScriptSystem runs at priority 99, ScriptSystem at 100)
   engine.ecs.addSystem(new LuaScriptSystem(engine, input, renderer, audio));
   engine.ecs.addSystem(new ScriptSystem(engine, input, renderer, audio));
+
+  // Editor-only: draws collider/rigidbody/CC wireframes when simulation is paused
+  engine.ecs.addSystem(new PhysicsGizmoSystem(engine));
 
   // Wire soft-particle depth texture + camera after PP pipeline exists
   const depthTex = renderer.postProcessing.getSceneDepthTexture();

@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import {
   Section, PropertyRow,
   NumberInput, Slider, Checkbox, Select, ColorInput,
-  Vector3Input, Vector2Input, TextInput, AssetInput,
+  Vector3Input, Vector2Input, TextInput, AssetInput, Icons,
 } from '../../../ui';
 import { ComponentSection } from './ComponentSection';
 import { useEngine } from '../../../core/EditorContext';
@@ -676,7 +676,7 @@ const AutoProperty = React.memo<AutoPropertyProps>(
                     flexShrink: 0,
                   }}
                 >
-                  {uniformLocked ? '🔒' : '🔓'}
+                  {uniformLocked ? Icons.lock : Icons.unlock}
                 </button>
               </div>
             </PropertyRow>

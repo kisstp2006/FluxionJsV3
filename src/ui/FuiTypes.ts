@@ -8,6 +8,7 @@ export type FuiAnchor =
 
 /** How the UI canvas scales relative to the actual screen in screen-space mode. */
 export type FuiScaleMode = 'constantPixelSize' | 'scaleWithScreenSize';
+
 export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 
 /** How a button visually responds to interaction. */

@@ -6,9 +6,9 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, Select, Slider } from '../../ui';
+import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, Select, Slider, Icons } from '../../ui';
 import { getFileSystem } from '../../../src/filesystem';
-import type { FuiDocument, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty } from '../../../src/ui/FuiTypes';
+import type { FuiDocument, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty, FuiAnchor, FuiScaleMode } from '../../../src/ui/FuiTypes';
 import { parseFuiJson } from '../../../src/ui/FuiParser';
 import { compileFui, renderFuiToCanvas } from '../../../src/ui/FuiRenderer';
 import { applyAnimation } from '../../../src/ui/FuiAnimator';
@@ -20,6 +20,17 @@ import { applyAnimation } from '../../../src/ui/FuiAnimator';
 type SelectedNode = { node: FuiNode; path: number[] } | null;
 type AddNodeType = 'panel' | 'label' | 'button' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 type AlignType = 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom';
+
+const ANCHOR_GRID: FuiAnchor[][] = [
+  ['topLeft',    'top',    'topRight'],
+  ['left',       'center', 'right'],
+  ['bottomLeft', 'bottom', 'bottomRight'],
+];
+const ANCHOR_ICONS: Record<FuiAnchor, string> = {
+  topLeft: '↖', top: '↑', topRight: '↗',
+  left: '←', center: '·', right: '→',
+  bottomLeft: '↙', bottom: '↓', bottomRight: '↘',
+};
 
 const ANIMATABLE_PROP_OPTIONS: { value: FuiAnimatableProperty; label: string }[] = [
   { value: 'x', label: 'X' }, { value: 'y', label: 'Y' },
@@ -483,7 +494,15 @@ const InteractiveCanvas: React.FC<{
 // Node Tree Item
 // ═══════════════════════════════════════════
 
-const NODE_ICONS: Record<string, string> = { panel: '□', label: 'T', button: '⬡', toggle: '☑', slider: '⇔', progressBar: '▬', inputField: '▭' };
+const NODE_ICONS: Record<string, React.ReactElement> = {
+  panel:       Icons.layout,
+  label:       Icons.typeText,
+  button:      Icons.plane,
+  toggle:      Icons.toggleLeft,
+  slider:      Icons.sliders,
+  progressBar: Icons.barChart,
+  inputField:  Icons.typeText,
+};
 
 const NodeTreeItem: React.FC<{
   node: FuiNode; depth: number; path: number[]; isSelected: boolean; onClick: () => void;
@@ -497,7 +516,7 @@ const NodeTreeItem: React.FC<{
       background: isSelected ? 'var(--bg-active)' : 'transparent',
     }}
   >
-    <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 12 }}>{NODE_ICONS[node.type] ?? '?'}</span>
+    <span style={{ color: 'var(--text-muted)', lineHeight: 0, width: 14 }}>{NODE_ICONS[node.type] ?? Icons.file}</span>
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: isSelected ? 'var(--accent)' : 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
       {node.id}
     </span>
@@ -528,6 +547,7 @@ const NodeProperties: React.FC<{
       </div>
     );
   };
+  const currentAnchor: FuiAnchor = (node as any).anchor ?? 'topLeft';
   return (
     <>
       <PropertyRow label="ID">
@@ -535,6 +555,23 @@ const NodeProperties: React.FC<{
       </PropertyRow>
       <PropertyRow label="Type">
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>{node.type}</span>
+      </PropertyRow>
+      <PropertyRow label="Anchor">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+          {ANCHOR_GRID.flat().map((a) => (
+            <button
+              key={a}
+              onClick={() => onChange((n) => { n.anchor = a; })}
+              title={a}
+              style={{
+                padding: '2px 0', fontSize: 11, border: '1px solid var(--border)', borderRadius: 2,
+                cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                background: currentAnchor === a ? 'var(--accent)' : 'var(--bg-hover)',
+                color: currentAnchor === a ? '#fff' : 'var(--text-muted)',
+              }}
+            >{ANCHOR_ICONS[a]}</button>
+          ))}
+        </div>
       </PropertyRow>
       <PropertyRow label="X">
         {withKey(<NumberInput value={node.rect?.x ?? 0} step={1} onChange={(v) => onChange((n) => { n.rect = n.rect ?? {}; n.rect.x = v; })} />, 'x')}
@@ -606,7 +643,7 @@ const NodeProperties: React.FC<{
           <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }, { value: 'explicit', label: 'Explicit' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
         </PropertyRow>
         <PropertyRow label="Click Anim">
-          <Select value={(node as any).clickAnimation ?? 'scale'} options={[{ value: 'scale', label: 'Scale' }, { value: 'flash', label: 'Flash' }, { value: 'none', label: 'None' }]} onChange={(v) => onChange((n) => { n.clickAnimation = v; })} />
+          <Select value={(node as any).clickAnimation ?? 'none'} options={[{ value: 'none', label: 'None' }, { value: 'scale', label: 'Scale' }, { value: 'flash', label: 'Flash' }]} onChange={(v) => onChange((n) => { n.clickAnimation = v; })} />
         </PropertyRow>
       </>)}
 
@@ -1330,11 +1367,11 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
         title={`FUI Editor — ${fileName}`}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button onClick={handleUndo} disabled={!canUndo} style={toolBtn(canUndo)} title="Undo (Ctrl+Z)">↩</button>
-            <button onClick={handleRedo} disabled={!canRedo} style={toolBtn(canRedo)} title="Redo (Ctrl+Y)">↪</button>
+            <button onClick={handleUndo} disabled={!canUndo} style={toolBtn(canUndo)} title="Undo (Ctrl+Z)">{Icons.undo}</button>
+            <button onClick={handleRedo} disabled={!canRedo} style={toolBtn(canRedo)} title="Redo (Ctrl+Y)">{Icons.redo}</button>
             {saveStatus && (
-              <span style={{ fontSize: 10, color: saveStatus === 'saved' ? '#66bb6a' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginLeft: 4 }}>
-                {saveStatus === 'saved' ? '✓ Saved' : '● Unsaved'}
+              <span style={{ fontSize: 10, color: saveStatus === 'saved' ? '#66bb6a' : 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginLeft: 4, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                {saveStatus === 'saved' ? <>{Icons.check} Saved</> : '● Unsaved'}
               </span>
             )}
             <button onClick={handleSave} disabled={saveBusy} style={{ padding: '4px 14px', fontSize: 11, background: 'var(--accent)', border: 'none', borderRadius: 4, color: '#fff', cursor: saveBusy ? 'not-allowed' : 'pointer', opacity: saveBusy ? 0.6 : 1 }}>
@@ -1362,10 +1399,10 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
           </div>
           {/* Order / Delete / Duplicate */}
           <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            <button onClick={handleMoveUp} disabled={!canMoveUp} style={toolBtn(canMoveUp)} title="Move up">▲</button>
-            <button onClick={handleMoveDown} disabled={!canMoveDown} style={toolBtn(canMoveDown)} title="Move down">▼</button>
-            <button onClick={handleDuplicate} disabled={!canDelete} style={toolBtn(canDelete)} title="Duplicate (Ctrl+D)">⧉</button>
-            <button onClick={handleDelete} disabled={!canDelete} style={{ ...toolBtn(canDelete), marginLeft: 'auto', color: canDelete ? '#ef5350' : undefined, borderColor: canDelete ? '#ef535044' : undefined }} title="Delete">✕</button>
+            <button onClick={handleMoveUp} disabled={!canMoveUp} style={toolBtn(canMoveUp)} title="Move up">{Icons.arrowUp}</button>
+            <button onClick={handleMoveDown} disabled={!canMoveDown} style={toolBtn(canMoveDown)} title="Move down">{Icons.arrowDown}</button>
+            <button onClick={handleDuplicate} disabled={!canDelete} style={toolBtn(canDelete)} title="Duplicate (Ctrl+D)">{Icons.copy}</button>
+            <button onClick={handleDelete} disabled={!canDelete} style={{ ...toolBtn(canDelete), marginLeft: 'auto', color: canDelete ? '#ef5350' : undefined, borderColor: canDelete ? '#ef535044' : undefined }} title="Delete">{Icons.trash}</button>
           </div>
           {/* Tree */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
@@ -1472,6 +1509,24 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             <PropertyRow label="Height">
               <NumberInput value={doc?.canvas.height ?? 600} step={1} min={1} onChange={(v) => updateDocProp((d) => ({ ...d, canvas: { ...d.canvas, height: Math.max(1, v) } }))} />
             </PropertyRow>
+            <PropertyRow label="Scale Mode">
+              <Select
+                value={doc?.canvas.scaleMode ?? 'constantPixelSize'}
+                options={[{ value: 'constantPixelSize', label: 'Constant Pixel' }, { value: 'scaleWithScreenSize', label: 'Scale With Screen' }]}
+                onChange={(v) => updateDocProp((d) => ({ ...d, canvas: { ...d.canvas, scaleMode: v as FuiScaleMode } }))}
+              />
+            </PropertyRow>
+            {(doc?.canvas.scaleMode ?? 'constantPixelSize') === 'scaleWithScreenSize' && (<>
+              <PropertyRow label="Ref. Width">
+                <NumberInput value={doc?.canvas.referenceWidth ?? doc?.canvas.width ?? 800} step={1} min={1} onChange={(v) => updateDocProp((d) => ({ ...d, canvas: { ...d.canvas, referenceWidth: Math.max(1, v) } }))} />
+              </PropertyRow>
+              <PropertyRow label="Ref. Height">
+                <NumberInput value={doc?.canvas.referenceHeight ?? doc?.canvas.height ?? 600} step={1} min={1} onChange={(v) => updateDocProp((d) => ({ ...d, canvas: { ...d.canvas, referenceHeight: Math.max(1, v) } }))} />
+              </PropertyRow>
+              <PropertyRow label="Match W↔H">
+                <Slider value={doc?.canvas.matchWidthOrHeight ?? 0.5} min={0} max={1} step={0.01} onChange={(v) => updateDocProp((d) => ({ ...d, canvas: { ...d.canvas, matchWidthOrHeight: v } }))} />
+              </PropertyRow>
+            </>)}
           </Section>
 
           {/* Selected node properties */}
@@ -1539,7 +1594,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                     >
                       <span style={{ flex: 1, fontSize: 11, color: selectedAnimId === anim.id ? 'var(--accent)' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{anim.name}</span>
                       <button onClick={(e) => { e.stopPropagation(); handleDeleteAnimation(anim.id); }}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', fontSize: 11, lineHeight: 1 }} title="Delete">✕</button>
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', lineHeight: 0 }} title="Delete">{Icons.close}</button>
                     </div>
                   ))}
                   {!(doc?.animations?.length) && (
@@ -1554,10 +1609,10 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                   {/* Controls bar */}
                   <div style={{ padding: '2px 8px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, flexWrap: 'wrap' }}>
                     <button onClick={() => { if (!isPlaying) playLastTimeRef.current = performance.now(); setIsPlaying(v => !v); }}
-                      style={{ ...toolBtn(), padding: '1px 5px', fontSize: 11 }} title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? '⏸' : '▶'}</button>
-                    <button onClick={() => { setIsPlaying(false); setCurrentTime(0); }} style={{ ...toolBtn(), padding: '1px 5px', fontSize: 11 }} title="Stop">⏹</button>
+                      style={{ ...toolBtn(), padding: '2px 6px' }} title={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? Icons.pause : Icons.play}</button>
+                    <button onClick={() => { setIsPlaying(false); setCurrentTime(0); }} style={{ ...toolBtn(), padding: '2px 6px' }} title="Stop">{Icons.stop}</button>
                     <button onClick={() => handleUpdateAnimation(selectedAnim.id, { loop: !selectedAnim.loop })}
-                      style={{ ...toolBtn(), padding: '1px 5px', fontSize: 11, background: selectedAnim.loop ? 'var(--accent)' : 'var(--bg-hover)', color: selectedAnim.loop ? '#fff' : 'var(--text-secondary)' }} title="Loop">↺</button>
+                      style={{ ...toolBtn(), padding: '2px 6px', background: selectedAnim.loop ? 'var(--accent)' : 'var(--bg-hover)', color: selectedAnim.loop ? '#fff' : 'var(--text-secondary)' }} title="Loop">{Icons.refresh}</button>
                     <button onClick={() => setAutoKey(v => !v)}
                       style={{ ...toolBtn(), padding: '1px 5px', fontSize: 10, background: autoKey ? '#ef5350' : 'var(--bg-hover)', color: autoKey ? '#fff' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
                       title="Auto-key: record property changes as keyframes">● REC</button>
@@ -1585,7 +1640,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                         {ANIMATABLE_PROP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                       <button onClick={() => handleAddTrack(addTrackNodeId, addTrackProp)} style={{ ...toolBtn(), padding: '1px 5px', fontSize: 10 }}>Add</button>
-                      <button onClick={() => setAddingTrack(false)} style={{ ...toolBtn(), padding: '1px 5px', fontSize: 10 }}>✕</button>
+                      <button onClick={() => setAddingTrack(false)} style={{ ...toolBtn(), padding: '2px 5px' }} title="Cancel">{Icons.close}</button>
                     </div>
                   )}
 
@@ -1610,7 +1665,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                           {EASING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                         <button onClick={() => handleDeleteKeyframe(selectedKeyframe.trackIdx, selectedKeyframe.kfIdx)}
-                          style={{ ...toolBtn(), padding: '1px 5px', fontSize: 10, color: '#ef5350', marginLeft: 'auto' }}>✕ kf</button>
+                          style={{ ...toolBtn(), padding: '2px 5px', color: '#ef5350', marginLeft: 'auto' }} title="Delete keyframe">{Icons.trash}</button>
                       </div>
                     );
                   })()}
@@ -1662,7 +1717,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                                 {track.nodeId}.<b style={{ color: '#ccc' }}>{track.property}</b>
                               </span>
                               <button onClick={() => handleDeleteTrack(trackIdx)}
-                                style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: 0, fontSize: 9, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                                style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: 0, lineHeight: 0, flexShrink: 0 }} title="Delete track">{Icons.close}</button>
                             </div>
                             <div style={{ flex: 1, position: 'relative', background: trackIdx % 2 === 0 ? '#0d1117' : '#0a0f1a', cursor: 'crosshair', overflow: 'hidden' }}
                               onMouseDown={(e) => {

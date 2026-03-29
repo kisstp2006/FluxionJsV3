@@ -255,6 +255,7 @@ export class ECSManager {
     // Mark world dirty since parent relationship changed
     if (childT) childT.worldDirty = true;
 
+    this._hierarchyRevision++;
     this.dirty = true;
   }
 

@@ -313,6 +313,14 @@ export class DuplicateEntityCommand implements EditorCommand {
 
 export class ReparentEntityCommand implements EditorCommand {
   label: string;
+  // Snapshot of local transform BEFORE reparenting, needed to fully restore on undo
+  private _oldLocalPos   = new THREE.Vector3();
+  private _oldLocalRot   = new THREE.Euler();
+  private _oldLocalScale = new THREE.Vector3(1, 1, 1);
+  // Snapshot of local transform AFTER reparenting (for redo)
+  private _newLocalPos   = new THREE.Vector3();
+  private _newLocalRot   = new THREE.Euler();
+  private _newLocalScale = new THREE.Vector3(1, 1, 1);
 
   constructor(
     private entity: EntityId,
@@ -322,10 +330,39 @@ export class ReparentEntityCommand implements EditorCommand {
   ) {
     const parentName = newParent !== undefined ? ecs.getEntityName(newParent) : 'root';
     this.label = `Reparent ${ecs.getEntityName(entity)} → ${parentName}`;
+    // Snapshot current local transform before any execution
+    const t = ecs.getComponent<TransformComponent>(entity, 'Transform');
+    if (t) {
+      this._oldLocalPos.copy(t.position);
+      this._oldLocalRot.copy(t.rotation);
+      this._oldLocalScale.copy(t.scale);
+    }
   }
 
-  execute(): void { this.ecs.setParent(this.entity, this.newParent as EntityId); }
-  undo(): void    { this.ecs.setParent(this.entity, this.oldParent as EntityId); }
+  execute(): void {
+    // keepWorldTransform=true: entity stays in its world-space position
+    this.ecs.setParent(this.entity, this.newParent as EntityId, true);
+    // Capture post-reparent local transform (recalculated by setParent)
+    const t = this.ecs.getComponent<TransformComponent>(this.entity, 'Transform');
+    if (t) {
+      this._newLocalPos.copy(t.position);
+      this._newLocalRot.copy(t.rotation);
+      this._newLocalScale.copy(t.scale);
+    }
+  }
+
+  undo(): void {
+    // Restore old parent first, then overwrite local transform with the pre-reparent snapshot
+    this.ecs.setParent(this.entity, this.oldParent as EntityId, true);
+    const t = this.ecs.getComponent<TransformComponent>(this.entity, 'Transform');
+    if (t) {
+      t.position.copy(this._oldLocalPos);
+      t.rotation.copy(this._oldLocalRot);
+      t.quaternion.setFromEuler(t.rotation);
+      t.scale.copy(this._oldLocalScale);
+      t.dirty = true;
+    }
+  }
 }
 
 // ── Singleton ──

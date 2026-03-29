@@ -34,6 +34,7 @@ interface SliderDragState {
   rectY: number;
   rectW: number;
   rectH: number;
+  contentScale: number;
 }
 
 interface ButtonInteractState {
@@ -536,12 +537,13 @@ export class FuiRuntimeSystem implements System {
           const canvasRect = getCanvasRect(this.engine.config.canvas);
           const mx = this.input.mousePosition.x - canvasRect.left;
           const my = this.input.mousePosition.y - canvasRect.top;
+          const cs = drag.contentScale;
           let newVal: number;
           if (drag.direction === 'vertical') {
-            const delta = (drag.startMouseY - my) / Math.max(1, drag.rectH);
+            const delta = (drag.startMouseY - my) / Math.max(1, drag.rectH * cs);
             newVal = drag.startValue + delta * (drag.max - drag.min);
           } else {
-            const delta = (mx - drag.startMouseX) / Math.max(1, drag.rectW);
+            const delta = (mx - drag.startMouseX) / Math.max(1, drag.rectW * cs);
             newVal = drag.startValue + delta * (drag.max - drag.min);
           }
           newVal = Math.max(drag.min, Math.min(drag.max, newVal));
@@ -681,6 +683,8 @@ export class FuiRuntimeSystem implements System {
     if (hit.type === 'slider') {
       // Start slider drag
       const canvasRect = getCanvasRect(this.engine.config.canvas);
+      const compiled = mode === 'screen' ? (entry as any).screen?.compiled : (entry as any).world?.compiled;
+      const _sliderCs = compiled ? this._computeContentScale(compiled.doc) : 1;
       this._sliderDrag = {
         entity,
         nodeId: hit.id,
@@ -692,6 +696,7 @@ export class FuiRuntimeSystem implements System {
         direction:   (hit.direction as 'horizontal' | 'vertical') ?? 'horizontal',
         rectX: hit.rect.x, rectY: hit.rect.y,
         rectW: hit.rect.w, rectH: hit.rect.h,
+        contentScale: _sliderCs,
       };
       // inputField and slider do NOT queue pendingClick (no confirm-on-release needed)
     } else if (hit.type === 'inputField') {

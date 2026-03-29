@@ -69,6 +69,15 @@ import zapSvg            from './icons/zap.svg';
 
 import checkSvg      from './icons/check.svg';
 import circleSvg     from './icons/circle.svg';
+import arrowUpSvg    from './icons/arrow-up.svg';
+import arrowDownSvg  from './icons/arrow-down.svg';
+import lockSvg       from './icons/lock.svg';
+import unlockSvg     from './icons/unlock.svg';
+import typeSvg       from './icons/type.svg';
+import slidersSvg    from './icons/sliders.svg';
+import toggleLeftSvg from './icons/toggle-left.svg';
+import barChart2Svg  from './icons/bar-chart-2.svg';
+import chevronUpSvg  from './icons/chevron-up.svg';
 import triangleSvg   from './icons/triangle.svg';
 import databaseSvg   from './icons/database.svg';
 import loaderSvg     from './icons/loader.svg';
@@ -189,6 +198,21 @@ export const Icons = {
   layout:   ic(layoutSvg),     // FUI / UI layout
   code:     ic(codeSvg),       // general code
   terminal: ic(terminalSvg),   // console / terminal output
+
+  // ── Directional ───────────────────────────────────────────────
+  arrowUp:      ic(arrowUpSvg),
+  arrowDown:    ic(arrowDownSvg),
+  chevronUp:    ic(chevronUpSvg, 10),
+
+  // ── State / security ─────────────────────────────────────────
+  lock:         ic(lockSvg),
+  unlock:       ic(unlockSvg),
+
+  // ── FUI node types ────────────────────────────────────────────
+  typeText:     ic(typeSvg),           // label / inputField
+  sliders:      ic(slidersSvg),        // slider node
+  toggleLeft:   ic(toggleLeftSvg),     // toggle node
+  barChart:     ic(barChart2Svg),      // progressBar node
 
   // ── Labels (kept as text for space toggles) ───────────────────
   localSpace: 'L' as unknown as React.ReactElement,

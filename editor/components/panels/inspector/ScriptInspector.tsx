@@ -376,8 +376,8 @@ const ScriptEntryRow: React.FC<{
         </div>
         {entry.path && (
           <>
-            <button style={btnStyle} onClick={openInMonaco} title="Open in built-in editor">✎</button>
-            <button style={btnStyle} onClick={openInSystemEditor} title="Open in system editor (VS Code)">↗</button>
+            <button style={btnStyle} onClick={openInMonaco} title="Open in built-in editor">{Icons.pencil}</button>
+            <button style={btnStyle} onClick={openInSystemEditor} title="Open in system editor (VS Code)">{Icons.externalLink}</button>
           </>
         )}
         <button

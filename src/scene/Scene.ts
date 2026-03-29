@@ -18,9 +18,11 @@ import {
   SpriteComponent,
   EnvironmentComponent,
   TextRendererComponent,
-  FuiComponent,
 } from '../core/Components';
 import { AssetManager } from '../assets/AssetManager';
+import { BaseComponent } from '../core/BaseComponent';
+import { ComponentRegistry } from '../core/ComponentRegistry';
+import type { DeserializationContext } from '../core/SerializationContext';
 
 // Module-level constants — avoid per-call allocation
 const PRIMITIVE_GEOMETRIES: Record<string, () => THREE.BufferGeometry> = {
@@ -110,139 +112,86 @@ export class Scene {
     return entity;
   }
 
-  /** Deep-clone an entity with all components, returns new entity */
+  /**
+   * Deep-clone an entity **and its entire descendant subtree**.
+   * Components are copied via their serialize/deserialize round-trip so every
+   * component type (including future ones) is handled generically.
+   * The root clone is offset by `offset` in local space; children keep their
+   * original local transforms relative to their cloned parent.
+   */
   cloneEntity(entityId: EntityId, offset = CLONE_OFFSET): EntityId | null {
-    const ecs = this.engine.ecs;
-    const name = ecs.getEntityName(entityId);
-    const clone = ecs.createEntity(`${name} (copy)`);
-    ecs.addComponent(clone, new TransformComponent());
+    const ecs     = this.engine.ecs;
+    const engine  = this.engine;
 
-    // Copy transform
-    const srcT = ecs.getComponent<TransformComponent>(entityId, 'Transform');
-    const dstT = ecs.getComponent<TransformComponent>(clone, 'Transform');
-    if (srcT && dstT) {
-      dstT.position.copy(srcT.position).add(offset);
-      dstT.rotation.copy(srcT.rotation);
-      dstT.quaternion.copy(srcT.quaternion);
-      dstT.scale.copy(srcT.scale);
+    // BFS: collect source entity + all descendants (parent before children)
+    const srcQueue: EntityId[] = [entityId];
+    let head = 0;
+    while (head < srcQueue.length) {
+      const e = srcQueue[head++];
+      for (const child of ecs.getChildren(e)) srcQueue.push(child);
     }
 
-    // Copy MeshRenderer
-    const mesh = ecs.getComponent<MeshRendererComponent>(entityId, 'MeshRenderer');
-    if (mesh && mesh.mesh) {
-      const meshComp = new MeshRendererComponent();
-      meshComp.modelPath = mesh.modelPath;
-      meshComp.materialPath = mesh.materialPath;
-      meshComp.materialSlots = mesh.materialSlots ? mesh.materialSlots.map(s => ({ ...s })) : undefined;
-      meshComp.castShadow = mesh.castShadow;
-      meshComp.receiveShadow = mesh.receiveShadow;
-      const srcMesh = mesh.mesh;
-      if (srcMesh instanceof THREE.Mesh) {
-        meshComp.mesh = new THREE.Mesh(srcMesh.geometry, srcMesh.material);
-      } else if (srcMesh instanceof THREE.Group) {
-        meshComp.mesh = srcMesh.clone();
+    // idMap: srcId → cloneId
+    const idMap = new Map<EntityId, EntityId>();
+
+    // Deferred asset loads (mirrors SceneSerializer logic)
+    const ctx: DeserializationContext = {
+      engine,
+      entityIdMap: new Map(),
+      deferredModelLoads: [],
+      deferredMaterialLoads: [],
+    };
+
+    // Pass 1: create clones and copy components
+    for (const srcId of srcQueue) {
+      const srcName  = ecs.getEntityName(srcId);
+      const cloneName = srcId === entityId ? `${srcName} (copy)` : srcName;
+      const cloneId   = ecs.createEntity(cloneName);
+      idMap.set(srcId, cloneId);
+      ctx.entityIdMap.set(srcId as number, cloneId);
+
+      for (const comp of ecs.getAllComponents(srcId)) {
+        const newComp = ComponentRegistry.create(comp.type);
+        if (!newComp) continue;
+        (newComp as BaseComponent).deserialize((comp as BaseComponent).serialize(), ctx);
+        ecs.addComponent(cloneId, newComp);
       }
-      ecs.addComponent(clone, meshComp);
     }
 
-    // Copy Camera
-    const cam = ecs.getComponent<CameraComponent>(entityId, 'Camera');
-    if (cam) {
-      const camComp = new CameraComponent();
-      camComp.fov = cam.fov;
-      camComp.near = cam.near;
-      camComp.far = cam.far;
-      camComp.isOrthographic = cam.isOrthographic;
-      camComp.orthoSize = cam.orthoSize;
-      camComp.priority = cam.priority;
-      ecs.addComponent(clone, camComp);
+    // Apply position offset to root clone
+    const rootClone = idMap.get(entityId)!;
+    const rootT = ecs.getComponent<TransformComponent>(rootClone, 'Transform');
+    if (rootT) rootT.position.add(offset);
+
+    // Pass 2: wire parent relationships (preserve subtree structure)
+    for (const srcId of srcQueue) {
+      const cloneId   = idMap.get(srcId)!;
+      const srcParent = ecs.getParent(srcId);
+
+      if (srcId === entityId) {
+        // Root clone keeps the same parent as the source root
+        if (srcParent !== undefined) ecs.setParent(cloneId, srcParent);
+      } else {
+        // Non-root: parent is the clone of the source's parent
+        const cloneParent = srcParent !== undefined ? idMap.get(srcParent) : undefined;
+        if (cloneParent !== undefined) ecs.setParent(cloneId, cloneParent);
+      }
     }
 
-    // Copy Light
-    const light = ecs.getComponent<LightComponent>(entityId, 'Light');
-    if (light) {
-      const lightComp = new LightComponent();
-      lightComp.lightType = light.lightType;
-      lightComp.color.copy(light.color);
-      lightComp.intensity = light.intensity;
-      lightComp.range = light.range;
-      lightComp.castShadow = light.castShadow;
-      ecs.addComponent(clone, lightComp);
+    // Trigger deferred asset loads (models, materials) asynchronously
+    if (ctx.deferredModelLoads.length > 0 || ctx.deferredMaterialLoads.length > 0) {
+      import('../project/SceneSerializer').then(({ loadDeferredModel, loadDeferredFluxMesh, loadDeferredMaterial }) => {
+        for (const d of ctx.deferredModelLoads) {
+          if (d.modelPath.endsWith('.fluxmesh')) loadDeferredFluxMesh(engine, d.meshComp, d.modelPath);
+          else loadDeferredModel(engine, d.meshComp, d.modelPath);
+        }
+        for (const d of ctx.deferredMaterialLoads) {
+          loadDeferredMaterial(engine, d.meshComp, d.materialPath);
+        }
+      });
     }
 
-    // Copy Rigidbody
-    const rb = ecs.getComponent<RigidbodyComponent>(entityId, 'Rigidbody');
-    if (rb) {
-      const rbComp = new RigidbodyComponent();
-      rbComp.bodyType = rb.bodyType;
-      rbComp.mass = rb.mass;
-      rbComp.friction = rb.friction;
-      rbComp.restitution = rb.restitution;
-      rbComp.gravityScale = rb.gravityScale;
-      ecs.addComponent(clone, rbComp);
-    }
-
-    // Copy Collider
-    const col = ecs.getComponent<ColliderComponent>(entityId, 'Collider');
-    if (col) {
-      const colComp = new ColliderComponent();
-      colComp.shape = col.shape;
-      colComp.size.copy(col.size);
-      colComp.radius = col.radius;
-      colComp.height = col.height;
-      colComp.isTrigger = col.isTrigger;
-      ecs.addComponent(clone, colComp);
-    }
-
-    // Copy Sprite
-    const spr = ecs.getComponent<SpriteComponent>(entityId, 'Sprite');
-    if (spr) {
-      const sprComp = new SpriteComponent();
-      sprComp.texturePath = spr.texturePath;
-      sprComp.color.copy(spr.color);
-      sprComp.opacity = spr.opacity;
-      sprComp.flipX = spr.flipX;
-      sprComp.flipY = spr.flipY;
-      sprComp.pixelsPerUnit = spr.pixelsPerUnit;
-      sprComp.sortingLayer = spr.sortingLayer;
-      sprComp.sortingOrder = spr.sortingOrder;
-      ecs.addComponent(clone, sprComp);
-    }
-
-    // Copy TextRenderer
-    const txt = ecs.getComponent<TextRendererComponent>(entityId, 'TextRenderer');
-    if (txt) {
-      const txtComp = new TextRendererComponent();
-      txtComp.text = txt.text;
-      txtComp.fontPath = txt.fontPath;
-      txtComp.fontSize = txt.fontSize;
-      txtComp.color.copy(txt.color);
-      txtComp.opacity = txt.opacity;
-      txtComp.alignment = txt.alignment;
-      txtComp.maxWidth = txt.maxWidth;
-      txtComp.billboard = txt.billboard;
-      ecs.addComponent(clone, txtComp);
-    }
-
-    // Copy FUI
-    const fui = ecs.getComponent<FuiComponent>(entityId, 'Fui');
-    if (fui) {
-      const fComp = new FuiComponent();
-      fComp.mode = fui.mode;
-      fComp.fuiPath = fui.fuiPath;
-      fComp.screenX = fui.screenX;
-      fComp.screenY = fui.screenY;
-      fComp.worldWidth = fui.worldWidth;
-      fComp.worldHeight = fui.worldHeight;
-      fComp.billboard = fui.billboard;
-      ecs.addComponent(clone, fComp);
-    }
-
-    // Copy parent
-    const parent = ecs.getParent(entityId);
-    if (parent !== undefined) ecs.setParent(clone, parent);
-
-    return clone;
+    return rootClone;
   }
 
   createMesh(

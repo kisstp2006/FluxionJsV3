@@ -52,6 +52,10 @@ export class PhysicsBodySystem implements System {
   private lastMeshPath  = new Map<EntityId, string>();
   /** Entities whose Rapier body was created implicitly (no RigidbodyComponent). */
   private implicitStaticEntities = new Set<EntityId>();
+  /** Last synced world position per implicit static entity (for change detection). */
+  private implicitLastPos = new Map<EntityId, THREE.Vector3>();
+  /** Last synced world rotation per implicit static entity (for change detection). */
+  private implicitLastRot = new Map<EntityId, THREE.Quaternion>();
 
   // ── Mesh collision geometry cache ──────────────────────────────────────────
   /** Entities currently awaiting async geometry load. */
@@ -72,6 +76,8 @@ export class PhysicsBodySystem implements System {
     this.pendingMeshLoads.clear();
     this.meshGeometry.clear();
     this.implicitStaticEntities.clear();
+    this.implicitLastPos.clear();
+    this.implicitLastRot.clear();
   }
 
   // No variable-rate work needed — all logic lives in fixedUpdate
@@ -106,8 +112,25 @@ export class PhysicsBodySystem implements System {
         this.tracked.add(entity);
       }
 
-      // ── Implicit static entities: only react to collider changes ─────────
+      // ── Implicit static entities: sync transform + react to collider changes ──
       if (isImplicit) {
+        // Keep Rapier body in sync with the entity's transform (e.g. scripted teleport)
+        const impPos = transform.worldPosition;
+        const impRot = transform.worldRotation;
+        const lastP  = this.implicitLastPos.get(entity);
+        const lastR  = this.implicitLastRot.get(entity);
+        if (!lastP || !lastP.equals(impPos) || !lastR || lastR.dot(impRot) < 0.9999999) {
+          const impBody = this.pw.getBody(entity);
+          if (impBody) {
+            impBody.setTranslation({ x: impPos.x, y: impPos.y, z: impPos.z }, true);
+            impBody.setRotation({ x: impRot.x, y: impRot.y, z: impRot.z, w: impRot.w }, true);
+          }
+          if (!lastP) this.implicitLastPos.set(entity, impPos.clone());
+          else lastP.copy(impPos);
+          if (!lastR) this.implicitLastRot.set(entity, impRot.clone());
+          else lastR.copy(impRot);
+        }
+
         if (collider && isDirty(collider)) {
           const shapeChanged    = this.lastShape.get(entity) !== collider.shape;
           const meshPathChanged = this.lastMeshPath.get(entity) !== (collider.meshPath ?? '');
@@ -192,7 +215,7 @@ export class PhysicsBodySystem implements System {
       }
     }
 
-    // ── Remove entities that left the tracked set ─────────────────────────
+    // ── Remove entities that left the tracked set ──────────────────────────────
     for (const entity of this.tracked) {
       if (!entities.has(entity)) {
         this._removeBody(entity);
@@ -201,6 +224,8 @@ export class PhysicsBodySystem implements System {
         this.lastBodyType.delete(entity);
         this.lastShape.delete(entity);
         this.lastMeshPath.delete(entity);
+        this.implicitLastPos.delete(entity);
+        this.implicitLastRot.delete(entity);
       }
     }
   }
@@ -346,7 +371,11 @@ export class PhysicsBodySystem implements System {
 
     // Kick off async load
     this.pendingMeshLoads.add(entity);
-    this._loadMeshGeometry(entity, col.meshPath, col).catch(() => {
+    // Snapshot the entity's world scale at kick-off time so the geometry is
+    // scaled correctly even before the async load resolves.
+    const t = this.pw.engineRef.ecs.getComponent<TransformComponent>(entity, 'Transform');
+    const scaleSnap = t ? new THREE.Vector3().copy(t.worldScale) : null;
+    this._loadMeshGeometry(entity, col.meshPath, col, scaleSnap).catch(() => {
       // Error already logged inside _loadMeshGeometry
       this.meshGeometry.set(entity, null);
       this.pendingMeshLoads.delete(entity);
@@ -359,6 +388,7 @@ export class PhysicsBodySystem implements System {
     entity: EntityId,
     meshPath: string,
     col: ColliderComponent,
+    worldScale: THREE.Vector3 | null,
   ): Promise<void> {
     try {
       const am = this.pw.engineRef.getSubsystem('assets') as AssetManager;
@@ -372,7 +402,7 @@ export class PhysicsBodySystem implements System {
         scene = result.scene;
       }
 
-      const geo = PhysicsBodySystem._extractGeometry(scene);
+      const geo = PhysicsBodySystem._extractGeometry(scene, worldScale);
       if (!geo) {
         DebugConsole.LogWarning(
           `[PhysicsBodySystem] No geometry found in '${meshPath}' for entity ${entity}.`
@@ -394,10 +424,18 @@ export class PhysicsBodySystem implements System {
 
   // ── Geometry extraction from THREE.Group ─────────────────────────────────
   // Merges all sub-meshes into one flat vertex + index buffer.
+  // worldScale: if supplied, every vertex is additionally multiplied by this
+  //             so the collision mesh matches the entity's visual scale.
 
-  private static _extractGeometry(root: THREE.Object3D): MeshGeo | null {
+  private static _extractGeometry(
+    root: THREE.Object3D,
+    worldScale: THREE.Vector3 | null = null,
+  ): MeshGeo | null {
     const positions: number[] = [];
     const indices:   number[] = [];
+    const applyScale =
+      worldScale !== null &&
+      (worldScale.x !== 1 || worldScale.y !== 1 || worldScale.z !== 1);
 
     root.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
@@ -410,10 +448,15 @@ export class PhysicsBodySystem implements System {
 
       const vertexOffset = positions.length / 3;
 
-      // Apply object's world matrix to each vertex
+      // Apply object's world matrix to each vertex, then entity world scale
       const mat = obj.matrixWorld;
       for (let i = 0; i < posAttr.count; i++) {
         const v = _geoScratch.fromBufferAttribute(posAttr, i).applyMatrix4(mat);
+        if (applyScale) {
+          v.x *= worldScale!.x;
+          v.y *= worldScale!.y;
+          v.z *= worldScale!.z;
+        }
         positions.push(v.x, v.y, v.z);
       }
 

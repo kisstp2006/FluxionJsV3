@@ -19,6 +19,7 @@ interface HierarchyItemProps {
   entity: EntityId;
   depth: number;
   isSelected: boolean;
+  selectedEntity: EntityId | null;
   editingEntity: EntityId | null;
   onSelect: (entity: EntityId) => void;
   onContextMenu: (entity: EntityId, e: React.MouseEvent) => void;
@@ -33,6 +34,7 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   entity,
   depth,
   isSelected,
+  selectedEntity,
   editingEntity,
   onSelect,
   onContextMenu,
@@ -155,7 +157,8 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
           key={child}
           entity={child}
           depth={depth + 1}
-          isSelected={false}
+          isSelected={child === selectedEntity}
+          selectedEntity={selectedEntity}
           editingEntity={editingEntity}
           onSelect={onSelect}
           onContextMenu={onContextMenu}
@@ -341,9 +344,9 @@ export const HierarchyPanel: React.FC = () => {
           if (engine && draggedEntity.current !== null) {
             const src = draggedEntity.current;
             draggedEntity.current = null;
-            const parent = engine.engine.ecs.getParent(src);
-            if (parent !== undefined) {
-              engine.engine.ecs.setParent(src, undefined as any);
+            const oldParent = engine.engine.ecs.getParent(src);
+            if (oldParent !== undefined) {
+              undoManager.execute(new ReparentEntityCommand(src, undefined, oldParent, engine.engine.ecs));
               log('Moved to root', 'info');
             }
           }
@@ -355,6 +358,7 @@ export const HierarchyPanel: React.FC = () => {
             entity={entity}
             depth={0}
             isSelected={entity === state.selectedEntity}
+            selectedEntity={state.selectedEntity}
             editingEntity={editingEntity}
             onSelect={handleSelect}
             onContextMenu={handleContextMenu}

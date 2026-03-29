@@ -24,6 +24,16 @@ import type { TransformComponent } from '../core/Components';
 import { DebugConsole } from '../core/DebugConsole';
 import { DebugDraw } from '../renderer/DebugDraw';
 
+// Pre-bound DebugDraw references — created once at module load, not per getter call.
+const _ddBindings = {
+  drawLine:       DebugDraw.drawLine.bind(DebugDraw),
+  drawLineWorld:  DebugDraw.drawLineWorld.bind(DebugDraw),
+  drawLineSphere: DebugDraw.drawLineSphere.bind(DebugDraw),
+  drawLineBox:    DebugDraw.drawLineBox.bind(DebugDraw),
+  drawCross:      DebugDraw.drawCross.bind(DebugDraw),
+  drawText:       DebugDraw.drawText.bind(DebugDraw),
+};
+
 export { EntityId, ECSManager, Engine, InputManager };
 
 export class FluxionBehaviour {
@@ -342,12 +352,7 @@ export class FluxionBehaviour {
       Log:   (...a: any[]) => DebugConsole.Log(`[${name}]`, ...a),
       LogWarning: (...a: any[]) => DebugConsole.LogWarning(`[${name}]`, ...a),
       LogError:   (...a: any[]) => DebugConsole.LogError(`[${name}]`, ...a),
-      drawLine:       DebugDraw.drawLine.bind(DebugDraw),
-      drawLineWorld:  DebugDraw.drawLineWorld.bind(DebugDraw),
-      drawLineSphere: DebugDraw.drawLineSphere.bind(DebugDraw),
-      drawLineBox:    DebugDraw.drawLineBox.bind(DebugDraw),
-      drawCross:      DebugDraw.drawCross.bind(DebugDraw),
-      drawText:       DebugDraw.drawText.bind(DebugDraw),
+      ..._ddBindings,
     };
   }
 

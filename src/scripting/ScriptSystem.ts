@@ -144,6 +144,7 @@ export class ScriptSystem implements System {
 
       for (const entry of comp.scripts) {
         if (!entry.enabled || !entry.path) continue;
+        if (entry.path.endsWith('.lua')) continue; // handled by LuaScriptSystem
 
         if (!comp._instances.has(entry.path)) {
           if (!comp._loading.has(entry.path)) {

@@ -308,7 +308,10 @@ export class DebugDraw {
   static renderText(): void {
     const ctx = this.overlayCtx;
     const canvas = this.overlayCanvas;
-    if (!ctx || !canvas) return;
+    if (!ctx || !canvas) {
+      this.pendingTexts.length = 0;
+      return;
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 

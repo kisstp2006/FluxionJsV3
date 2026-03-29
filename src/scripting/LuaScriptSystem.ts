@@ -195,6 +195,11 @@ export class LuaScriptSystem implements System {
 
     lua.global.set('self', adapter);
 
+    // ── Apply inspector property overrides as Lua globals ──────
+    for (const [key, val] of Object.entries(entry.properties ?? {})) {
+      lua.global.set(key, val);
+    }
+
     // ── Execute script source (defines start / update / etc.) ──
     try {
       await lua.doString(source);

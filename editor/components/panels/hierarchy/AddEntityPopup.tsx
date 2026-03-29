@@ -48,7 +48,7 @@ const ENTITY_CATEGORIES: EntityCategory[] = [
       { type: 'camera',   label: 'Camera',          icon: Icons.camera   },
       { type: 'particle', label: 'Particle System', icon: Icons.particle },
       { type: 'text3d',   label: '3D Text',         icon: '𝐓'            },
-      { type: 'sprite',   label: 'Sprite',          icon: '🖼'            },
+      { type: 'sprite',   label: 'Sprite',          icon: Icons.image    },
     ],
   },
   {

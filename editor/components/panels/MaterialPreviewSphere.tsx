@@ -9,6 +9,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { Icons } from '../../ui/Icons';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 interface MaterialPreviewSphereProps {
@@ -268,7 +269,7 @@ export const MaterialPreviewSphere: React.FC<MaterialPreviewSphereProps> = ({
           gap: 6, padding: '12px', pointerEvents: 'none',
         }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#ef5350', fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.04em' }}>
-            ✕ Preview failed
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{Icons.close} Preview failed</span>
           </div>
           <div style={{
             fontSize: '9px', color: '#ff8a80',

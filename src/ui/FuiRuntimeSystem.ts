@@ -14,7 +14,7 @@ import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
 import { FuiEngineRenderer } from './FuiEngineRenderer';
 import type { FuiTooltipState } from './FuiEngineRenderer';
-import type { FuiDocument, FuiNode, FuiPanelNode } from './FuiTypes';
+import type { FuiDocument, FuiNode, FuiPanelNode, FuiScaleMode } from './FuiTypes';
 
 type PendingClick = {
   entity: EntityId;
@@ -94,16 +94,22 @@ export class FuiRuntimeSystem implements System {
   private _sliderDrag: SliderDragState | null = null;
 
   private fuiEngineRenderer: FuiEngineRenderer;
+  private screenW: number;
+  private screenH: number;
 
   constructor(
     private engine: Engine,
     private renderer: FluxionRenderer,
     private input: InputManager,
   ) {
+    this.screenW = engine.config.width;
+    this.screenH = engine.config.height;
     this.fuiEngineRenderer = new FuiEngineRenderer(engine.config.width, engine.config.height);
     renderer.registerUIOverlay(() => this.fuiEngineRenderer.renderOverlay(renderer.renderer));
     engine.events.on(EngineEvents.RESIZE, (data: { width: number; height: number }) => {
       this.fuiEngineRenderer.resize(data.width, data.height);
+      this.screenW = data.width;
+      this.screenH = data.height;
     });
   }
 
@@ -203,6 +209,19 @@ export class FuiRuntimeSystem implements System {
     this.engine.config.canvas.style.cursor = cursor || '';
   }
 
+  /** Compute uniform content scale factor from the document's scaleMode settings. */
+  private _computeContentScale(doc: FuiDocument): number {
+    const { scaleMode, referenceWidth, referenceHeight, matchWidthOrHeight, width, height } = doc.canvas;
+    if (!scaleMode || scaleMode === 'constantPixelSize') return 1;
+    const refW  = referenceWidth  ?? width;
+    const refH  = referenceHeight ?? height;
+    const match = matchWidthOrHeight ?? 0.5;
+    const scaleW = this.screenW / refW;
+    const scaleH = this.screenH / refH;
+    // Log-space blend (matches Unity Canvas Scaler behaviour)
+    return Math.exp(Math.log(scaleW) * (1 - match) + Math.log(scaleH) * match);
+  }
+
   /** Render a screen-space FUI entity via FuiEngineRenderer (THREE.js overlay pass). */
   private _renderScreenFrame(
     entity: EntityId,
@@ -213,10 +232,13 @@ export class FuiRuntimeSystem implements System {
   ): void {
     const docW = screen.compiled.doc.canvas.width;
     const docH = screen.compiled.doc.canvas.height;
+    const cs   = this._computeContentScale(screen.compiled.doc);
     this.fuiEngineRenderer.renderFrame(
       entity, docW, docH, comp.screenX, comp.screenY,
       screen.compiled, nodeStates,
       tooltip ?? undefined,
+      undefined, // pixelScale — use default DPR
+      cs,
     );
   }
 
@@ -244,9 +266,10 @@ export class FuiRuntimeSystem implements System {
     // positioned in client coords (position:fixed), so subtract canvasRect
     // origin + screenX/Y to arrive at FUI document space.
     const canvasRect = getCanvasRect(this.engine.config.canvas);
+    const cs = this._computeContentScale(compiled.doc);
 
-    const px = this.input.mousePosition.x - canvasRect.left - comp.screenX;
-    const py = this.input.mousePosition.y - canvasRect.top  - comp.screenY;
+    const px = (this.input.mousePosition.x - canvasRect.left - comp.screenX) / cs;
+    const py = (this.input.mousePosition.y - canvasRect.top  - comp.screenY) / cs;
 
     const canvasW = compiled.doc.canvas.width;
     const canvasH = compiled.doc.canvas.height;
@@ -378,11 +401,14 @@ export class FuiRuntimeSystem implements System {
         const canvasRect  = getCanvasRect(this.engine.config.canvas);
 
         // ── Hover detection (screen-space) ──
+        const _cs  = this._computeContentScale(screen.compiled.doc);
+        const _docX = (this.input.mousePosition.x - canvasRect.left - comp.screenX) / _cs;
+        const _docY = (this.input.mousePosition.y - canvasRect.top  - comp.screenY) / _cs;
         const hovered = this.hitTestScreen(screen.compiled, comp)
           ?? hitTestInteractable(
               screen.compiled,
-              this.input.mousePosition.x - canvasRect.left - comp.screenX,
-              this.input.mousePosition.y - canvasRect.top  - comp.screenY,
+              _docX,
+              _docY,
               { includeDisabled: true },
             );
         const newHoverId = hovered?.id ?? null;
@@ -391,11 +417,7 @@ export class FuiRuntimeSystem implements System {
         // Tooltip state in FUI canvas space
         let tooltipState: FuiTooltipState | null = null;
         if (newHoverId && hovered?.tooltip && !hovered.disabled) {
-          tooltipState = {
-            text: hovered.tooltip,
-            x: this.input.mousePosition.x - canvasRect.left - comp.screenX,
-            y: this.input.mousePosition.y - canvasRect.top  - comp.screenY,
-          };
+          tooltipState = { text: hovered.tooltip, x: _docX, y: _docY };
         }
 
         const stateChanged = newHoverId !== ist.hoveredId || pressed !== ist.pressedId;

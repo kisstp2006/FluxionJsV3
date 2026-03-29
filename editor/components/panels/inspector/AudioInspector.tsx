@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Section, PropertyRow, Slider } from '../../../ui';
+import { Section, PropertyRow, Slider, Icons } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
 import type { FileInfo } from '../../../../src/filesystem/FileSystem';
@@ -221,9 +221,9 @@ export const AudioInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => 
             {/* Controls */}
             <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginBottom: '8px' }}>
               <button style={btnStyle} onClick={isPlaying ? pause : play}>
-                {isPlaying ? '⏸' : '▶'}
+                {isPlaying ? Icons.pause : Icons.play}
               </button>
-              <button style={btnStyle} onClick={stop}>⏹</button>
+              <button style={btnStyle} onClick={stop}>{Icons.stop}</button>
             </div>
 
             {/* Volume */}

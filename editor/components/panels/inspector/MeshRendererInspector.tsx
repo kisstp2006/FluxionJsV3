@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { PropertyRow, Checkbox, NumberInput, Vector2Input, AssetInput } from '../../../ui';
+import { PropertyRow, Checkbox, NumberInput, Vector2Input, AssetInput, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
@@ -393,11 +393,11 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                 color: 'var(--text-muted)',
                 cursor: 'pointer',
                 padding: '2px',
-                fontSize: '12px',
-                lineHeight: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
               }}
             >
-              ✕
+              {Icons.close}
             </button>
           </div>
         </PropertyRow>
@@ -423,7 +423,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           fontSize: 11,
           color: '#80e0a0',
         }}>
-          <span>🦴</span>
+          <span style={{ opacity: 0.8 }}>{Icons.activity}</span>
           <span>Skinned Mesh</span>
         </div>
       )}
@@ -529,7 +529,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
               userSelect: 'none',
             }}
           >
-            <span style={{ fontSize: '8px', transform: slotsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>▶</span>
+            <span style={{ display: 'inline-flex', transform: slotsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', transformOrigin: 'center' }}>{Icons.chevronRight}</span>
             Materials ({fluxMeshSlots.length})
           </div>
           {slotsOpen && (

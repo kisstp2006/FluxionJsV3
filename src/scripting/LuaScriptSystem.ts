@@ -118,10 +118,11 @@ export class LuaScriptSystem implements System {
         // start running in edit mode; non-tool scripts will simply have their
         // lifecycle skipped by ScriptSystem until play mode begins.
 
-        comp._loading.add(entry.path);
-        this._loadScript(entity, comp, entry, ecs).catch((err) => {
+        const tok = Symbol();
+        comp._loading.set(entry.path, tok);
+        this._loadScript(entity, comp, entry, ecs, tok).catch((err) => {
           DebugConsole.LogError(`[LuaScriptSystem] Failed to load "${entry.path}": ${err}`);
-          comp._loading.delete(entry.path);
+          if (comp._loading.get(entry.path) === tok) comp._loading.delete(entry.path);
         });
       }
     }
@@ -141,6 +142,7 @@ export class LuaScriptSystem implements System {
     comp:   ScriptComponent,
     entry:  ScriptEntry,
     ecs:    ECSManager,
+    token:  symbol,
   ): Promise<void> {
     const fs = getFileSystem();
     let absPath: string;
@@ -152,7 +154,7 @@ export class LuaScriptSystem implements System {
 
     const source = await fs.readFile(absPath);
     if (!ecs.entityExists(entity)) return;
-    if (!comp._loading.has(entry.path)) return; // invalidated by hot-reload
+    if (comp._loading.get(entry.path) !== token) return; // stale load — a newer reload superseded this one
 
     // ── Lazy-init wasmoon LuaFactory ───────────────────────────
     if (!this._factory) {
@@ -163,7 +165,7 @@ export class LuaScriptSystem implements System {
         DebugConsole.LogError(
           '[LuaScriptSystem] wasmoon is not installed — run: npm install wasmoon',
         );
-        comp._loading.delete(entry.path);
+        if (comp._loading.get(entry.path) === token) comp._loading.delete(entry.path);
         return;
       }
     }
@@ -173,7 +175,7 @@ export class LuaScriptSystem implements System {
       lua = await this._factory.createEngine();
     } catch (err) {
       DebugConsole.LogError(`[LuaScriptSystem] Lua engine creation failed: ${err}`);
-      comp._loading.delete(entry.path);
+      if (comp._loading.get(entry.path) === token) comp._loading.delete(entry.path);
       return;
     }
 
@@ -225,7 +227,7 @@ export class LuaScriptSystem implements System {
     } catch (err) {
       DebugConsole.LogError(`[LuaScriptSystem] Script error in "${entry.path}": ${err}`);
       try { lua.global.close?.(); } catch {}
-      comp._loading.delete(entry.path);
+      if (comp._loading.get(entry.path) === token) comp._loading.delete(entry.path);
       return;
     }
 
@@ -237,6 +239,7 @@ export class LuaScriptSystem implements System {
     // Mark as tool script if __tool = true was declared at the top level
     adapter._isTool = lua.global.get('__tool') === true;
 
+    if (comp._loading.get(entry.path) !== token) return; // stale — a newer reload superseded this one
     comp._instances.set(entry.path, adapter);
     comp._loading.delete(entry.path);
   }

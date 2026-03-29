@@ -1057,7 +1057,7 @@ export const AssetBrowserPanel: React.FC<{
                       color: '#f0a832',
                       pointerEvents: 'none',
                     }}
-                  >⚠</span>
+                  >{Icons.warning}</span>
                 )}
                 {fileType === 'texture' ? (
                   <TextureThumbnail

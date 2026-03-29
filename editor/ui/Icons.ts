@@ -67,6 +67,7 @@ import globeSvg          from './icons/globe.svg';
 import starSvg           from './icons/star.svg';
 import zapSvg            from './icons/zap.svg';
 
+import checkSvg      from './icons/check.svg';
 import circleSvg     from './icons/circle.svg';
 import triangleSvg   from './icons/triangle.svg';
 import databaseSvg   from './icons/database.svg';
@@ -180,6 +181,7 @@ export const Icons = {
   // ── Status ────────────────────────────────────────────────────
   warning:  ic(alertTriangleSvg, S, AMBER),
   info:     ic(infoSvg),
+  check:    ic(checkSvg),
 
   // ── Extra panel icons ─────────────────────────────────────────
   activity: ic(activitySvg),   // profiler / performance

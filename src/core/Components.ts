@@ -454,6 +454,12 @@ export class LightComponent extends BaseComponent {
   @field({ type: 'select', label: 'Shadow Map Size', options: [{ value: '512', label: '512' }, { value: '1024', label: '1024' }, { value: '2048', label: '2048' }, { value: '4096', label: '4096' }], visibleIf: s => s.castShadow && s.lightType !== 'ambient', dependsOn: ['castShadow', 'lightType'] })
   shadowMapSize = 2048;
 
+  @field({ type: 'number', label: 'Shadow Bias', step: 0.0001, min: -0.05, max: 0.05, visibleIf: s => s.castShadow && s.lightType !== 'ambient', dependsOn: ['castShadow', 'lightType'] })
+  shadowBias = -0.0001;
+
+  @field({ type: 'number', label: 'Normal Bias', step: 0.001, min: 0, max: 0.5, visibleIf: s => s.castShadow && s.lightType !== 'ambient', dependsOn: ['castShadow', 'lightType'] })
+  shadowNormalBias = 0;
+
   @field({ type: 'asset', label: 'Cookie Texture', assetType: 'texture', visibleIf: s => s.lightType !== 'ambient', dependsOn: ['lightType'] })
   cookieTexturePath: string | null = null;
 
@@ -685,8 +691,10 @@ export class ScriptComponent extends BaseComponent {
 
   /** Runtime: live instances keyed by script path — NOT serialized */
   _instances: Map<string, any> = new Map();
-  /** Runtime: paths currently being loaded — NOT serialized */
-  _loading: Set<string> = new Set();
+  /** Runtime: generation token per path currently being loaded — NOT serialized.
+   * Each in-flight _loadScript call holds a copy of its token; if the token in
+   * the map changes (or the entry is deleted) the old call is stale and aborts. */
+  _loading: Map<string, symbol> = new Map();
 
   override serialize(): Record<string, any> {
     return {

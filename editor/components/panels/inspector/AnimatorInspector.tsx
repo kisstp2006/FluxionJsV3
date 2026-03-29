@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useEffect, useState } from 'react';
-import { PropertyRow, Checkbox, Slider } from '../../../ui';
+import { PropertyRow, Checkbox, Slider, Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { AnimationComponent, MeshRendererComponent } from '../../../../src/core/Components';
@@ -101,7 +101,7 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
           fontSize: 11,
           color: '#80e0a0',
         }}>
-          <span>🦴</span>
+          <span style={{ opacity: 0.8 }}>{Icons.activity}</span>
           <span>Skinned Mesh</span>
         </div>
       )}
@@ -163,7 +163,7 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
                 fontSize: 12,
               }}
             >
-              ▶ Play
+              {Icons.play} Play
             </button>
             <button
               onClick={handleStop}
@@ -178,7 +178,7 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
                 fontSize: 12,
               }}
             >
-              ■ Stop
+              {Icons.stop} Stop
             </button>
           </div>
         </PropertyRow>

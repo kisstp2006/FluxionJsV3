@@ -33,6 +33,8 @@ interface ScreenQuadEntry {
   docH: number;
   screenX: number;
   screenY: number;
+  /** Uniform scale applied to the quad and rendered content (from canvas scaleMode). Default: 1. */
+  contentScale: number;
 }
 
 // ── Internal helpers ──────────────────────────────────────────
@@ -160,13 +162,16 @@ export class FuiEngineRenderer {
     tooltip?: FuiTooltipState,
     /** Override pixel scale (defaults to `window.devicePixelRatio`). Pass `zoom * dpr` for editor previews. */
     pixelScale?: number,
+    /** Uniform content scale from canvas scaleMode (default: 1). The quad and canvas are enlarged/shrunk by this factor. */
+    contentScale?: number,
   ): void {
+    const cs    = contentScale ?? 1;
     const dpr   = pixelScale ?? (window.devicePixelRatio || 1);
-    const entry = this._getOrCreate(entity, docW, docH, screenX, screenY, dpr);
+    const entry = this._getOrCreate(entity, docW, docH, screenX, screenY, dpr, cs);
 
-    // Resize offscreen canvas if DPR or doc size changed
-    const targetW = Math.round(docW * dpr);
-    const targetH = Math.round(docH * dpr);
+    // Resize offscreen canvas if DPR/contentScale/doc size changed
+    const targetW = Math.round(docW * cs * dpr);
+    const targetH = Math.round(docH * cs * dpr);
     if (entry.offscreenCanvas.width !== targetW || entry.offscreenCanvas.height !== targetH) {
       entry.offscreenCanvas.width  = targetW;
       entry.offscreenCanvas.height = targetH;
@@ -180,13 +185,13 @@ export class FuiEngineRenderer {
     }
 
     renderCompiledFuiToCanvas(compiled, entry.offscreenCtx, {
-      scaleX: dpr,
-      scaleY: dpr,
+      scaleX: dpr * cs,
+      scaleY: dpr * cs,
       nodeStates,
     });
 
     if (tooltip) {
-      _drawTooltip(entry.offscreenCtx, tooltip.x * dpr, tooltip.y * dpr, tooltip.text, dpr);
+      _drawTooltip(entry.offscreenCtx, tooltip.x * cs * dpr, tooltip.y * cs * dpr, tooltip.text, dpr * cs);
     }
 
     entry.texture.needsUpdate = true;
@@ -228,10 +233,11 @@ export class FuiEngineRenderer {
   // ── Private ────────────────────────────────────────────────
 
   private _positionMesh(entry: ScreenQuadEntry): void {
-    // Convert CSS-space (Y-down) to THREE.js space (Y-up)
+    const scaledW = entry.docW * entry.contentScale;
+    const scaledH = entry.docH * entry.contentScale;
     entry.mesh.position.set(
-      entry.screenX + entry.docW / 2,
-      this.screenH - entry.screenY - entry.docH / 2,
+      entry.screenX + scaledW / 2,
+      this.screenH - entry.screenY - scaledH / 2,
       0,
     );
   }
@@ -243,16 +249,17 @@ export class FuiEngineRenderer {
     screenX: number,
     screenY: number,
     dpr: number,
+    contentScale: number,
   ): ScreenQuadEntry {
     let entry = this.entries.get(entity);
 
-    if (!entry || entry.docW !== docW || entry.docH !== docH) {
-      // Dispose old entry if doc canvas size changed
+    if (!entry || entry.docW !== docW || entry.docH !== docH || entry.contentScale !== contentScale) {
+      // Dispose old entry if doc canvas size or content scale changed
       if (entry) this.removeEntity(entity);
 
       const offscreenCanvas = document.createElement('canvas');
-      offscreenCanvas.width  = Math.round(docW * dpr);
-      offscreenCanvas.height = Math.round(docH * dpr);
+      offscreenCanvas.width  = Math.round(docW * contentScale * dpr);
+      offscreenCanvas.height = Math.round(docH * contentScale * dpr);
       const offscreenCtx = offscreenCanvas.getContext('2d')!;
 
       const texture = new THREE.CanvasTexture(offscreenCanvas);
@@ -261,7 +268,7 @@ export class FuiEngineRenderer {
       texture.magFilter     = THREE.LinearFilter;
       texture.generateMipmaps = false;
 
-      const geom = new THREE.PlaneGeometry(docW, docH);
+      const geom = new THREE.PlaneGeometry(docW * contentScale, docH * contentScale);
       const mat  = new THREE.MeshBasicMaterial({
         map:        texture,
         transparent: true,
@@ -276,7 +283,7 @@ export class FuiEngineRenderer {
       entry = {
         offscreenCanvas, offscreenCtx,
         texture, material: mat, mesh,
-        docW, docH, screenX, screenY,
+        docW, docH, screenX, screenY, contentScale,
       };
       this.entries.set(entity, entry);
       this._positionMesh(entry);

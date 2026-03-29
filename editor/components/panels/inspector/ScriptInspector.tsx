@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PropertyRow, NumberInput, Checkbox, AssetInput } from '../../../ui';
+import { PropertyRow, NumberInput, Checkbox, AssetInput, Icons } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
@@ -385,7 +385,7 @@ const ScriptEntryRow: React.FC<{
           title="Remove script"
           style={{ ...btnStyle, color: 'var(--text-muted)' }}
         >
-          ✕
+          {Icons.close}
         </button>
       </div>
 
@@ -399,7 +399,7 @@ const ScriptEntryRow: React.FC<{
           )}
           {!loading && compileError && (
             <div style={{ padding: '4px 8px', color: '#ef5350', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-              ⚠ {compileError}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{Icons.warning} {compileError}</span>
             </div>
           )}
           {!loading && !compileError && properties.length === 0 && scriptClass && (

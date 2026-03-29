@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Icons } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import {
@@ -268,7 +269,7 @@ const EventGroup: React.FC<{
             value={entry.methodName}
             onChange={v => setEntry(i, { methodName: v })}
           />
-          <button style={{ ...btnStyle, color: 'var(--text-muted)' }} onClick={() => removeEntry(i)}>✕</button>
+          <button style={{ ...btnStyle, color: 'var(--text-muted)' }} onClick={() => removeEntry(i)} title="Remove">{Icons.close}</button>
         </div>
       ))}
       <div style={footerStyle}>

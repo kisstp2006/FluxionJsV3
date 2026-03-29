@@ -15,6 +15,7 @@ import React, {
   useMemo,
 } from 'react';
 import * as THREE from 'three';
+import { Icons } from '../../ui/Icons';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   compileVisualMaterial,
@@ -299,7 +300,7 @@ export const MaterialPreview: React.FC<MaterialPreviewProps> = ({
               letterSpacing: '0.04em',
             }}
           >
-            ✕ Compile failed
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{Icons.close} Compile failed</span>
           </div>
 
           {/* Error messages */}

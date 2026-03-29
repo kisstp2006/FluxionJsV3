@@ -1,4 +1,13 @@
 export type FuiMode = 'screen' | 'world';
+
+/** Anchor point relative to the parent container. Determines which corner/edge rect.x/y is measured from. */
+export type FuiAnchor =
+  | 'topLeft'    | 'top'    | 'topRight'
+  | 'left'       | 'center' | 'right'
+  | 'bottomLeft' | 'bottom' | 'bottomRight';
+
+/** How the UI canvas scales relative to the actual screen in screen-space mode. */
+export type FuiScaleMode = 'constantPixelSize' | 'scaleWithScreenSize';
 export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 
 /** How a button visually responds to interaction. */
@@ -33,6 +42,8 @@ export interface FuiBaseNode {
   id: string;
   type: FuiNodeType;
   rect?: FuiRect;
+  /** Anchor point in parent space that rect.x/y is measured from. Default: 'topLeft'. */
+  anchor?: FuiAnchor;
 }
 
 export interface FuiPanelNode extends FuiBaseNode {
@@ -230,6 +241,14 @@ export interface FuiDocument {
   canvas: {
     width: number;
     height: number;
+    /** How to scale the canvas when screen resolution differs from the design size. Default: 'constantPixelSize'. */
+    scaleMode?: FuiScaleMode;
+    /** Reference resolution width used by 'scaleWithScreenSize'. Defaults to canvas.width. */
+    referenceWidth?: number;
+    /** Reference resolution height used by 'scaleWithScreenSize'. Defaults to canvas.height. */
+    referenceHeight?: number;
+    /** Blend between matching width (0) and height (1). Used with 'scaleWithScreenSize'. Default: 0.5. */
+    matchWidthOrHeight?: number;
   };
   root: FuiPanelNode;
   animations?: FuiAnimation[];

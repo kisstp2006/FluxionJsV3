@@ -1130,6 +1130,8 @@ class LightSystem implements System {
         light.angle      = THREE.MathUtils.degToRad(lightComp.spotAngle);
         light.penumbra   = lightComp.spotPenumbra;
         light.castShadow = lightComp.castShadow;
+        light.shadow.bias       = lightComp.shadowBias;
+        light.shadow.normalBias = lightComp.shadowNormalBias;
 
         // Update target (local -Z direction)
         const forward = _lightForward.set(0, 0, -1).applyQuaternion(transform.quaternion);
@@ -1141,8 +1143,10 @@ class LightSystem implements System {
       }
 
       if (light instanceof THREE.PointLight) {
-        light.distance   = lightComp.range;
-        light.castShadow = lightComp.castShadow;
+        light.distance          = lightComp.range;
+        light.castShadow        = lightComp.castShadow;
+        light.shadow.bias       = lightComp.shadowBias;
+        light.shadow.normalBias = lightComp.shadowNormalBias;
       }
 
       if (light instanceof THREE.DirectionalLight) {
@@ -1151,7 +1155,9 @@ class LightSystem implements System {
           light.intensity   = 0;
           light.castShadow  = false;
         } else {
-          light.castShadow = lightComp.castShadow;
+          light.castShadow        = lightComp.castShadow;
+          light.shadow.bias       = lightComp.shadowBias;
+          light.shadow.normalBias = lightComp.shadowNormalBias;
         }
 
         // Update target (local -Z direction)
@@ -1255,7 +1261,8 @@ class LightSystem implements System {
         dl.shadow.camera.right = s;
         dl.shadow.camera.top = s;
         dl.shadow.camera.bottom = -s;
-        dl.shadow.bias = -0.0001;
+        dl.shadow.bias = comp.shadowBias;
+        dl.shadow.normalBias = comp.shadowNormalBias;
         this.renderer.scene.add(dl.target);
         light = dl;
         break;

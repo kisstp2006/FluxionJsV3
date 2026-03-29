@@ -45,6 +45,7 @@ import {
 import { compileVisualMaterial } from '../../../src/materials/VisualMaterialCompiler';
 import { getFileSystem } from '../../../src/filesystem';
 import { AssetInput } from '../../ui/inputs/AssetInput';
+import { Icons } from '../../ui/Icons';
 import { MaterialPreview } from './MaterialPreview';
 
 // ── Port Color Map ──
@@ -668,7 +669,10 @@ const CompilationInfo: React.FC<{
           marginBottom: '4px',
         }}
       >
-        {hasErrors ? '⚠ Compilation Errors' : '✓ Compiled OK'}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          {hasErrors ? Icons.warning : Icons.check}
+          {hasErrors ? 'Compilation Errors' : 'Compiled OK'}
+        </span>
       </div>
       {[...validation, ...compiled.errors].map((err, i) => (
         <div key={i} style={{ color: '#ef5350', marginBottom: '2px' }}>
@@ -1089,7 +1093,7 @@ const VisualMaterialEditorInner: React.FC<VisualMaterialEditorProps> = ({
               fontFamily: 'var(--font-sans, system-ui)',
             }}
           >
-            ✕ Close
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{Icons.close} Close</span>
           </button>
         </div>
       </div>

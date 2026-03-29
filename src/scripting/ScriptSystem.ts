@@ -157,10 +157,11 @@ export class ScriptSystem implements System {
 
         if (!comp._instances.has(entry.path)) {
           if (!comp._loading.has(entry.path)) {
-            comp._loading.add(entry.path);
-            this._loadScript(entity, comp, entry, ecs).catch((err) => {
+            const tok = Symbol();
+            comp._loading.set(entry.path, tok);
+            this._loadScript(entity, comp, entry, ecs, tok).catch((err) => {
               DebugConsole.LogError(`[ScriptSystem] Failed to load "${entry.path}": ${err}`);
-              comp._loading.delete(entry.path);
+              if (comp._loading.get(entry.path) === tok) comp._loading.delete(entry.path);
             });
           }
           continue;
@@ -263,6 +264,7 @@ export class ScriptSystem implements System {
     comp:    ScriptComponent,
     entry:   ScriptEntry,
     ecs:     ECSManager,
+    token:   symbol,
   ): Promise<void> {
     const fs = getFileSystem();
     let absPath: string;
@@ -281,7 +283,7 @@ export class ScriptSystem implements System {
     const source = await fs.readFile(absPath);
 
     if (!ecs.entityExists(entity)) return;
-    if (!comp._loading.has(entry.path)) return; // invalidated (hot reload)
+    if (comp._loading.get(entry.path) !== token) return; // stale load — a newer reload superseded this one
 
     let compiled: string;
     try {
@@ -334,6 +336,8 @@ export class ScriptSystem implements System {
 
     instance._started = false;
     instance._isTool   = !!(ScriptClass as any).__tool;
+    // Final staleness check before committing the instance
+    if (comp._loading.get(entry.path) !== token) return;
     comp._instances.set(entry.path, instance);
     comp._loading.delete(entry.path);
   }

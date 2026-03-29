@@ -188,6 +188,20 @@ function resolveAlign(style: any): FuiAlign {
   return 'center';
 }
 
+/** Resolve anchor offset in pixels given parent dimensions. */
+function _anchorOffset(
+  anchor: string | undefined,
+  parentW: number,
+  parentH: number,
+): { ax: number; ay: number } {
+  let ax = 0, ay = 0;
+  if (anchor === 'top'    || anchor === 'center' || anchor === 'bottom')    ax = parentW / 2;
+  else if (anchor === 'topRight' || anchor === 'right' || anchor === 'bottomRight') ax = parentW;
+  if (anchor === 'left'  || anchor === 'center' || anchor === 'right')     ay = parentH / 2;
+  else if (anchor === 'bottomLeft' || anchor === 'bottom' || anchor === 'bottomRight') ay = parentH;
+  return { ax, ay };
+}
+
 export function compileFui(doc: FuiDocument): FuiCompiled {
   const nodeById = new Map<string, FuiCompiledNode>();
   const drawOrder: FuiCompiledNode[] = [];
@@ -195,11 +209,13 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
   const walk = (
     node: FuiNode,
     parentAbs: { x: number; y: number },
+    parentSize: { w: number; h: number },
   ): FuiCompiledNode => {
     const rect = node.rect ?? { x: 0, y: 0, w: doc.canvas.width, h: doc.canvas.height };
+    const { ax, ay } = _anchorOffset((node as any).anchor, parentSize.w, parentSize.h);
     const absRect: FuiRect = {
-      x: parentAbs.x + rect.x,
-      y: parentAbs.y + rect.y,
+      x: parentAbs.x + ax + rect.x,
+      y: parentAbs.y + ay + rect.y,
       w: rect.w,
       h: rect.h,
     };
@@ -242,13 +258,13 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
     if (node.type === 'panel') {
       const panel = node as FuiPanelNode;
       const children = panel.children ?? [];
-      compiled.children = children.map((c) => walk(c, { x: absRect.x, y: absRect.y }));
+      compiled.children = children.map((c) => walk(c, { x: absRect.x, y: absRect.y }, { w: absRect.w, h: absRect.h }));
     }
 
     return compiled;
   };
 
-  const root = walk(doc.root, { x: 0, y: 0 });
+  const root = walk(doc.root, { x: 0, y: 0 }, { w: doc.canvas.width, h: doc.canvas.height });
   return { doc, root, nodeById, drawOrder };
 }
 
@@ -363,10 +379,11 @@ export function renderCompiledFuiToCanvas(
       const padding     = withDefaultNumber(merged.padding, 8) * Math.min(scaleX, scaleY);
       const mergedOpacity = Math.min(1, Math.max(0, withDefaultNumber(merged.opacity, 1)));
 
-      // Scale transform for active press animation
-      const scale = (isActive && (n.activeStyle as any)?.scale != null)
-        ? (n.activeStyle as any).scale as number
-        : (isActive ? 0.96 : 1);
+      // Scale transform for active press animation — only when clickAnimation === 'scale'
+      const clickAnim = n.clickAnimation ?? 'none';
+      const scale = (isActive && clickAnim === 'scale')
+        ? ((n.activeStyle as any)?.scale ?? 0.96)
+        : 1;
 
       ctx.save();
       ctx.globalAlpha = mergedOpacity;

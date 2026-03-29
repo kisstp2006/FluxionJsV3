@@ -7,14 +7,29 @@
 
 import type { EngineDef, ComponentDef, FieldDef } from '../MetaTypes';
 
+// ── Shared math-type @typedef block ──────────────────────────────────────────
+// Emitted once at the top of the generated file so all component @property
+// annotations can reference Vector2, Vector3, Color, etc. by name.
+
+const JS_SHARED_TYPES = `\
+// ── Shared math types ────────────────────────────────────────────────────────
+
+/** @typedef {{ x: number, y: number }} Vector2 */
+/** @typedef {{ x: number, y: number, z: number }} Vector3 */
+/** @typedef {{ x: number, y: number, z: number, order: string }} Euler */
+/** @typedef {{ x: number, y: number, z: number, w: number }} Quaternion */
+/** @typedef {{ r: number, g: number, b: number }} Color */
+`;
+
 function _primitiveJsType(t: string): string {
   switch (t) {
     case 'number': case 'slider': return 'number';
     case 'boolean': return 'boolean';
     case 'string': return 'string';
-    case 'vector3': case 'euler': return '{x:number,y:number,z:number}';
-    case 'vector2': return '{x:number,y:number}';
-    case 'color': return '{r:number,g:number,b:number}';
+    case 'vector3': return 'Vector3';
+    case 'euler':   return 'Euler';
+    case 'vector2': return 'Vector2';
+    case 'color':   return 'Color';
     case 'asset': return 'string|null';
     default: return '*';
   }
@@ -26,10 +41,10 @@ function fieldToJsDocType(f: FieldDef): string {
     case 'slider':   return 'number';
     case 'boolean':  return 'boolean';
     case 'string':   return 'string';
-    case 'vector3':
-    case 'euler':    return '{x:number,y:number,z:number}';
-    case 'vector2':  return '{x:number,y:number}';
-    case 'color':    return '{r:number,g:number,b:number}';
+    case 'vector3':  return 'Vector3';
+    case 'euler':    return 'Euler';
+    case 'vector2':  return 'Vector2';
+    case 'color':    return 'Color';
     case 'select':
       if (f.options?.length) {
         return f.options.map(o => `'${o.value}'`).join('|');
@@ -143,6 +158,6 @@ module.exports = { FluxionBehaviour };
 export class JavaScriptGenerator {
   static generate(def: EngineDef): string {
     const typedefs = def.components.map(emitTypedef).join('\n\n');
-    return `${typedefs}\n\n${JS_RUNTIME}`;
+    return `${JS_SHARED_TYPES}\n${typedefs}\n\n${JS_RUNTIME}`;
   }
 }

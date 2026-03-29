@@ -594,32 +594,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         </div>
       )}
 
-      {/* Viewport Stats Overlay (Scene view only) */}
-      {!isGameView && (
-      <div style={{
-        position: 'absolute',
-        bottom: '8px',
-        left: '8px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '2px',
-        fontSize: '10px',
-        fontFamily: 'var(--font-mono)',
-        color: 'var(--text-muted)',
-        background: 'rgba(13,17,23,0.6)',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        pointerEvents: 'none',
-      }}>
-        <span style={{ color: state.fps >= 30 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-          {state.fps} FPS ({state.frameTime.toFixed(1)}ms)
-        </span>
-        <span>{state.drawCalls} draw calls</span>
-        <span>{state.triangles.toLocaleString()} tris</span>
-        <span>{state.entityCount} entities</span>
-      </div>
-      )}
-
+      
       {/* Drag Delta Overlay (Scene view only) */}
       {!isGameView && dragDelta && (
         <div style={{

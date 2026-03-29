@@ -28,6 +28,17 @@ setGlobalFileSystem(_fs);
 const params = new URLSearchParams(window.location.search);
 const initialFilePath = params.get('filePath') || '';
 
+// Module-level ref so the project-detect IIFE can call injectGeneratedLib
+// once the project directory is known (Monaco may not be ready yet at that point,
+// so we queue the call and replay it when Monaco mounts).
+let _pendingDts: string | null = null;
+let _injectLib: ((dts: string) => void) | null = null;
+
+function _applyDts(dts: string) {
+  _pendingDts = dts;
+  _injectLib?.(dts);
+}
+
 // Auto-detect project root from file path
 (async () => {
   if (!initialFilePath) return;
@@ -40,6 +51,14 @@ const initialFilePath = params.get('filePath') || '';
         await projectManager.openProject(
           `${dir}/${entries.find((e) => e.name.endsWith('.fluxproj'))!.name}`,
         );
+        // Load the generated d.ts now that projectDir is known
+        const projectDir = projectManager.projectDir;
+        if (projectDir) {
+          try {
+            const dts = await _fs.readFile(`${projectDir}/.fluxion/api/fluxion.d.ts`);
+            if (dts) _applyDts(dts);
+          } catch { /* not generated yet */ }
+        }
         break;
       }
     } catch {}
@@ -47,426 +66,6 @@ const initialFilePath = params.get('filePath') || '';
   }
 })();
 
-// ── fluxion.d.ts type declarations injected into Monaco ──────
-
-const FLUXION_DTS = `
-// ── THREE.js math shortcuts injected into script scope ───────
-declare const THREE: any;
-declare const Vec2: new (x?: number, y?: number) => { x: number; y: number; set(x:number,y:number): this; clone(): this };
-declare const Vec3: new (x?: number, y?: number, z?: number) => { x: number; y: number; z: number; set(x:number,y:number,z:number): this; clone(): this; add(v:any): this; sub(v:any): this; multiplyScalar(s:number): this; length(): number; normalize(): this; dot(v:any): number; cross(v:any): this; copy(v:any): this; distanceTo(v:any): number };
-declare const Vec4: new (x?: number, y?: number, z?: number, w?: number) => { x: number; y: number; z: number; w: number };
-declare const Quat: new (x?: number, y?: number, z?: number, w?: number) => { x: number; y: number; z: number; w: number; setFromEuler(e:any): this; setFromAxisAngle(axis:any, angle:number): this; multiply(q:any): this; slerp(q:any, t:number): this; clone(): this };
-declare const Color: new (r?: number | string, g?: number, b?: number) => { r: number; g: number; b: number; set(v:any): this; clone(): this };
-declare const Euler: new (x?: number, y?: number, z?: number, order?: string) => { x: number; y: number; z: number; order: string; set(x:number,y:number,z:number): this; clone(): this };
-declare const Mat4: new () => { elements: number[]; identity(): this; compose(p:any,q:any,s:any): this; decompose(p:any,q:any,s:any): this; clone(): this };
-declare const Mat3: new () => { elements: number[]; identity(): this; clone(): this };
-
-// ── Mathf — common math utilities ────────────────────────────
-declare const Mathf: {
-  PI: number; TAU: number; Deg2Rad: number; Rad2Deg: number;
-  lerp(a: number, b: number, t: number): number;
-  clamp(v: number, min: number, max: number): number;
-  clamp01(v: number): number;
-  smoothstep(edge0: number, edge1: number, x: number): number;
-  approximately(a: number, b: number): boolean;
-  moveTowards(current: number, target: number, maxDelta: number): number;
-  repeat(t: number, length: number): number;
-  deltaAngle(a: number, b: number): number;
-  pingPong(t: number, length: number): number;
-  abs(x: number): number; ceil(x: number): number; floor(x: number): number;
-  round(x: number): number; sin(x: number): number; cos(x: number): number;
-  atan2(y: number, x: number): number; sqrt(x: number): number;
-  sign(x: number): number; pow(x: number, y: number): number;
-  log(x: number): number; exp(x: number): number;
-  min(...values: number[]): number; max(...values: number[]): number;
-};
-
-// ── Debug draw ───────────────────────────────────────────────
-declare namespace Debug {
-  function drawLine(start: { x:number;y:number;z:number }, end: { x:number;y:number;z:number }, color?: { r:number;g:number;b:number }): void;
-  function drawLineWorld(start: { x:number;y:number;z:number }, end: { x:number;y:number;z:number }, color?: { r:number;g:number;b:number }): void;
-  function drawCross(position: { x:number;y:number;z:number }, size: number, color?: { r:number;g:number;b:number }): void;
-  function drawLineBox(min: { x:number;y:number;z:number }, max: { x:number;y:number;z:number }, color?: { r:number;g:number;b:number }): void;
-  function drawLineSphere(center: { x:number;y:number;z:number }, radius: number, color?: { r:number;g:number;b:number }, segments?: number): void;
-  /**
-   * Draw a string at a screen-space pixel position for this frame.
-   * Coordinates are in CSS pixels from the top-left of the game canvas.
-   * Call every frame inside update() — the text is cleared automatically each frame.
-   *
-   * @param position  Screen position. Vec2(0, 0) = top-left corner of the canvas.
-   * @param text      The string to render.
-   * @param color     A THREE.Color, hex string ('#ff4400') or CSS color name ('white').
-   * @param fontSize  Font size in CSS pixels. Default 14.
-   *
-   * @example
-   *   update() {
-   *     Debug.drawText(new Vec2(8, 8),  'FPS: ' + this.Time.fps, '#4ade80');
-   *     Debug.drawText(new Vec2(8, 28), 'Pos: ' + this.transform.position.x.toFixed(2), new Color(1,0.5,0));
-   *   }
-   */
-  function drawText(
-    position: InstanceType<typeof Vec2>,
-    text: string,
-    color?: InstanceType<typeof Color> | string,
-    fontSize?: number,
-  ): void;
-  function Log(...args: any[]): void;
-  function LogWarning(...args: any[]): void;
-  function LogError(...args: any[]): void;
-}
-
-// ── Component types ──────────────────────────────────────────
-interface TransformComponent {
-  position: InstanceType<typeof Vec3>;
-  rotation: InstanceType<typeof Euler>;
-  scale: InstanceType<typeof Vec3>;
-  quaternion: InstanceType<typeof Quat>;
-  lookAt(target: InstanceType<typeof Vec3>): void;
-}
-interface RigidbodyComponent {
-  bodyType: 'dynamic' | 'static' | 'kinematic';
-  mass: number;
-  linearDamping: number;
-  angularDamping: number;
-  gravityScale: number;
-  isSensor: boolean;
-  enabled: boolean;
-}
-interface AudioSourceComponent {
-  clip: string;
-  volume: number;
-  pitch: number;
-  loop: boolean;
-  spatial: boolean;
-  autoPlay: boolean;
-  enabled: boolean;
-}
-interface LightComponent {
-  lightType: 'directional' | 'point' | 'spot' | 'ambient';
-  color: InstanceType<typeof Color>;
-  intensity: number;
-  castShadow: boolean;
-  range: number;
-  enabled: boolean;
-}
-interface CameraComponent {
-  fov: number;
-  near: number;
-  far: number;
-  isOrthographic: boolean;
-  orthoSize: number;
-  isMain: boolean;
-  priority: number;
-  enabled: boolean;
-}
-interface MeshRendererComponent {
-  primitiveType: string;
-  castShadow: boolean;
-  receiveShadow: boolean;
-  enabled: boolean;
-}
-interface ColliderComponent {
-  shape: 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh';
-  isTrigger: boolean;
-  enabled: boolean;
-}
-interface CharacterControllerComponent {
-  move(horizontal: number, vertical: number): void;
-  jump(): void;
-  setRunning(running: boolean): void;
-  crouch(crouching: boolean): void;
-  isGrounded(): boolean;
-  readonly velocity: InstanceType<typeof Vec3>;
-  walkSpeed: number;
-  runSpeed: number;
-  jumpForce: number;
-  enabled: boolean;
-}
-interface ParticleEmitterComponent {
-  play(): void;
-  stop(): void;
-  emit(count: number): void;
-  isPlaying: boolean;
-  maxParticles: number;
-  emitRate: number;
-  enabled: boolean;
-}
-interface SpriteComponent {
-  texture: string;
-  color: InstanceType<typeof Color>;
-  flipX: boolean;
-  flipY: boolean;
-  enabled: boolean;
-}
-interface TextRendererComponent {
-  text: string;
-  fontSize: number;
-  color: InstanceType<typeof Color>;
-  enabled: boolean;
-}
-interface AnimationComponent {
-  play(clipName: string): void;
-  stop(): void;
-  crossFade(clipName: string, duration?: number): void;
-  isPlaying(clipName?: string): boolean;
-  readonly currentClip: string | null;
-  speed: number;
-  enabled: boolean;
-}
-interface EnvironmentComponent {
-  skyboxTexture: string;
-  ambientColor: InstanceType<typeof Color>;
-  ambientIntensity: number;
-  fogEnabled: boolean;
-  fogColor: InstanceType<typeof Color>;
-  fogDensity: number;
-  enabled: boolean;
-}
-interface FogVolumeComponent {
-  color: InstanceType<typeof Color>;
-  density: number;
-  height: number;
-  enabled: boolean;
-}
-
-// ── FluxionBehaviour ─────────────────────────────────────────
-declare class FluxionBehaviour {
-  /** The entity ID this script is attached to. */
-  readonly entity: number;
-
-  /** The GameObject high-level wrapper for this entity. */
-  readonly gameObject: { name: string; tag: string; activeSelf: boolean; setActive(v: boolean): void; getComponent<T>(type: string): T | null };
-
-  /** Engine time. */
-  readonly Time: {
-    readonly deltaTime: number;
-    readonly unscaledDeltaTime: number;
-    readonly fixedDeltaTime: number;
-    timeScale: number;
-    readonly elapsed: number;
-    readonly unscaledElapsed: number;
-    readonly frameCount: number;
-    readonly fps: number;
-    readonly smoothFps: number;
-    readonly fixedAlpha: number;
-  };
-
-  /** @deprecated Use Time */ readonly time: FluxionBehaviour['Time'];
-
-  /** Input manager — keyboard, mouse, gamepad. */
-  readonly Input: {
-    isKeyDown(code: string): boolean;
-    isKeyPressed(code: string): boolean;
-    isKeyReleased(code: string): boolean;
-    isMouseDown(button?: number): boolean;
-    isMousePressed(button?: number): boolean;
-    isMouseReleased(button?: number): boolean;
-    isPointerLocked(): boolean;
-    lockPointer(): void;
-    unlockPointer(): void;
-    getAxis(negative: string, positive: string): number;
-    getGamepadAxis(padIndex: number, axisIndex: number, deadzone?: number): number;
-    isGamepadButtonDown(padIndex: number, buttonIndex: number): boolean;
-    readonly mousePosition: { x: number; y: number };
-    readonly mouseDelta: { x: number; y: number };
-    readonly mouseWheel: number;
-    readonly horizontal: number;
-    readonly vertical: number;
-  };
-
-  /** The global engine event bus. */
-  readonly events: {
-    on<T = any>(event: string, cb: (data: T) => void, priority?: number): () => void;
-    once<T = any>(event: string, cb: (data: T) => void, priority?: number): () => void;
-    emit<T = any>(event: string, data?: T): void;
-  };
-
-  /** The Transform component of this entity (shortcut). */
-  readonly transform: TransformComponent | null;
-
-  /** @deprecated Use Input */ readonly input: FluxionBehaviour['Input'];
-
-  /** Physics world access. */
-  readonly Physics: {
-    raycast(origin: InstanceType<typeof Vec3>, direction: InstanceType<typeof Vec3>, maxDist?: number): { entity: number; point: InstanceType<typeof Vec3>; normal: InstanceType<typeof Vec3>; distance: number } | null;
-    setGravity(x: number, y: number, z: number): void;
-    move(horizontal: number, vertical: number): void;
-    jump(): void;
-    setRunning(running: boolean): void;
-    crouch(crouching: boolean): void;
-    isGrounded(): boolean;
-    readonly velocity: InstanceType<typeof Vec3>;
-  };
-
-  /** @deprecated Use Physics */ readonly physics: FluxionBehaviour['Physics'];
-
-  /** Scene management. */
-  readonly scene: {
-    getName(): string;
-    load(path: string): void;
-  };
-
-  /** Application info. */
-  readonly application: {
-    readonly fps: number;
-    readonly isEditor: boolean;
-    readonly platform: string;
-    quit(): void;
-  };
-
-  // Component access
-  getComponent<T>(type: string): T | null;
-  getComponentOf<T>(entity: number, type: string): T | null;
-  hasComponent(type: string): boolean;
-  addComponent<T>(component: T): T;
-  removeComponent(type: string): void;
-
-  // Scene queries
-  find(name: string): number | undefined;
-  findWithTag(tag: string): number | undefined;
-  findAll(tag: string): number[];
-  query(...componentTypes: string[]): number[];
-
-  // Hierarchy
-  getParent(entity?: number): number | undefined;
-  getChildren(entity?: number): ReadonlySet<number>;
-
-  // Entity lifecycle
-  createEntity(name?: string): number;
-  destroy(entity?: number): void;
-  getName(entity?: number): string;
-  setName(name: string, entity?: number): void;
-
-  // Tags
-  addTag(tag: string, entity?: number): void;
-  hasTag(tag: string, entity?: number): boolean;
-
-  // Events (auto-unsubscribed on destroy)
-  on<T = any>(event: string, callback: (data: T) => void, priority?: number): void;
-  once<T = any>(event: string, callback: (data: T) => void, priority?: number): void;
-  emit<T = any>(event: string, data?: T): void;
-
-  // Audio
-  playSound(audioComp: AudioSourceComponent, position?: InstanceType<typeof Vec3>): void;
-
-  // Coroutines
-  startCoroutine(gen: Generator): symbol;
-  stopCoroutine(id: symbol): void;
-
-  // FUI (Fluxion UI)
-  readonly ui: {
-    /** Load a .fui file onto the FuiComponent. */
-    load(path: string): void;
-    /** Attach an inline FuiDocument (built with FuiBuilder). */
-    create(doc: FuiDocument): void;
-    /** Update the text of a label or button node by ID. Re-renders immediately. */
-    setText(nodeId: string, text: string): void;
-    /** Show the FUI (enable the FuiComponent). */
-    show(): void;
-    /** Hide the FUI (disable the FuiComponent). */
-    hide(): void;
-    /** Toggle FUI visibility. */
-    setVisible(visible: boolean): void;
-    /** Start a named animation defined in the FUI document. */
-    playAnimation(id: string): void;
-    /** Stop the currently playing animation. */
-    stopAnimation(): void;
-    /** Move a screen-space FUI to the given pixel position. */
-    setScreenPosition(x: number, y: number): void;
-    /** Subscribe to a specific button click. Auto-cleaned on script destroy. */
-    onButtonClick(elementId: string, callback: () => void): void;
-    /** Subscribe to any button click on this entity's FUI. */
-    onAnyClick(callback: (elementId: string) => void): void;
-  };
-
-  // Logging
-  log(...args: any[]): void;
-  warn(...args: any[]): void;
-  error(...args: any[]): void;
-
-  // Lifecycle hooks
-  start?(): void | Promise<void>;
-  update?(dt: number): void;
-  fixedUpdate?(dt: number): void;
-  lateUpdate?(dt: number): void;
-  onDestroy?(): void;
-  onEnable?(): void;
-  onDisable?(): void;
-}
-/** @deprecated Use FluxionBehaviour */
-declare class FluxionScript extends FluxionBehaviour {}
-
-// ── FUI types (available in scripts via FuiBuilder) ──────────────────────────
-
-interface FuiRect { x: number; y: number; w: number; h: number; }
-type FuiNodeType = 'panel' | 'label' | 'button';
-type FuiMode = 'screen' | 'world';
-type FuiAlign = 'left' | 'center' | 'right';
-type FuiAnimatableProperty = 'opacity' | 'x' | 'y' | 'w' | 'h' | 'fontSize';
-
-interface FuiDocument {
-  version: number;
-  mode: FuiMode;
-  canvas: { width: number; height: number };
-  root: any;
-  animations?: any[];
-}
-
-interface FuiPanelOpts {
-  bg?: string; border?: string; borderWidth?: number;
-  radius?: number; opacity?: number; parent?: string;
-}
-interface FuiLabelOpts {
-  color?: string; fontSize?: number; align?: FuiAlign;
-  opacity?: number; parent?: string;
-}
-interface FuiButtonOpts {
-  bg?: string; border?: string; borderWidth?: number;
-  textColor?: string; fontSize?: number; radius?: number;
-  padding?: number; opacity?: number; parent?: string;
-}
-interface FuiAnimTrackSpec {
-  nodeId: string;
-  property: FuiAnimatableProperty;
-  keyframes: Array<{ time: number; value: number; easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'step' }>;
-}
-
-declare class FuiBuilder {
-  constructor(width?: number, height?: number, mode?: FuiMode);
-  panel(id: string, x: number, y: number, w: number, h: number, opts?: FuiPanelOpts): this;
-  label(id: string, x: number, y: number, w: number, h: number, text: string, opts?: FuiLabelOpts): this;
-  button(id: string, x: number, y: number, w: number, h: number, text: string, opts?: FuiButtonOpts): this;
-  background(color: string, opts?: { opacity?: number }): this;
-  animation(id: string, name: string, duration: number, loop: boolean, tracks: FuiAnimTrackSpec[]): this;
-  build(): FuiDocument;
-  toJSON(): string;
-  static genId(prefix?: string): string;
-}
-
-// ── EntityRef ─────────────────────────────────────────────────
-
-/**
- * A typed entity reference that is exposed as an entity picker in the Inspector.
- * @example
- *   target      = new EntityRef();            // any entity
- *   cameraSlot  = new EntityRef('Camera');    // only entities with Camera
- *   rbSlot      = new EntityRef('Rigidbody');
- *
- *   onUpdate() {
- *     if (!this.target.isValid) return;
- *     const tf = this.getComponentOf(this.target.entity, 'Transform');
- *   }
- */
-declare class EntityRef {
-  /** The assigned entity ID, or null when unassigned. */
-  entity: number | null;
-  /** Component type constraint shown in the Inspector filter (read-only). */
-  readonly requireComponent: string | undefined;
-  /** True when an entity is assigned. */
-  readonly isValid: boolean;
-  constructor(requireComponent?: string);
-}
-`;
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -544,10 +143,18 @@ const App: React.FC = () => {
 
     if (!libRegistered.current) {
       libRegistered.current = true;
-      monaco.languages.typescript.typescriptDefaults.addExtraLib(
-        FLUXION_DTS,
-        'ts:fluxion/fluxion.d.ts',
-      );
+
+      // Wire the module-level inject callback now that Monaco is ready.
+      // If the project IIFE already resolved a d.ts, apply it immediately.
+      _injectLib = (dts: string) => {
+        generatedLibRef.current?.dispose();
+        generatedLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          dts,
+          'ts:fluxion/fluxion.d.ts',
+        );
+      };
+      if (_pendingDts) _injectLib(_pendingDts);
+
       monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
         noSemanticValidation: false,
         noSyntaxValidation: false,
@@ -743,35 +350,11 @@ const App: React.FC = () => {
   }, [applySettings]);
 
   // ── Generated type lib (fluxion.d.ts from the active project) ──────────
-  // Injects or replaces the generated declaration lib in Monaco.
+  // Routes through _applyDts so the module-level ref and pending cache stay
+  // in sync regardless of whether Monaco was ready when the d.ts arrived.
   const injectGeneratedLib = useCallback((dts: string) => {
-    const monaco = monacoRef.current;
-    if (!monaco) return;
-    // Dispose the previous registration before adding the new one
-    generatedLibRef.current?.dispose();
-    generatedLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      dts,
-      'ts:fluxion/generated.d.ts',
-    );
+    _applyDts(dts);
   }, []);
-
-  // Load the generated .d.ts from disk when the editor window opens
-  useEffect(() => {
-    const api = (window as any).fluxionAPI;
-    if (!api?.readFile) return;
-    // Try to read from the project dir sent as a query param or via the API
-    const tryLoad = async () => {
-      try {
-        const projectDir: string | null = await api.getProjectDir?.();
-        if (!projectDir) return;
-        const dts = await api.readFile(`${projectDir}/.fluxion/api/fluxion.d.ts`);
-        if (dts) injectGeneratedLib(dts);
-      } catch {
-        // Project not open yet or file not generated — silently skip
-      }
-    };
-    tryLoad();
-  }, [injectGeneratedLib]);
 
   // Hot-swap the generated lib whenever ApiEmitter finishes a new emit
   useEffect(() => {

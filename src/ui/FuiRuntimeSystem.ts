@@ -129,11 +129,16 @@ export class FuiRuntimeSystem implements System {
     if (entry && entry.mode === 'screen') return entry.screen;
 
     const parent = this.ensureParentEl();
+
+    // position:fixed makes the overlay relative to the viewport, not to any
+    // ancestor element — so it aligns correctly regardless of how the canvas
+    // container is laid out in the editor or in the game.
+    const canvasRect = getCanvasRect(this.engine.config.canvas);
     const overlayCanvas = document.createElement('canvas');
-    overlayCanvas.style.position = 'absolute';
-    overlayCanvas.style.left = `${comp.screenX}px`;
-    overlayCanvas.style.top = `${comp.screenY}px`;
-    overlayCanvas.style.width = `${compiled.doc.canvas.width}px`;
+    overlayCanvas.style.position = 'fixed';
+    overlayCanvas.style.left = `${canvasRect.left + comp.screenX}px`;
+    overlayCanvas.style.top  = `${canvasRect.top  + comp.screenY}px`;
+    overlayCanvas.style.width  = `${compiled.doc.canvas.width}px`;
     overlayCanvas.style.height = `${compiled.doc.canvas.height}px`;
     overlayCanvas.style.pointerEvents = 'none';
     overlayCanvas.style.zIndex = '50';
@@ -141,10 +146,11 @@ export class FuiRuntimeSystem implements System {
     parent.appendChild(overlayCanvas);
     const overlayCtx = overlayCanvas.getContext('2d')!;
 
-    // We render into an offscreen buffer in document pixels, then scale to overlay.
+    // Offscreen buffer rendered at device-pixel resolution; blit to overlay.
+    const dpr = window.devicePixelRatio || 1;
     const offscreenCanvas = document.createElement('canvas');
-    offscreenCanvas.width = compiled.doc.canvas.width;
-    offscreenCanvas.height = compiled.doc.canvas.height;
+    offscreenCanvas.width  = Math.round(compiled.doc.canvas.width  * dpr);
+    offscreenCanvas.height = Math.round(compiled.doc.canvas.height * dpr);
     const offscreenCtx = offscreenCanvas.getContext('2d')!;
 
     const screenEntry: ScreenEntry = { overlayCanvas, overlayCtx, offscreenCanvas, offscreenCtx, compiled };
@@ -189,27 +195,31 @@ export class FuiRuntimeSystem implements System {
   private renderScreen(entry: ScreenEntry, comp: FuiComponent): void {
     const { compiled } = entry;
     const { doc } = compiled;
+    const dpr = window.devicePixelRatio || 1;
 
-    const w = Math.max(1, doc.canvas.width);
-    const h = Math.max(1, doc.canvas.height);
+    const cssW = Math.max(1, doc.canvas.width);
+    const cssH = Math.max(1, doc.canvas.height);
+    const pixW = Math.round(cssW * dpr);
+    const pixH = Math.round(cssH * dpr);
 
-    // Resize overlay when needed (avoid clearing/alloc every frame if sizes are stable)
-    if (entry.overlayCanvas.width !== w || entry.overlayCanvas.height !== h) {
-      entry.overlayCanvas.width = w;
-      entry.overlayCanvas.height = h;
+    // Keep overlay CSS size in logical pixels; physical pixel count = dpr multiple.
+    entry.overlayCanvas.style.width  = `${cssW}px`;
+    entry.overlayCanvas.style.height = `${cssH}px`;
+    if (entry.overlayCanvas.width !== pixW || entry.overlayCanvas.height !== pixH) {
+      entry.overlayCanvas.width  = pixW;
+      entry.overlayCanvas.height = pixH;
     }
 
-    const scaleX = 1;
-    const scaleY = 1;
+    // Offscreen buffer at device-pixel resolution for crisp text/edges.
+    if (entry.offscreenCanvas.width !== pixW || entry.offscreenCanvas.height !== pixH) {
+      entry.offscreenCanvas.width  = pixW;
+      entry.offscreenCanvas.height = pixH;
+    }
 
-    // Draw to offscreen first in doc pixels (so hit-testing stays stable),
-    // then scale to overlay canvas.
-    renderCompiledFuiToCanvas(entry.compiled, entry.offscreenCtx, { scaleX: 1, scaleY: 1 });
+    renderCompiledFuiToCanvas(entry.compiled, entry.offscreenCtx, { scaleX: dpr, scaleY: dpr });
 
-    entry.overlayCtx.clearRect(0, 0, entry.overlayCanvas.width, entry.overlayCanvas.height);
-    entry.overlayCtx.drawImage(entry.offscreenCanvas, 0, 0, entry.overlayCanvas.width, entry.overlayCanvas.height);
-
-    // Optional: for debugging we'd render outlines. MVP keeps it simple.
+    entry.overlayCtx.clearRect(0, 0, pixW, pixH);
+    entry.overlayCtx.drawImage(entry.offscreenCanvas, 0, 0, pixW, pixH);
   }
 
   private renderWorld(entry: WorldEntry, comp: FuiComponent): void {
@@ -232,20 +242,19 @@ export class FuiRuntimeSystem implements System {
     compiled: FuiCompiled,
     comp: FuiComponent,
   ): FuiCompiledNode | null {
-    const parent = this.ensureParentEl();
-    const parentRect = parent.getBoundingClientRect();
+    // Mouse position is in client (viewport) coords. The overlay is also
+    // positioned in client coords (position:fixed), so subtract canvasRect
+    // origin + screenX/Y to arrive at FUI document space.
+    const canvasRect = getCanvasRect(this.engine.config.canvas);
 
-    const px = this.input.mousePosition.x - parentRect.left - comp.screenX;
-    const py = this.input.mousePosition.y - parentRect.top - comp.screenY;
+    const px = this.input.mousePosition.x - canvasRect.left - comp.screenX;
+    const py = this.input.mousePosition.y - canvasRect.top  - comp.screenY;
 
     const canvasW = compiled.doc.canvas.width;
     const canvasH = compiled.doc.canvas.height;
     if (px < 0 || py < 0 || px > canvasW || py > canvasH) return null;
 
-    const docX = px;
-    const docY = py;
-
-    return hitTestFuiButtons(compiled, docX, docY);
+    return hitTestFuiButtons(compiled, px, py);
   }
 
   private hitTestWorld(compiled: FuiCompiled, entry: WorldEntry, ray: THREE.Ray): FuiCompiledNode | null {
@@ -371,22 +380,33 @@ export class FuiRuntimeSystem implements System {
         });
       } else if (existing.mode === 'screen') {
         const screen = existing.screen;
-        // Reposition + redraw only when size changed.
         const overlay = screen.overlayCanvas;
         const docW = screen.compiled.doc.canvas.width;
         const docH = screen.compiled.doc.canvas.height;
+
+        // Recompute position every frame from the canvas's live bounding rect so
+        // the overlay stays aligned even when the window is resized or the editor
+        // panel is moved/resized.
+        const canvasRect = getCanvasRect(this.engine.config.canvas);
+        const expectedLeft   = `${canvasRect.left + comp.screenX}px`;
+        const expectedTop    = `${canvasRect.top  + comp.screenY}px`;
+        const expectedWidth  = `${docW}px`;
+        const expectedHeight = `${docH}px`;
         if (
-          overlay.style.left !== `${comp.screenX}px` ||
-          overlay.style.top !== `${comp.screenY}px` ||
-          overlay.style.width !== `${docW}px` ||
-          overlay.style.height !== `${docH}px`
+          overlay.style.left   !== expectedLeft  ||
+          overlay.style.top    !== expectedTop   ||
+          overlay.style.width  !== expectedWidth ||
+          overlay.style.height !== expectedHeight
         ) {
-          overlay.style.left = `${comp.screenX}px`;
-          overlay.style.top = `${comp.screenY}px`;
-          overlay.style.width = `${docW}px`;
-          overlay.style.height = `${docH}px`;
+          overlay.style.left   = expectedLeft;
+          overlay.style.top    = expectedTop;
+          overlay.style.width  = expectedWidth;
+          overlay.style.height = expectedHeight;
         }
-        if (overlay.width !== docW || overlay.height !== docH) {
+
+        // Redraw when device-pixel canvas size changed (e.g. DPR change or doc resize).
+        const dpr = window.devicePixelRatio || 1;
+        if (overlay.width !== Math.round(docW * dpr) || overlay.height !== Math.round(docH * dpr)) {
           this.renderScreen(screen, comp);
         }
 

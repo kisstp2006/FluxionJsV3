@@ -167,6 +167,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   // Raycaster pick
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engine || !canvasRef.current) return;
+    if (state.isPlaying) return; // no picking while simulation runs
     // Skip selection if we just finished a gizmo drag or camera drag
     if (engine.gizmoService.isDragging || wasDraggingRef.current) {
       wasDraggingRef.current = false;
@@ -202,7 +203,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     }
 
     dispatch({ type: 'SELECT_ENTITY', entity: null });
-  }, [engine, dispatch]);
+  }, [engine, dispatch, state.isPlaying]);
 
   // Resize
   useEffect(() => {
@@ -221,6 +222,11 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   // Sync transform controls and selection outline with selection
   useEffect(() => {
     if (!engine) return;
+    if (state.isPlaying) {
+      engine.gizmoService.detach();
+      engine.selectionOutline.visible = false;
+      return;
+    }
     if (state.selectedEntity !== null) {
       const tryAttach = () => {
         const obj = engine.renderer.getObject(state.selectedEntity!);
@@ -246,7 +252,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       engine.gizmoService.detach();
       engine.selectionOutline.visible = false;
     }
-  }, [engine, state.selectedEntity]);
+  }, [engine, state.selectedEntity, state.isPlaying]);
 
   // Keep selection outline in sync with transforms each frame
   useEffect(() => {

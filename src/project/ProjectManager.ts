@@ -115,14 +115,14 @@ export class ProjectManager {
 
     // Create example script
     const exampleScript = [
-      `export default class ExampleScript extends FluxionScript {`,
+      `export default class ExampleScript extends FluxionBehaviour {`,
       `  // speed = 5.0;`,
       ``,
-      `  onStart() {`,
-      `    console.log('[Script] ExampleScript started on entity', this.entity);`,
+      `  start() {`,
+      `    this.log('ExampleScript started on entity', this.entity);`,
       `  }`,
       ``,
-      `  onUpdate(dt) {`,
+      `  update(dt) {`,
       `    // Called every frame.`,
       `  }`,
       `}`,

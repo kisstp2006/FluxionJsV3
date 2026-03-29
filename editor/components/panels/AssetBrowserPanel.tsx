@@ -17,6 +17,7 @@ import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import type { ScriptTemplate } from '../../../src/assets/AssetTypeRegistry';
 import { assetImporter } from '../../../src/assets/AssetImporter';
 import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
+import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
 
 interface DirEntry {
   name: string;
@@ -344,7 +345,12 @@ export const AssetBrowserPanel: React.FC<{
     } else if (entry.name.endsWith('.fui')) {
       window.dispatchEvent(new CustomEvent('fluxion:open-fui-editor', { detail: { path: entry.path } }));
     } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
-      window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path: entry.path } }));
+      const openIn = ProjectSettingsRegistry.get<string>('scripting.editor.openIn') ?? 'builtin';
+      if (openIn === 'vscode') {
+        (window as any).fluxionAPI?.openPath?.(entry.path);
+      } else {
+        window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path: entry.path } }));
+      }
     } else {
       log(`Opening ${entry.name}...`, 'info');
     }

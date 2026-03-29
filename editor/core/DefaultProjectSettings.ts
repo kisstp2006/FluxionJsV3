@@ -608,6 +608,19 @@ const debugDrawSettings: SettingDescriptor[] = [
 
 const scriptingSettings: SettingDescriptor[] = [
   {
+    key: 'scripting.editor.openIn',
+    label: 'Open Scripts In',
+    description: 'Choose whether to open script files in the built-in Monaco editor or in VS Code.',
+    type: 'select',
+    defaultValue: 'builtin',
+    category: 'Scripting/Editor',
+    order: 0,
+    options: [
+      { value: 'builtin', label: 'Built-in Editor' },
+      { value: 'vscode', label: 'VS Code' },
+    ],
+  },
+  {
     key: 'scripting.editor.fontSize',
     label: 'Font Size',
     description: 'Script editor font size in pixels.',

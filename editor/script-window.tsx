@@ -134,14 +134,86 @@ interface CameraComponent {
   priority: number;
   enabled: boolean;
 }
+interface MeshRendererComponent {
+  primitiveType: string;
+  castShadow: boolean;
+  receiveShadow: boolean;
+  enabled: boolean;
+}
+interface ColliderComponent {
+  shape: 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh';
+  isTrigger: boolean;
+  enabled: boolean;
+}
+interface CharacterControllerComponent {
+  move(horizontal: number, vertical: number): void;
+  jump(): void;
+  setRunning(running: boolean): void;
+  crouch(crouching: boolean): void;
+  isGrounded(): boolean;
+  readonly velocity: InstanceType<typeof Vec3>;
+  walkSpeed: number;
+  runSpeed: number;
+  jumpForce: number;
+  enabled: boolean;
+}
+interface ParticleEmitterComponent {
+  play(): void;
+  stop(): void;
+  emit(count: number): void;
+  isPlaying: boolean;
+  maxParticles: number;
+  emitRate: number;
+  enabled: boolean;
+}
+interface SpriteComponent {
+  texture: string;
+  color: InstanceType<typeof Color>;
+  flipX: boolean;
+  flipY: boolean;
+  enabled: boolean;
+}
+interface TextRendererComponent {
+  text: string;
+  fontSize: number;
+  color: InstanceType<typeof Color>;
+  enabled: boolean;
+}
+interface AnimationComponent {
+  play(clipName: string): void;
+  stop(): void;
+  crossFade(clipName: string, duration?: number): void;
+  isPlaying(clipName?: string): boolean;
+  readonly currentClip: string | null;
+  speed: number;
+  enabled: boolean;
+}
+interface EnvironmentComponent {
+  skyboxTexture: string;
+  ambientColor: InstanceType<typeof Color>;
+  ambientIntensity: number;
+  fogEnabled: boolean;
+  fogColor: InstanceType<typeof Color>;
+  fogDensity: number;
+  enabled: boolean;
+}
+interface FogVolumeComponent {
+  color: InstanceType<typeof Color>;
+  density: number;
+  height: number;
+  enabled: boolean;
+}
 
 // ── FluxionBehaviour ─────────────────────────────────────────
 declare class FluxionBehaviour {
   /** The entity ID this script is attached to. */
   readonly entity: number;
 
+  /** The GameObject high-level wrapper for this entity. */
+  readonly gameObject: { name: string; tag: string; activeSelf: boolean; setActive(v: boolean): void; getComponent<T>(type: string): T | null };
+
   /** Engine time. */
-  readonly time: {
+  readonly Time: {
     readonly deltaTime: number;
     readonly unscaledDeltaTime: number;
     readonly fixedDeltaTime: number;
@@ -154,8 +226,10 @@ declare class FluxionBehaviour {
     readonly fixedAlpha: number;
   };
 
+  /** @deprecated Use Time */ readonly time: FluxionBehaviour['Time'];
+
   /** Input manager — keyboard, mouse, gamepad. */
-  readonly input: {
+  readonly Input: {
     isKeyDown(code: string): boolean;
     isKeyPressed(code: string): boolean;
     isKeyReleased(code: string): boolean;
@@ -185,11 +259,21 @@ declare class FluxionBehaviour {
   /** The Transform component of this entity (shortcut). */
   readonly transform: TransformComponent | null;
 
+  /** @deprecated Use Input */ readonly input: FluxionBehaviour['Input'];
+
   /** Physics world access. */
-  readonly physics: {
+  readonly Physics: {
     raycast(origin: InstanceType<typeof Vec3>, direction: InstanceType<typeof Vec3>, maxDist?: number): { entity: number; point: InstanceType<typeof Vec3>; normal: InstanceType<typeof Vec3>; distance: number } | null;
     setGravity(x: number, y: number, z: number): void;
+    move(horizontal: number, vertical: number): void;
+    jump(): void;
+    setRunning(running: boolean): void;
+    crouch(crouching: boolean): void;
+    isGrounded(): boolean;
+    readonly velocity: InstanceType<typeof Vec3>;
   };
+
+  /** @deprecated Use Physics */ readonly physics: FluxionBehaviour['Physics'];
 
   /** Scene management. */
   readonly scene: {
@@ -424,6 +508,8 @@ const App: React.FC = () => {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const libRegistered = useRef(false);
+  // Disposable for the generated fluxion.d.ts extra lib — replaced on API updates
+  const generatedLibRef = useRef<{ dispose(): void } | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Register FluxionBehaviour type declarations once Monaco is loaded
@@ -634,6 +720,47 @@ const App: React.FC = () => {
     api.onScriptSettingsUpdate((s: ScriptEditorSettings) => applySettings(s));
     return () => api.offScriptSettingsUpdate?.();
   }, [applySettings]);
+
+  // ── Generated type lib (fluxion.d.ts from the active project) ──────────
+  // Injects or replaces the generated declaration lib in Monaco.
+  const injectGeneratedLib = useCallback((dts: string) => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+    // Dispose the previous registration before adding the new one
+    generatedLibRef.current?.dispose();
+    generatedLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      dts,
+      'ts:fluxion/generated.d.ts',
+    );
+  }, []);
+
+  // Load the generated .d.ts from disk when the editor window opens
+  useEffect(() => {
+    const api = (window as any).fluxionAPI;
+    if (!api?.readFile) return;
+    // Try to read from the project dir sent as a query param or via the API
+    const tryLoad = async () => {
+      try {
+        const projectDir: string | null = await api.getProjectDir?.();
+        if (!projectDir) return;
+        const dts = await api.readFile(`${projectDir}/.fluxion/api/fluxion.d.ts`);
+        if (dts) injectGeneratedLib(dts);
+      } catch {
+        // Project not open yet or file not generated — silently skip
+      }
+    };
+    tryLoad();
+  }, [injectGeneratedLib]);
+
+  // Hot-swap the generated lib whenever ApiEmitter finishes a new emit
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const dts = (e as CustomEvent<{ dts: string }>).detail?.dts;
+      if (dts) injectGeneratedLib(dts);
+    };
+    window.addEventListener('fluxion:api-updated', handler);
+    return () => window.removeEventListener('fluxion:api-updated', handler);
+  }, [injectGeneratedLib]);
 
   // Open a file (called on initial load and when main process sends open-tab)
   const openFile = useCallback(async (filePath: string) => {

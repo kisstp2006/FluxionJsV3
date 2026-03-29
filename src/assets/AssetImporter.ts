@@ -19,6 +19,7 @@
 //   - Fully extensible via AssetTypeRegistry importProcessor
 // ============================================================
 
+import { getPlatformBridge } from '../platform/PlatformBridge';
 import type { IFileSystem } from '../filesystem/FileSystem';
 import { getFileSystem, pathJoin, pathBasename, pathExtension, normalizePath } from '../filesystem';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
@@ -110,9 +111,9 @@ async function resolveConflict(
 // ── SHA-256 via IPC ──
 
 async function hashFile(sourcePath: string): Promise<string> {
-  const api = (window as any).fluxionAPI;
-  if (api?.hashFile) {
-    return api.hashFile(sourcePath) as Promise<string>;
+  const bridge = getPlatformBridge();
+  if (bridge?.hashFile) {
+    return bridge.hashFile(sourcePath);
   }
   // Fallback: read binary + Web Crypto
   const fs = getFileSystem();
@@ -325,8 +326,8 @@ export class AssetImporter {
     targetDir: string,
     options?: ImportOptions,
   ): Promise<ImportResult[]> {
-    const api = (window as any).fluxionAPI;
-    if (!api?.openFilesDialog) {
+    const bridge = getPlatformBridge();
+    if (!bridge?.openFilesDialog) {
       // Fallback to single-file dialog
       const fs = getFileSystem();
       const path = await fs.openFileDialog(this.buildImportFilters());
@@ -336,7 +337,7 @@ export class AssetImporter {
 
     // Multi-file dialog
     const filters = this.buildImportFilters();
-    const paths: string[] | null = await api.openFilesDialog(filters);
+    const paths: string[] | null = await bridge.openFilesDialog(filters);
     if (!paths || paths.length === 0) return [];
 
     const requests: ImportRequest[] = paths.map((p: string) => ({

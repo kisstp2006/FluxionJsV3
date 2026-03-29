@@ -21,7 +21,7 @@ import { normalizePath } from '../src/filesystem/FileSystem';
 loader.config({ paths: { vs: './vs' } });
 
 // Initialize filesystem
-const _fs = new ElectronFileSystem();
+const _fs = new ElectronFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(_fs);
 
 // Read initial file from URL
@@ -100,8 +100,8 @@ declare namespace Debug {
    *
    * @example
    *   update() {
-   *     Debug.drawText(new Vec2(8, 8),  `FPS: ${this.Time.fps}`, '#4ade80');
-   *     Debug.drawText(new Vec2(8, 28), `Pos: ${this.transform.position.x.toFixed(2)}`, new Color(1,0.5,0));
+   *     Debug.drawText(new Vec2(8, 8),  'FPS: ' + this.Time.fps, '#4ade80');
+   *     Debug.drawText(new Vec2(8, 28), 'Pos: ' + this.transform.position.x.toFixed(2), new Color(1,0.5,0));
    *   }
    */
   function drawText(

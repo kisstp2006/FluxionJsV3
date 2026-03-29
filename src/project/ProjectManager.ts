@@ -12,12 +12,6 @@ import {
 import { ShaderCache } from '../materials/ShaderCache';
 import { ShaderCompileService } from '../renderer/ShaderCompileService';
 
-declare global {
-  interface Window {
-    fluxionAPI?: Record<string, any>;
-  }
-}
-
 // ── Project Configuration (stored in .fluxproj) ──
 
 export interface ProjectPhysicsSettings {

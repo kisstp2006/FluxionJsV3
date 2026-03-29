@@ -13,6 +13,7 @@
 //   onDisable()     → called when script becomes disabled
 // ============================================================
 
+import { getPlatformBridge } from '../platform/PlatformBridge';
 import type { EntityId, ECSManager } from '../core/ECS';
 import { markDirty } from '../core/ECS';
 import type { Engine } from '../core/Engine';
@@ -150,9 +151,9 @@ export class FluxionBehaviour {
     const eng = this._engine as any;
     return {
       get fps()      { return eng?.time?.fps ?? 0; },
-      get isEditor() { return true; },
+      get isEditor() { return getPlatformBridge()?.isEditor ?? false; },
       get platform() { return 'electron'; },
-      quit:          () => { (window as any).fluxionAPI?.close?.(); },
+      quit:          () => { getPlatformBridge()?.close?.(); },
     };
   }
 

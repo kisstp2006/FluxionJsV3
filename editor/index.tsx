@@ -13,7 +13,7 @@ import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.
-const electronFs = new ElectronFileSystem();
+const electronFs = new ElectronFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(electronFs);
 registerDefaultSettings();
 registerDefaultProjectSettings();

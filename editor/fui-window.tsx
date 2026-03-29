@@ -15,7 +15,7 @@ import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
 
 // Initialize filesystem before React renders
-const _fs = new ElectronFileSystem();
+const _fs = new ElectronFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(_fs);
 
 // Read initial filePath from URL query string (set by Electron main process)

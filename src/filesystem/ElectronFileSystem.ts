@@ -56,12 +56,6 @@ interface FluxionNativeAPI {
   close: () => void;
 }
 
-function getAPI(): FluxionNativeAPI {
-  const api = (window as any).fluxionAPI as FluxionNativeAPI | undefined;
-  if (!api) throw new Error('fluxionAPI not available — not running in Electron?');
-  return api;
-}
-
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -81,6 +75,12 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 }
 
 export class ElectronFileSystem implements IFileSystem {
+  private api: FluxionNativeAPI;
+
+  constructor(api: FluxionNativeAPI) {
+    this.api = api;
+  }
+
   /**
    * Optional sandbox root. When set, all mutating operations
    * are validated to stay inside this directory.
@@ -101,31 +101,31 @@ export class ElectronFileSystem implements IFileSystem {
   // ── Text I/O ──
 
   async readFile(path: string): Promise<string> {
-    return getAPI().readFile(path);
+    return this.api.readFile(path);
   }
 
   async writeFile(path: string, data: string): Promise<void> {
     this.assertSafe(path);
-    await getAPI().writeFile(path, data);
+    await this.api.writeFile(path, data);
   }
 
   // ── Binary I/O ──
 
   async readBinary(path: string): Promise<ArrayBuffer> {
-    const base64 = await getAPI().readBinary(path);
+    const base64 = await this.api.readBinary(path);
     return base64ToArrayBuffer(base64);
   }
 
   async writeBinary(path: string, data: ArrayBuffer): Promise<void> {
     this.assertSafe(path);
     const base64 = arrayBufferToBase64(data);
-    await getAPI().writeBinary(path, base64);
+    await this.api.writeBinary(path, base64);
   }
 
   // ── Directory ──
 
   async readDir(path: string): Promise<DirEntry[]> {
-    const entries = await getAPI().readDir(path);
+    const entries = await this.api.readDir(path);
     return entries.map((e) => ({
       name: e.name,
       path: normalizePath(e.path),
@@ -135,17 +135,17 @@ export class ElectronFileSystem implements IFileSystem {
 
   async mkdir(path: string): Promise<void> {
     this.assertSafe(path);
-    await getAPI().mkdir(path);
+    await this.api.mkdir(path);
   }
 
   // ── Queries ──
 
   async exists(path: string): Promise<boolean> {
-    return getAPI().exists(path);
+    return this.api.exists(path);
   }
 
   async stat(path: string): Promise<FileInfo> {
-    const s = await getAPI().stat(path);
+    const s = await this.api.stat(path);
     return {
       name: pathBasename(path),
       path: normalizePath(path),
@@ -160,18 +160,18 @@ export class ElectronFileSystem implements IFileSystem {
 
   async delete(path: string): Promise<void> {
     this.assertSafe(path);
-    await getAPI().deleteFile(path);
+    await this.api.deleteFile(path);
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
     this.assertSafe(oldPath);
     this.assertSafe(newPath);
-    await getAPI().rename(oldPath, newPath);
+    await this.api.rename(oldPath, newPath);
   }
 
   async copy(srcPath: string, destPath: string): Promise<void> {
     this.assertSafe(destPath);
-    await getAPI().copy(srcPath, destPath);
+    await this.api.copy(srcPath, destPath);
   }
 
   // ── Watching ──
@@ -182,7 +182,7 @@ export class ElectronFileSystem implements IFileSystem {
   private ensureWatchListener(): void {
     if (this.watchListenerAttached) return;
     this.watchListenerAttached = true;
-    getAPI().onWatchEvent((event) => {
+    this.api.onWatchEvent((event) => {
       for (const cb of this.watchCallbacks.values()) {
         cb({ type: event.type as any, path: normalizePath(event.path) });
       }
@@ -191,34 +191,34 @@ export class ElectronFileSystem implements IFileSystem {
 
   async watch(path: string, callback: FileWatchCallback): Promise<string> {
     this.ensureWatchListener();
-    const watchId = await getAPI().watch(path);
+    const watchId = await this.api.watch(path);
     this.watchCallbacks.set(watchId, callback);
     return watchId;
   }
 
   async unwatch(watchId: string): Promise<void> {
     this.watchCallbacks.delete(watchId);
-    await getAPI().unwatch(watchId);
+    await this.api.unwatch(watchId);
   }
 
   // ── Dialogs ──
 
   async openFileDialog(filters?: FileDialogFilter[]): Promise<string | null> {
-    return getAPI().openFileDialog(filters);
+    return this.api.openFileDialog(filters);
   }
 
   async saveFileDialog(filters?: FileDialogFilter[]): Promise<string | null> {
-    return getAPI().saveFileDialog(filters);
+    return this.api.saveFileDialog(filters);
   }
 
   async openDirDialog(): Promise<string | null> {
-    return getAPI().openDirDialog();
+    return this.api.openDirDialog();
   }
 
   // ── Paths ──
 
   async getAppDataPath(): Promise<string> {
-    return getAPI().getAppDataPath();
+    return this.api.getAppDataPath();
   }
 }
 

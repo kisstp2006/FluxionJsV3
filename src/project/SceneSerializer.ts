@@ -450,11 +450,9 @@ export async function saveSceneToFile(
   editorCamera?: THREE.PerspectiveCamera,
   orbitTarget?: THREE.Vector3
 ): Promise<void> {
-  const api = window.fluxionAPI;
-  if (!api) throw new Error('fluxionAPI not available');
-
+  const { getFileSystem } = await import('../filesystem');
   const data = serializeScene(scene, engine, editorCamera, orbitTarget);
-  await api.writeFile(filePath, JSON.stringify(data, null, 2));
+  await getFileSystem().writeFile(filePath, JSON.stringify(data, null, 2));
 }
 
 export async function loadSceneFromFile(
@@ -462,10 +460,8 @@ export async function loadSceneFromFile(
   scene: Scene,
   filePath: string
 ): Promise<SceneFileData> {
-  const api = window.fluxionAPI;
-  if (!api) throw new Error('fluxionAPI not available');
-
-  const content = await api.readFile(filePath);
+  const { getFileSystem } = await import('../filesystem');
+  const content = await getFileSystem().readFile(filePath);
   const data = JSON.parse(content) as SceneFileData;
   deserializeScene(engine, data, scene);
   return data;
@@ -559,8 +555,3 @@ export function restoreEntitySubtree(
   return newRootId;
 }
 
-// ── Register snapshot helpers into UndoService (avoids circular import) ──
-// Import is deferred to avoid top-level circular reference.
-import('../../editor/core/UndoService').then(({ registerSnapshotHelpers }) => {
-  registerSnapshotHelpers(snapshotEntitySubtree, restoreEntitySubtree);
-}).catch(() => { /* editor not loaded in runtime builds */ });

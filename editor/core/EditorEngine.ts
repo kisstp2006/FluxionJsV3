@@ -22,6 +22,9 @@ import { FuiRuntimeSystem } from '../../src/ui/FuiRuntimeSystem';
 import { CSGSystem } from '../../src/csg/CSGSystem';
 import { ScriptSystem } from '../../src/scripting/ScriptSystem';
 import { DebugDraw } from '../../src/renderer/DebugDraw';
+import { setPlatformBridge } from '../../src/platform/PlatformBridge';
+import { registerSnapshotHelpers } from './UndoService';
+import { snapshotEntitySubtree, restoreEntitySubtree } from '../../src/project/SceneSerializer';
 
 export interface EngineSubsystems {
   engine: Engine;
@@ -48,6 +51,9 @@ export async function initEditorEngine(
   canvas: HTMLCanvasElement,
   log: LogFn,
 ): Promise<EngineSubsystems> {
+  setPlatformBridge({ ...(window as any).fluxionAPI, isEditor: true });
+  registerSnapshotHelpers(snapshotEntitySubtree, restoreEntitySubtree);
+
   DebugConsole.setSink(log);
   log('FluxionJS V3 Engine initializing...', 'system');
 

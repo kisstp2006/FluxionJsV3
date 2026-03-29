@@ -183,6 +183,14 @@ export class LuaScriptSystem implements System {
     lua.global.set('Color', (r: number, g: number, b: number) => new THREE.Color(r, g, b));
     lua.global.set('Mathf', LUA_MATHF);
 
+    // ── Typed ref constructors (mirrors JS/TS API) ──────────────
+    // EntityRef()  → default entity ID -1 (unassigned)
+    // FuiRef/MaterialRef/TextureRef()  → default empty path string
+    lua.global.set('EntityRef',   () => -1);
+    lua.global.set('FuiRef',      () => '');
+    lua.global.set('MaterialRef', () => '');
+    lua.global.set('TextureRef',  () => '');
+
     // ── Create adapter first so 'self' is available during execution ──
     const adapter = new LuaBehaviourAdapter(lua);
     adapter.entity    = entity;
@@ -196,8 +204,17 @@ export class LuaScriptSystem implements System {
     lua.global.set('self', adapter);
 
     // ── Apply inspector property overrides as Lua globals ──────
+    // EntityRef overrides: { entity: number } → set as number (entity ID, -1 = unset)
+    // FuiRef/MaterialRef/TextureRef overrides: { path: string } → set as string path
+    // Primitives (number, string, boolean) → set directly
     for (const [key, val] of Object.entries(entry.properties ?? {})) {
-      lua.global.set(key, val);
+      if (val !== null && typeof val === 'object' && 'entity' in val) {
+        lua.global.set(key, typeof (val as any).entity === 'number' ? (val as any).entity : -1);
+      } else if (val !== null && typeof val === 'object' && 'path' in val) {
+        lua.global.set(key, typeof (val as any).path === 'string' ? (val as any).path : '');
+      } else {
+        lua.global.set(key, val);
+      }
     }
 
     // ── Execute script source (defines start / update / etc.) ──

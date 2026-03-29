@@ -14,6 +14,8 @@ import { FluxionBehaviour } from '../../../../src/scripting/FluxionBehaviour';
 import { EntityRef } from '../../../../src/scripting/EntityRef';
 import { compileScript } from '../../../../src/scripting/ScriptCompiler';
 import { FuiRef } from '../../../../src/scripting/FuiRef';
+import { MaterialRef } from '../../../../src/scripting/MaterialRef';
+import { TextureRef } from '../../../../src/scripting/TextureRef';
 import { ComponentSection } from './ComponentSection';
 import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
@@ -32,8 +34,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'console', compiledJs)(
-      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, console,
     );
   } catch {
     return null;
@@ -41,7 +43,7 @@ function loadScriptClass(compiledJs: string): any {
   return mod.default;
 }
 
-type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui';
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture';
 
 interface ScriptProp {
   key: string;
@@ -80,6 +82,24 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
           default: raw,
           value: { path },
         });
+      } else if (raw instanceof MaterialRef) {
+        const override = overrides[k];
+        const path = typeof override?.path === 'string' ? override.path : raw.path;
+        props.push({
+          key: k,
+          type: 'material',
+          default: raw,
+          value: { path },
+        });
+      } else if (raw instanceof TextureRef) {
+        const override = overrides[k];
+        const path = typeof override?.path === 'string' ? override.path : raw.path;
+        props.push({
+          key: k,
+          type: 'texture',
+          default: raw,
+          value: { path },
+        });
       } else if (typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean') {
         props.push({
           key: k,
@@ -93,6 +113,71 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
   } catch {
     return [];
   }
+}
+
+/**
+ * Parse top-level (non-local, outside functions) global variable declarations
+ * from a Lua source file and convert them to ScriptProp descriptors.
+ * Supports string, number, boolean, EntityRef(), FuiRef(), MaterialRef(), TextureRef().
+ */
+function parseLuaProperties(source: string, overrides: Record<string, any>): ScriptProp[] {
+  const props: ScriptProp[] = [];
+  const seen = new Set<string>();
+  let depth = 0; // tracks function/if/for nesting depth
+
+  for (const rawLine of source.split('\n')) {
+    const line = rawLine.replace(/--.*$/, '').trim(); // strip comments
+    if (!line) continue;
+
+    // Track nesting: function, if, for, while, do open blocks; end closes
+    const opens = (line.match(/\b(function|if|for|while|do)\b/g) ?? []).length;
+    const closes = (line.match(/\bend\b/g) ?? []).length;
+
+    if (depth === 0) {
+      // Match:  identifier = literal  (NOT local, NOT a function def)
+      const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+      if (m && !line.startsWith('local') && !line.startsWith('function')) {
+        const key   = m[1];
+        const raw   = m[2].trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          const override = overrides[key];
+          // Boolean
+          if (raw === 'true' || raw === 'false') {
+            const def = raw === 'true';
+            props.push({ key, type: 'boolean', default: def, value: override !== undefined ? override : def });
+          // String (single or double quoted)
+          } else if (/^["'].*["']$/.test(raw)) {
+            const def = raw.slice(1, -1);
+            props.push({ key, type: 'string', default: def, value: override !== undefined ? override : def });
+          // Number
+          } else if (/^-?[0-9]+(\.[0-9]+)?$/.test(raw)) {
+            const def = Number(raw);
+            props.push({ key, type: 'number', default: def, value: override !== undefined ? override : def });
+          // EntityRef() — entity picker
+          } else if (/^EntityRef\s*\(/.test(raw)) {
+            const entityId = override?.entity !== undefined ? override.entity : null;
+            props.push({ key, type: 'entity', default: null, value: { entity: entityId, requireComponent: undefined } });
+          // FuiRef() — fui asset picker
+          } else if (/^FuiRef\s*\(/.test(raw)) {
+            const path = typeof override?.path === 'string' ? override.path : '';
+            props.push({ key, type: 'fui', default: '', value: { path } });
+          // MaterialRef() — material asset picker
+          } else if (/^MaterialRef\s*\(/.test(raw)) {
+            const path = typeof override?.path === 'string' ? override.path : '';
+            props.push({ key, type: 'material', default: '', value: { path } });
+          // TextureRef() — texture asset picker
+          } else if (/^TextureRef\s*\(/.test(raw)) {
+            const path = typeof override?.path === 'string' ? override.path : '';
+            props.push({ key, type: 'texture', default: '', value: { path } });
+          }
+        }
+      }
+    }
+
+    depth = Math.max(0, depth + opens - closes);
+  }
+  return props;
 }
 
 // ── Per-entry sub-component ───────────────────────────────────
@@ -156,6 +241,7 @@ const ScriptEntryRow: React.FC<{
   onRemove: (index: number) => void;
 }> = ({ entry, index, engine, onChange, onRemove }) => {
   const [scriptClass, setScriptClass] = useState<any>(null);
+  const [luaSource, setLuaSource] = useState<string | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -163,6 +249,7 @@ const ScriptEntryRow: React.FC<{
   useEffect(() => {
     if (!entry.path) {
       setScriptClass(null);
+      setLuaSource(null);
       setCompileError(null);
       return;
     }
@@ -172,11 +259,17 @@ const ScriptEntryRow: React.FC<{
 
     (async () => {
       try {
-        // Lua scripts are driven by LuaScriptSystem — no JS class to compile
+        // Lua scripts — read source so we can parse global declarations
         if (entry.path.endsWith('.lua')) {
-          if (!cancelled) { setScriptClass(null); setCompileError(null); }
+          const fs = getFileSystem();
+          let absPath: string;
+          try { absPath = projectManager.resolvePath(entry.path); } catch { absPath = entry.path; }
+          const src = await fs.readFile(absPath);
+          if (!cancelled) { setLuaSource(src); setScriptClass(null); setCompileError(null); }
           return;
         }
+        // Reset lua source for non-lua scripts
+        if (!cancelled) setLuaSource(null);
         const fs = getFileSystem();
         let absPath: string;
         try {
@@ -207,7 +300,9 @@ const ScriptEntryRow: React.FC<{
     return () => { cancelled = true; };
   }, [entry.path]);
 
-  const properties = getScriptProperties(scriptClass, entry.properties);
+  const properties = luaSource !== null
+    ? parseLuaProperties(luaSource, entry.properties)
+    : getScriptProperties(scriptClass, entry.properties);
 
   const setOverride = useCallback((key: string, value: any) => {
     onChange(index, { properties: { ...entry.properties, [key]: value } });
@@ -353,6 +448,20 @@ const ScriptEntryRow: React.FC<{
                 <AssetInput
                   value={p.value?.path || null}
                   assetType="fui"
+                  onChange={(v) => setOverride(p.key, { path: v || '' })}
+                />
+              )}
+              {p.type === 'material' && (
+                <AssetInput
+                  value={p.value?.path || null}
+                  assetType={['material', 'visual_material']}
+                  onChange={(v) => setOverride(p.key, { path: v || '' })}
+                />
+              )}
+              {p.type === 'texture' && (
+                <AssetInput
+                  value={p.value?.path || null}
+                  assetType="texture"
                   onChange={(v) => setOverride(p.key, { path: v || '' })}
                 />
               )}

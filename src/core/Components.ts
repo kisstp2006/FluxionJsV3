@@ -388,8 +388,20 @@ export class CameraComponent extends BaseComponent {
   @field({ type: 'boolean', label: 'Main Camera' })
   isMain = false;
 
+  @field({ type: 'boolean', label: 'Render To Texture', group: 'Render Texture' })
+  renderToTexture = false;
+
+  @field({ type: 'number', label: 'RT Width', step: 1, group: 'Render Texture', visibleIf: s => s.renderToTexture, dependsOn: ['renderToTexture'] })
+  rtWidth = 512;
+
+  @field({ type: 'number', label: 'RT Height', step: 1, group: 'Render Texture', visibleIf: s => s.renderToTexture, dependsOn: ['renderToTexture'] })
+  rtHeight = 512;
+
   /** Runtime THREE.js camera — NOT serialized */
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | null = null;
+
+  /** Runtime WebGLRenderTarget — created when renderToTexture is true. NOT serialized */
+  renderTarget: THREE.WebGLRenderTarget | null = null;
 }
 
 // ── Light ─────────────────────────────────────────────────────────────────────

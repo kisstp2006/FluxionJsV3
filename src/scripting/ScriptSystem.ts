@@ -21,6 +21,8 @@ import { getFileSystem } from '../filesystem';
 import { FuiBuilder } from '../ui/FuiBuilder';
 import { EntityRef } from './EntityRef';
 import { FuiRef } from './FuiRef';
+import { MaterialRef } from './MaterialRef';
+import { TextureRef } from './TextureRef';
 
 // ── THREE math shortcuts injected into every script's scope ──
 
@@ -84,6 +86,8 @@ function loadScriptClass(
     'FuiBuilder',
     'EntityRef',
     'FuiRef',
+    'MaterialRef',
+    'TextureRef',
     'console',
     compiledJs,
   )(
@@ -104,6 +108,8 @@ function loadScriptClass(
     FuiBuilder,
     EntityRef,
     FuiRef,
+    MaterialRef,
+    TextureRef,
     console,
   );
   return mod.default;
@@ -316,6 +322,10 @@ export class ScriptSystem implements System {
       if (current instanceof EntityRef && val && typeof val === 'object') {
         current.entity = typeof (val as any).entity === 'number' ? (val as any).entity : null;
       } else if (current instanceof FuiRef && val && typeof val === 'object') {
+        current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
+      } else if (current instanceof MaterialRef && val && typeof val === 'object') {
+        current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
+      } else if (current instanceof TextureRef && val && typeof val === 'object') {
         current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
       } else {
         (instance as any)[key] = val;

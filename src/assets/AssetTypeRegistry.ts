@@ -42,6 +42,9 @@ import fuiFileTs   from './templates/fui-hud-file.ts.tmpl';
 import fuiFileJs   from './templates/fui-hud-file.js.tmpl';
 import fuiCodeTs   from './templates/fui-hud-code.ts.tmpl';
 import fuiCodeJs   from './templates/fui-hud-code.js.tmpl';
+import rttTs       from './templates/render-to-texture.ts.tmpl';
+import rttJs       from './templates/render-to-texture.js.tmpl';
+import rttLua      from './templates/render-to-texture.lua.tmpl';
 
 // ── Types ──
 
@@ -512,6 +515,14 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     icon: '🎨',
     languages: ['ts', 'js'],
     generate: (cls, lang) => tmpl(lang === 'js' ? fuiCodeJs : fuiCodeTs, cls),
+  },
+  {
+    id: 'render-to-texture',
+    name: 'Render To Texture',
+    description: 'Projects a camera\'s render output onto a mesh. Assign cameraEntity and targetEntity in the Inspector.',
+    icon: '📹',
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? rttLua : lang === 'js' ? rttJs : rttTs, cls),
   },
   {
     id: 'fps-character',

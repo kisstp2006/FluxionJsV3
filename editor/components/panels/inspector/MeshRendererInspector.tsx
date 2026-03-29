@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { PropertyRow, Checkbox, NumberInput, Vector2Input } from '../../../ui';
+import { PropertyRow, Checkbox, NumberInput, Vector2Input, AssetInput } from '../../../ui';
 import { useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { MeshRendererComponent } from '../../../../src/core/Components';
@@ -57,12 +57,6 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
   const update = () => forceUpdate((n) => n + 1);
 
   const isFluxMesh = mr.modelPath?.endsWith('.fluxmesh') ?? false;
-
-  /** Check if a dropped asset is any material type (.fluxmat or .fluxvismat) */
-  const isMaterialAsset = (assetPath: string): boolean => {
-    const typeDef = AssetTypeRegistry.resolveFile(assetPath);
-    return !!typeDef && (typeDef.type === 'material' || typeDef.type === 'visual_material');
-  };
 
   /** Load a material from path — handles both .fluxmat and .fluxvismat */
   const loadMaterialFromPath = async (
@@ -297,37 +291,6 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
     update();
   };
 
-  /** Handle dropping a material (.fluxmat or .fluxvismat) onto a material slot */
-  const handleSlotMaterialDrop = async (e: React.DragEvent, slotIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
-    if (!assetPath || !isMaterialAsset(assetPath)) return;
-
-    // Update materialSlots override
-    const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
-    const existingIdx = overrides.findIndex(o => o.slotIndex === slotIndex);
-    if (existingIdx >= 0) {
-      overrides[existingIdx] = { slotIndex, materialPath: assetPath };
-    } else {
-      overrides.push({ slotIndex, materialPath: assetPath });
-    }
-    setProperty(undoManager, mr, 'materialSlots', overrides);
-
-    // Load and apply the material to the correct sub-meshes
-    if (mr.mesh && fluxMeshSlots) {
-      const mat = await loadMaterialFromPath(assetPath);
-      if (mat) {
-        const slot = fluxMeshSlots[slotIndex];
-        if (slot) {
-          applyMaterialsToModel(mr.mesh, [slot], [mat]);
-        }
-      }
-    }
-    update();
-  };
-
-
   /** Clear a slot override back to default */
   const handleClearSlot = async (slotIndex: number) => {
     if (!mr.materialSlots) return;
@@ -363,29 +326,6 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           applyMaterialsToModel(mr.mesh, [slot], [mat]);
         }
       } catch {}
-    }
-    update();
-  };
-
-  /** Handle dropping a material (.fluxmat or .fluxvismat) onto a primitive's material slot */
-  const handlePrimitiveMaterialDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    const assetPath = e.dataTransfer.getData('application/x-fluxion-asset');
-    if (!assetPath || !isMaterialAsset(assetPath)) return;
-
-    setProperty(undoManager, mr, 'materialPath', assetPath);
-
-    const mat = await loadMaterialFromPath(assetPath);
-    if (mat) {
-      if (mr.mesh instanceof THREE.Mesh) {
-        mr.mesh.material = mat;
-      } else if (mr.mesh instanceof THREE.Group) {
-        mr.mesh.traverse((child: THREE.Object3D) => {
-          if (child instanceof THREE.Mesh) {
-            child.material = mat;
-          }
-        });
-      }
     }
     update();
   };
@@ -572,70 +512,26 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                 const currentPath = getSlotMaterialPath(idx);
                 const overridden = isSlotOverridden(idx);
                 return (
-                  <div
-                    key={idx}
-                    style={{ marginBottom: '4px' }}
-                  >
-                    <div style={{
-                      fontSize: '10px',
-                      color: 'var(--text-muted)',
-                      marginBottom: '2px',
-                      fontWeight: 500,
-                    }}>
-                      {slot.name}
-                    </div>
-                    <div
-                      onDragOver={(e) => {
-                        if (e.dataTransfer.types.includes('application/x-fluxion-asset')) {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = 'link';
+                  <PropertyRow key={idx} label={slot.name}>
+                    <AssetInput
+                      value={currentPath || null}
+                      assetType={['material', 'visual_material']}
+                      placeholder={overridden ? undefined : 'Default'}
+                      onChange={async (v) => {
+                        if (!v) { await handleClearSlot(idx); return; }
+                        const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
+                        const existingIdx = overrides.findIndex(o => o.slotIndex === idx);
+                        if (existingIdx >= 0) overrides[existingIdx] = { slotIndex: idx, materialPath: v };
+                        else overrides.push({ slotIndex: idx, materialPath: v });
+                        setProperty(undoManager, mr, 'materialSlots', overrides);
+                        if (mr.mesh && fluxMeshSlots) {
+                          const mat = await loadMaterialFromPath(v);
+                          if (mat) applyMaterialsToModel(mr.mesh, [fluxMeshSlots[idx]], [mat]);
                         }
+                        update();
                       }}
-                      onDrop={(e) => handleSlotMaterialDrop(e, idx)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        border: '1px solid var(--border)',
-                        borderRadius: '3px',
-                        padding: '3px 6px',
-                        minHeight: '22px',
-                        background: overridden ? 'rgba(255,255,255,0.03)' : 'transparent',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          color: overridden ? 'var(--accent)' : 'var(--text-muted)',
-                          fontSize: '10px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          flex: 1,
-                        }}
-                        title={currentPath}
-                      >
-                        {currentPath ? getFileName(currentPath) : 'Drop material'}
-                      </span>
-                      {overridden && (
-                        <button
-                          onClick={() => handleClearSlot(idx)}
-                          title="Reset to default"
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            padding: '1px',
-                            fontSize: '10px',
-                            lineHeight: 1,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                    />
+                  </PropertyRow>
                 );
               })}
             </div>
@@ -643,69 +539,30 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
         </div>
       )}
 
-      {/* Material drop zone for primitives — same workflow as .fluxmesh */}
+      {/* Material input for primitives */}
       {!isFluxMesh && (
-        <div style={{ marginTop: '4px' }}>
-          <div style={{
-            fontSize: '11px',
-            color: 'var(--text)',
-            fontWeight: 600,
-            marginBottom: '4px',
-          }}>
-            Material
-          </div>
-          <div
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('application/x-fluxion-asset')) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'link';
+        <PropertyRow label="Material">
+          <AssetInput
+            value={mr.materialPath || null}
+            assetType={['material', 'visual_material']}
+            placeholder="None (Default)"
+            onChange={async (v) => {
+              if (!v) { handleClearPrimitiveMaterial(); return; }
+              setProperty(undoManager, mr, 'materialPath', v);
+              const mat = await loadMaterialFromPath(v);
+              if (mat) {
+                if (mr.mesh instanceof THREE.Mesh) {
+                  mr.mesh.material = mat;
+                } else if (mr.mesh instanceof THREE.Group) {
+                  mr.mesh.traverse((child: THREE.Object3D) => {
+                    if (child instanceof THREE.Mesh) child.material = mat;
+                  });
+                }
               }
+              update();
             }}
-            onDrop={handlePrimitiveMaterialDrop}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              border: '1px solid var(--border)',
-              borderRadius: '3px',
-              padding: '3px 6px',
-              minHeight: '22px',
-              background: mr.materialPath ? 'rgba(255,255,255,0.03)' : 'transparent',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                color: mr.materialPath ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: '10px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                flex: 1,
-              }}
-              title={mr.materialPath || ''}
-            >
-              {mr.materialPath ? getFileName(mr.materialPath) : 'Drop material'}
-            </span>
-            {mr.materialPath && (
-              <button
-                onClick={handleClearPrimitiveMaterial}
-                title="Clear material"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '1px',
-                  fontSize: '10px',
-                  lineHeight: 1,
-                }}
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+          />
+        </PropertyRow>
       )}
     </ComponentSection>
   );

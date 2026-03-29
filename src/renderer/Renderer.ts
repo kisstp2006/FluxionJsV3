@@ -760,9 +760,45 @@ class CameraSystem implements System {
       }
     }
 
-    // Cleanup removed
+    // ── Render-to-texture cameras ──────────────────────────────
+    // Run BEFORE the main render so textures are ready for use in materials.
+    if (!this.renderer.engine.simulationPaused) {
+      const glRenderer = this.renderer.renderer;
+      for (const entity of entities) {
+        const camComp = ecs.getComponent<CameraComponent>(entity, 'Camera');
+        if (!camComp?.camera || !camComp.enabled || !camComp.renderToTexture) continue;
+
+        const w = Math.max(1, camComp.rtWidth  | 0);
+        const h = Math.max(1, camComp.rtHeight | 0);
+
+        // Create or resize render target
+        if (!camComp.renderTarget || camComp.renderTarget.width !== w || camComp.renderTarget.height !== h) {
+          camComp.renderTarget?.dispose();
+          camComp.renderTarget = new THREE.WebGLRenderTarget(w, h, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            colorSpace: THREE.SRGBColorSpace,
+          });
+        }
+
+        // Render scene to this camera's render target
+        glRenderer.setRenderTarget(camComp.renderTarget);
+        glRenderer.render(this.renderer.scene, camComp.camera);
+        glRenderer.setRenderTarget(null);
+      }
+    }
+
+    // Cleanup removed — also dispose dangling render targets
     for (const entity of this.lastOrthographic.keys()) {
-      if (!entities.has(entity)) this.lastOrthographic.delete(entity);
+      if (!entities.has(entity)) {
+        this.lastOrthographic.delete(entity);
+        // Dispose render target if the entity was removed mid-simulation
+        const camComp = ecs.getComponent<CameraComponent>(entity, 'Camera');
+        if (camComp?.renderTarget) {
+          camComp.renderTarget.dispose();
+          camComp.renderTarget = null;
+        }
+      }
     }
 
     if (bestCamera && !this.renderer.engine.simulationPaused) {

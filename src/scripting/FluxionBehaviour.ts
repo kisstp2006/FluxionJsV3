@@ -25,6 +25,18 @@ import { FuiComponent } from '../core/Components';
 import { DebugConsole } from '../core/DebugConsole';
 import { DebugDraw } from '../renderer/DebugDraw';
 
+/** @internal — apply a loaded THREE.Texture to a material slot or visual material uniform. */
+function _applyTexture(mat: any, slot: string, tex: any): void {
+  if (!mat || !tex) return;
+  const uniforms = mat._visualMatUniforms;
+  if (uniforms?.[slot] !== undefined) {
+    uniforms[slot].value = tex;
+  } else {
+    mat[slot] = tex;
+    mat.needsUpdate = true;
+  }
+}
+
 // Pre-bound DebugDraw references — created once at module load, not per getter call.
 const _ddBindings = {
   drawLine:       DebugDraw.drawLine.bind(DebugDraw),
@@ -37,6 +49,8 @@ const _ddBindings = {
 
 export { EntityId, ECSManager, Engine, InputManager };
 export { FuiRef } from './FuiRef';
+export { MaterialRef } from './MaterialRef';
+export { TextureRef } from './TextureRef';
 
 export class FluxionBehaviour {
   // ── Injected by ScriptSystem (underscore prefix = hidden from Inspector) ──
@@ -329,6 +343,252 @@ export class FluxionBehaviour {
           (d) => { if (d.entity === entity) cb(d.elementId); },
         );
         cleanups.push(unsub);
+      },
+    };
+  }
+
+  // ── Materials ─────────────────────────────────────────────────
+
+  get mat() {
+    const ecs    = this._ecs;
+    const engine = this._engine;
+    const entity = this.entity;
+
+    /** Resolve a MeshRenderer mesh's material at a given slot index. */
+    function getMeshMaterial(targetEntity: EntityId, slotIndex = 0): any | null {
+      const mr = ecs.getComponent<any>(targetEntity, 'MeshRenderer');
+      if (!mr?.mesh) return null;
+      const meshes: any[] = [];
+      const mesh = mr.mesh;
+      if (mesh.isMesh) {
+        meshes.push(mesh);
+      } else if (mesh.isGroup || mesh.isObject3D) {
+        mesh.traverse((c: any) => { if (c.isMesh) meshes.push(c); });
+      }
+      const target = meshes[slotIndex] ?? meshes[0];
+      if (!target) return null;
+      return Array.isArray(target.material) ? target.material[0] : target.material;
+    }
+
+    return {
+      /**
+       * Get the live THREE.js material from this entity's MeshRenderer.
+       * @param slotIndex  Sub-mesh index for multi-material models (default 0).
+       */
+      get(slotIndex = 0): any | null {
+        return getMeshMaterial(entity, slotIndex);
+      },
+
+      /**
+       * Get a material from any entity's MeshRenderer.
+       */
+      getFrom(targetEntity: EntityId, slotIndex = 0): any | null {
+        return getMeshMaterial(targetEntity, slotIndex);
+      },
+
+      /**
+       * Asynchronously load a material from a MaterialRef or path string.
+       * Returns the THREE.js material instance.
+       */
+      async load(ref: import('./MaterialRef').MaterialRef | string): Promise<any | null> {
+        const matPath = typeof ref === 'string' ? ref : ref.path;
+        if (!matPath) return null;
+        try {
+          const { projectManager } = await import('../project/ProjectManager');
+          const { getFileSystem: getFs } = await import('../filesystem');
+          const assets   = engine.getSubsystem('assets') as any;
+          const mats     = engine.getSubsystem('materials') as any;
+          if (!assets || !mats) return null;
+          const absPath = projectManager.resolvePath(matPath);
+          const matDir  = absPath.substring(0, Math.max(absPath.lastIndexOf('/'), absPath.lastIndexOf('\\')));
+          const loadTexture = async (relPath: string): Promise<any> => {
+            let texAbs = (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://'))
+              ? relPath : `${matDir}/${relPath}`;
+            const url = texAbs.startsWith('file://') ? texAbs : `file:///${texAbs.replace(/\\/g, '/')}`;
+            return assets.loadTexture(url);
+          };
+          if (matPath.endsWith('.fluxvismat')) {
+            const data = await assets.loadAsset(absPath, 'visual_material');
+            if (!data) return null;
+            return mats.createFromVisualMat(data, loadTexture, matPath);
+          } else {
+            const data = await assets.loadAsset(absPath, 'material');
+            if (!data) return null;
+            return mats.createFromFluxMat(data, loadTexture, matPath);
+          }
+        } catch { return null; }
+      },
+
+      /**
+       * Apply a loaded THREE.js material to a MeshRenderer entity.
+       * @param targetEntity  The entity with a MeshRenderer component.
+       * @param material      The THREE.js material to apply.
+       * @param slotIndex     Sub-mesh slot for multi-material models (default: all meshes).
+       */
+      apply(targetEntity: EntityId, material: any, slotIndex?: number): void {
+        const mr = ecs.getComponent<any>(targetEntity, 'MeshRenderer');
+        if (!mr?.mesh) return;
+        const meshes: any[] = [];
+        const mesh = mr.mesh;
+        if (mesh.isMesh) { meshes.push(mesh); }
+        else { mesh.traverse((c: any) => { if (c.isMesh) meshes.push(c); }); }
+        if (slotIndex !== undefined) {
+          const m = meshes[slotIndex];
+          if (m) m.material = material;
+        } else {
+          for (const m of meshes) m.material = material;
+        }
+      },
+
+      // ── PBR property setters ───────────────────────────────
+
+      /** Set the albedo/base color (r, g, b in 0–1 range or CSS hex string). */
+      setColor(mat: any, r: number | string, g?: number, b?: number): void {
+        if (!mat?.color) return;
+        if (typeof r === 'string') { mat.color.set(r); }
+        else { mat.color.setRGB(r, g ?? 0, b ?? 0); }
+      },
+
+      /** Set roughness (0 = mirror, 1 = fully rough). */
+      setRoughness(mat: any, value: number): void {
+        if (mat) mat.roughness = value;
+      },
+
+      /** Set metalness (0 = dielectric, 1 = metal). */
+      setMetalness(mat: any, value: number): void {
+        if (mat) mat.metalness = value;
+      },
+
+      /** Set opacity (also enables transparency when < 1). */
+      setOpacity(mat: any, value: number): void {
+        if (!mat) return;
+        mat.opacity = value;
+        mat.transparent = value < 1;
+      },
+
+      /** Set emissive color (r, g, b in 0–1 range or CSS hex). */
+      setEmissive(mat: any, r: number | string, g?: number, b?: number): void {
+        if (!mat?.emissive) return;
+        if (typeof r === 'string') { mat.emissive.set(r); }
+        else { mat.emissive.setRGB(r, g ?? 0, b ?? 0); }
+      },
+
+      /** Set emissive intensity multiplier. */
+      setEmissiveIntensity(mat: any, value: number): void {
+        if (mat) mat.emissiveIntensity = value;
+      },
+
+      /** Set wireframe mode. */
+      setWireframe(mat: any, value: boolean): void {
+        if (mat) mat.wireframe = value;
+      },
+
+      // ── Visual material uniform setters ───────────────────
+
+      /** Set a float uniform on a visual (.fluxvismat) material. */
+      setFloat(mat: any, name: string, value: number): void {
+        const u = mat?._visualMatUniforms;
+        if (u?.[name]) u[name].value = value;
+      },
+
+      /** Set a vec2 uniform on a visual material. */
+      setVec2(mat: any, name: string, x: number, y: number): void {
+        const u = mat?._visualMatUniforms;
+        if (u?.[name]) { u[name].value.x = x; u[name].value.y = y; }
+      },
+
+      /** Set a vec3 uniform on a visual material. */
+      setVec3(mat: any, name: string, x: number, y: number, z: number): void {
+        const u = mat?._visualMatUniforms;
+        if (u?.[name]) { u[name].value.x = x; u[name].value.y = y; u[name].value.z = z; }
+      },
+
+      /** Set a vec4 uniform on a visual material. */
+      setVec4(mat: any, name: string, x: number, y: number, z: number, w: number): void {
+        const u = mat?._visualMatUniforms;
+        if (u?.[name]) { const v = u[name].value; v.x = x; v.y = y; v.z = z; v.w = w; }
+      },
+
+      /** Set a color (vec3) uniform on a visual material (r, g, b in 0–1). */
+      setColorUniform(mat: any, name: string, r: number, g: number, b: number): void {
+        const u = mat?._visualMatUniforms;
+        if (u?.[name]) { u[name].value.x = r; u[name].value.y = g; u[name].value.z = b; }
+      },
+
+      /**
+       * Load and assign a texture to a material map slot.
+       *
+       * For PBR materials (.fluxmat) use standard THREE slot names:
+       *   'map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap'
+       *
+       * For visual materials (.fluxvismat) use the uniform name, e.g. 'u_albedo'.
+       *
+       * Also accepts a live THREE.Texture directly (skip loading when you already have one).
+       */
+      async setTexture(
+        mat: any,
+        slot: string,
+        ref: import('./TextureRef').TextureRef | string | any,
+      ): Promise<void> {
+        if (!mat) return;
+        // Accept a live THREE.Texture directly
+        if (ref && typeof ref === 'object' && ref.isTexture) {
+          _applyTexture(mat, slot, ref);
+          return;
+        }
+        const texPath = typeof ref === 'string' ? ref : (ref as any).path;
+        if (!texPath) return;
+        try {
+          const { projectManager: pm } = await import('../project/ProjectManager');
+          const assets = engine.getSubsystem('assets') as any;
+          if (!assets) return;
+          const abs = pm.resolvePath(texPath);
+          const url = abs.startsWith('file://') ? abs : `file:///${abs.replace(/\\/g, '/')}`;
+          const tex = await assets.loadTexture(url);
+          if (tex) _applyTexture(mat, slot, tex);
+        } catch { /* texture not found — ignore */ }
+      },
+    };
+  }
+
+  // ── Camera ────────────────────────────────────────────────────
+
+  get cam() {
+    const ecs = this._ecs;
+
+    return {
+      /**
+       * Enable render-to-texture on a camera entity.
+       * After calling this, retrieve the texture with `getTexture(entity)`.
+       * @param targetEntity  Entity with a CameraComponent.
+       * @param width   Render target width in pixels (default 512).
+       * @param height  Render target height in pixels (default 512).
+       */
+      enableRenderToTexture(targetEntity: EntityId, width = 512, height = 512): void {
+        const c = ecs.getComponent<any>(targetEntity, 'Camera');
+        if (!c) return;
+        c.renderToTexture = true;
+        c.rtWidth  = width;
+        c.rtHeight = height;
+      },
+
+      /** Disable render-to-texture and free the render target. */
+      disableRenderToTexture(targetEntity: EntityId): void {
+        const c = ecs.getComponent<any>(targetEntity, 'Camera');
+        if (!c) return;
+        c.renderToTexture = false;
+        if (c.renderTarget) {
+          c.renderTarget.dispose();
+          c.renderTarget = null;
+        }
+      },
+
+      /**
+       * Get the render texture produced by a camera that has render-to-texture enabled.
+       * Returns null if the camera is not found or RTT is not enabled.
+       */
+      getTexture(targetEntity: EntityId): any | null {
+        return ecs.getComponent<any>(targetEntity, 'Camera')?.renderTarget?.texture ?? null;
       },
     };
   }

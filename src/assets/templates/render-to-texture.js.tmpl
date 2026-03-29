@@ -1,0 +1,57 @@
+export default class $CLS extends FluxionBehaviour {
+  /** Camera whose output is projected (assign in Inspector) */
+  cameraEntity = new EntityRef();
+  /** Mesh to project the camera feed onto (assign in Inspector) */
+  targetEntity = new EntityRef();
+  /** Render target width in pixels */
+  rtWidth  = 512;
+  /** Render target height in pixels */
+  rtHeight = 512;
+  /** Which material map slot receives the texture ('map', 'emissiveMap', etc.) */
+  mapSlot = 'map';
+
+  _mat   = null;
+  _ready = false;
+
+  start() {
+    const cam = this.cameraEntity.entity;
+    const tgt = this.targetEntity.entity;
+
+    if (cam === null) {
+      this.warn('[RenderToTexture] cameraEntity not assigned in Inspector');
+      return;
+    }
+    if (tgt === null) {
+      this.warn('[RenderToTexture] targetEntity not assigned in Inspector');
+      return;
+    }
+
+    this.cam.enableRenderToTexture(cam, this.rtWidth, this.rtHeight);
+
+    this._mat = this.mat.getFrom(tgt);
+    if (!this._mat) {
+      this.warn('[RenderToTexture] targetEntity has no MeshRenderer / material');
+      return;
+    }
+
+    this._ready = true;
+  }
+
+  update(dt) {
+    if (!this._ready) return;
+    const cam = this.cameraEntity.entity;
+    if (cam === null) return;
+
+    const tex = this.cam.getTexture(cam);
+    if (!tex) return;
+
+    this.mat.setTexture(this._mat, this.mapSlot, tex);
+  }
+
+  onDestroy() {
+    const cam = this.cameraEntity.entity;
+    if (cam !== null) this.cam.disableRenderToTexture(cam);
+    this._mat   = null;
+    this._ready = false;
+  }
+}

@@ -8,7 +8,7 @@ import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiComponent } from '../core/Components';
 import { compileFui, hitTestFuiButtons, preloadFuiImages, renderCompiledFuiToCanvas } from './FuiRenderer';
-import type { FuiCompiled, FuiCompiledNode } from './FuiRenderer';
+import type { FuiCompiled, FuiCompiledNode, FuiNodeRenderState } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
 import type { FuiDocument, FuiNode, FuiPanelNode } from './FuiTypes';
@@ -17,6 +17,58 @@ type PendingClick = {
   entity: EntityId;
   elementId: string;
 };
+
+interface ButtonInteractState {
+  hoveredId: string | null;
+  pressedId: string | null;
+  nodeStates: Map<string, FuiNodeRenderState>;
+}
+
+// ── Singleton tooltip element (shared across all FUI entities) ──
+let _tooltipEl: HTMLDivElement | null = null;
+
+function getTooltipEl(): HTMLDivElement {
+  if (!_tooltipEl) {
+    _tooltipEl = document.createElement('div');
+    Object.assign(_tooltipEl.style, {
+      position: 'fixed',
+      pointerEvents: 'none',
+      background: 'rgba(10,14,26,0.92)',
+      color: '#e6edf3',
+      border: '1px solid #30363d',
+      borderRadius: '4px',
+      padding: '4px 8px',
+      fontSize: '11px',
+      fontFamily: 'var(--font-sans, sans-serif)',
+      lineHeight: '1.4',
+      zIndex: '9999',
+      display: 'none',
+      maxWidth: '220px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+    });
+    document.body.appendChild(_tooltipEl);
+  }
+  return _tooltipEl;
+}
+
+function showTooltip(text: string, mx: number, my: number): void {
+  const el = getTooltipEl();
+  el.textContent = text;
+  el.style.display = 'block';
+  // Offset from cursor; clamp inside viewport
+  const offX = 14, offY = 20;
+  let lx = mx + offX;
+  let ly = my + offY;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (lx + 220 > vw) lx = mx - 220 - offX;
+  if (ly + 40  > vh) ly = my - 40;
+  el.style.left = `${Math.max(0, lx)}px`;
+  el.style.top  = `${Math.max(0, ly)}px`;
+}
+
+function hideTooltip(): void {
+  if (_tooltipEl) _tooltipEl.style.display = 'none';
+}
 
 interface ScreenEntry {
   overlayCanvas: HTMLCanvasElement;
@@ -63,6 +115,10 @@ export class FuiRuntimeSystem implements System {
   private loadedPaths: Map<EntityId, string> = new Map();
   /** Tracks the _inlineDoc reference that was compiled per entity — detect reference changes */
   private loadedInlineDocs: Map<EntityId, unknown> = new Map();
+  /** Per-entity hover/active button state for interactive rendering. */
+  private interactStates: Map<EntityId, ButtonInteractState> = new Map();
+  /** Last known cursor set on the engine canvas — avoid redundant style writes. */
+  private _lastCursor = '';
 
   private parentEl: HTMLElement | null = null;
 
@@ -79,6 +135,9 @@ export class FuiRuntimeSystem implements System {
     this.animStates.clear();
     this.loadedPaths.clear();
     this.loadedInlineDocs.clear();
+    this.interactStates.clear();
+    hideTooltip();
+    this._setCursor('');
   }
 
   private disposeEntry(entity: EntityId): void {
@@ -192,7 +251,19 @@ export class FuiRuntimeSystem implements System {
     return worldEntry;
   }
 
-  private renderScreen(entry: ScreenEntry, comp: FuiComponent): void {
+  private _getInteractState(entity: EntityId): ButtonInteractState {
+    let s = this.interactStates.get(entity);
+    if (!s) { s = { hoveredId: null, pressedId: null, nodeStates: new Map() }; this.interactStates.set(entity, s); }
+    return s;
+  }
+
+  private _setCursor(cursor: string): void {
+    if (cursor === this._lastCursor) return;
+    this._lastCursor = cursor;
+    this.engine.config.canvas.style.cursor = cursor || '';
+  }
+
+  private renderScreen(entry: ScreenEntry, comp: FuiComponent, nodeStates?: Map<string, FuiNodeRenderState>): void {
     const { compiled } = entry;
     const { doc } = compiled;
     const dpr = window.devicePixelRatio || 1;
@@ -216,15 +287,15 @@ export class FuiRuntimeSystem implements System {
       entry.offscreenCanvas.height = pixH;
     }
 
-    renderCompiledFuiToCanvas(entry.compiled, entry.offscreenCtx, { scaleX: dpr, scaleY: dpr });
+    renderCompiledFuiToCanvas(entry.compiled, entry.offscreenCtx, { scaleX: dpr, scaleY: dpr, nodeStates });
 
     entry.overlayCtx.clearRect(0, 0, pixW, pixH);
     entry.overlayCtx.drawImage(entry.offscreenCanvas, 0, 0, pixW, pixH);
   }
 
-  private renderWorld(entry: WorldEntry, comp: FuiComponent): void {
+  private renderWorld(entry: WorldEntry, comp: FuiComponent, nodeStates?: Map<string, FuiNodeRenderState>): void {
     const { compiled } = entry;
-    renderCompiledFuiToCanvas(compiled, entry.offscreenCtx, { scaleX: 1, scaleY: 1 });
+    renderCompiledFuiToCanvas(compiled, entry.offscreenCtx, { scaleX: 1, scaleY: 1, nodeStates });
     entry.texture.needsUpdate = true;
   }
 
@@ -312,7 +383,7 @@ export class FuiRuntimeSystem implements System {
             screen.compiled = compiled;
             screen.offscreenCanvas.width = compiled.doc.canvas.width;
             screen.offscreenCanvas.height = compiled.doc.canvas.height;
-            this.renderScreen(screen, comp);
+            this.renderScreen(screen, comp, this._getInteractState(entity).nodeStates);
           } else {
             const world = this.ensureWorldEntry(entity, comp, compiled);
             world.compiled = compiled;
@@ -320,7 +391,7 @@ export class FuiRuntimeSystem implements System {
             world.mesh.geometry = new THREE.PlaneGeometry(comp.worldWidth, comp.worldHeight);
             world.offscreenCanvas.width = compiled.doc.canvas.width;
             world.offscreenCanvas.height = compiled.doc.canvas.height;
-            this.renderWorld(world, comp);
+            this.renderWorld(world, comp, this._getInteractState(entity).nodeStates);
           }
           this.loadedInlineDocs.set(entity, comp._inlineDoc);
           clearDirty(comp);
@@ -350,7 +421,7 @@ export class FuiRuntimeSystem implements System {
             screen.compiled = compiled;
             screen.offscreenCanvas.width = compiled.doc.canvas.width;
             screen.offscreenCanvas.height = compiled.doc.canvas.height;
-            this.renderScreen(screen, comp);
+            this.renderScreen(screen, comp, this._getInteractState(entity).nodeStates);
           } else {
             const world = this.ensureWorldEntry(entity, comp, compiled);
             world.compiled = compiled;
@@ -371,7 +442,7 @@ export class FuiRuntimeSystem implements System {
               world.mesh.quaternion.copy(transform.quaternion);
             }
 
-            this.renderWorld(world, comp);
+            this.renderWorld(world, comp, this._getInteractState(entity).nodeStates);
           }
           clearDirty(comp);
           this.loadedPaths.set(entity, fuiPath);
@@ -383,6 +454,7 @@ export class FuiRuntimeSystem implements System {
         const overlay = screen.overlayCanvas;
         const docW = screen.compiled.doc.canvas.width;
         const docH = screen.compiled.doc.canvas.height;
+        const ist  = this._getInteractState(entity);
 
         // Recompute position every frame from the canvas's live bounding rect so
         // the overlay stays aligned even when the window is resized or the editor
@@ -404,10 +476,53 @@ export class FuiRuntimeSystem implements System {
           overlay.style.height = expectedHeight;
         }
 
+        // ── Hover detection (screen-space) ──
+        {
+          const hovered = this.hitTestScreen(screen.compiled, comp)  // non-disabled first
+            ?? hitTestFuiButtons(
+                screen.compiled,
+                this.input.mousePosition.x - canvasRect.left - comp.screenX,
+                this.input.mousePosition.y - canvasRect.top  - comp.screenY,
+                { includeDisabled: true },
+              ); // also check disabled buttons for cursor/tooltip
+          const newHoverId = hovered?.id ?? null;
+          const pressed = ist.pressedId;
+
+          if (newHoverId !== ist.hoveredId || pressed !== ist.pressedId) {
+            ist.hoveredId = newHoverId;
+            ist.nodeStates.clear();
+            if (newHoverId) {
+              ist.nodeStates.set(newHoverId, {
+                hover: !hovered?.disabled,
+                active: pressed === newHoverId,
+              });
+            }
+            if (pressed && pressed !== newHoverId) {
+              ist.nodeStates.set(pressed, { active: true });
+            }
+            this.renderScreen(screen, comp, ist.nodeStates);
+          }
+
+          // Cursor
+          if (newHoverId && hovered) {
+            const cur = hovered.disabled ? 'not-allowed' : (hovered.cursor ?? 'pointer');
+            this._setCursor(cur);
+          } else {
+            this._setCursor('');
+          }
+
+          // Tooltip
+          if (newHoverId && hovered?.tooltip && !hovered.disabled) {
+            showTooltip(hovered.tooltip, this.input.mousePosition.x, this.input.mousePosition.y);
+          } else {
+            hideTooltip();
+          }
+        }
+
         // Redraw when device-pixel canvas size changed (e.g. DPR change or doc resize).
         const dpr = window.devicePixelRatio || 1;
         if (overlay.width !== Math.round(docW * dpr) || overlay.height !== Math.round(docH * dpr)) {
-          this.renderScreen(screen, comp);
+          this.renderScreen(screen, comp, ist.nodeStates);
         }
 
         // ── Animation ──
@@ -422,7 +537,7 @@ export class FuiRuntimeSystem implements System {
             this.animStates.set(entity, state);
             const animDoc = applyAnimation(screen.compiled.doc, anim, state.time);
             const animCompiled = compileFui(animDoc);
-            this.renderScreen({ ...screen, compiled: animCompiled }, comp);
+            this.renderScreen({ ...screen, compiled: animCompiled }, comp, ist.nodeStates);
           }
         }
       } else if (existing.mode === 'world') {
@@ -450,14 +565,14 @@ export class FuiRuntimeSystem implements System {
             this.animStates.set(entity, state);
             const animDoc = applyAnimation(world.compiled.doc, anim, state.time);
             const animCompiled = compileFui(animDoc);
-            this.renderWorld({ ...world, compiled: animCompiled }, comp);
+            this.renderWorld({ ...world, compiled: animCompiled }, comp, this._getInteractState(entity).nodeStates);
           }
         }
       }
     }
 
-    // ── Interaction (simple click handling) ──
-    const clicked = this.input.isMousePressed(MouseButton.Left);
+    // ── Interaction (click + active-state tracking) ──
+    const clicked  = this.input.isMousePressed(MouseButton.Left);
     const released = this.input.isMouseReleased(MouseButton.Left);
     const ray = new THREE.Ray();
 
@@ -470,10 +585,15 @@ export class FuiRuntimeSystem implements System {
         if (!comp || !comp.enabled) continue;
         const entry = this.entries.get(entity);
         if (!entry) continue;
+        const ist = this._getInteractState(entity);
         if (entry.mode === 'screen') {
           const hit = this.hitTestScreen(entry.screen.compiled, comp);
           if (hit?.type === 'button') {
             this.pendingClick = { entity, elementId: hit.id };
+            // Set active state
+            ist.pressedId = hit.id;
+            ist.nodeStates.set(hit.id, { hover: ist.hoveredId === hit.id, active: true });
+            this.renderScreen(entry.screen, comp, ist.nodeStates);
           }
         } else {
           const cam = this.renderer.getActiveCamera();
@@ -484,6 +604,9 @@ export class FuiRuntimeSystem implements System {
           const hit = this.hitTestWorld(entry.world.compiled, entry.world, ray);
           if (hit?.type === 'button') {
             this.pendingClick = { entity, elementId: hit.id };
+            ist.pressedId = hit.id;
+            ist.nodeStates.set(hit.id, { hover: false, active: true });
+            this.renderWorld(entry.world, comp, ist.nodeStates);
           }
         }
       }
@@ -513,7 +636,33 @@ export class FuiRuntimeSystem implements System {
           }
         }
       }
+      // Clear active state regardless of whether click confirmed
+      const ist = this.interactStates.get(target.entity);
+      if (ist && ist.pressedId) {
+        const prevPressed = ist.pressedId;
+        ist.pressedId = null;
+        ist.nodeStates.set(prevPressed, { hover: ist.hoveredId === prevPressed, active: false });
+        if (comp && entry) {
+          if (entry.mode === 'screen') this.renderScreen(entry.screen, comp, ist.nodeStates);
+          else this.renderWorld(entry.world, comp, ist.nodeStates);
+        }
+      }
       this.pendingClick = null;
+    } else if (released) {
+      // Released without a pending click — still clear any stuck active state
+      for (const entity of entities) {
+        const ist = this.interactStates.get(entity);
+        if (!ist || !ist.pressedId) continue;
+        const prevPressed = ist.pressedId;
+        ist.pressedId = null;
+        ist.nodeStates.set(prevPressed, { hover: ist.hoveredId === prevPressed, active: false });
+        const comp = ecs.getComponent<FuiComponent>(entity, 'Fui');
+        const entry = this.entries.get(entity);
+        if (comp && entry) {
+          if (entry.mode === 'screen') this.renderScreen(entry.screen, comp, ist.nodeStates);
+          else this.renderWorld(entry.world, comp, ist.nodeStates);
+        }
+      }
     }
   }
 
@@ -532,8 +681,9 @@ export class FuiRuntimeSystem implements System {
     const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
     if (!comp) return;
     if (comp._inlineDoc) this._patchDocNodeText(comp._inlineDoc as FuiDocument, nodeId, text);
-    if (entry.mode === 'screen') this.renderScreen(entry.screen, comp);
-    else this.renderWorld(entry.world, comp);
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this.renderScreen(entry.screen, comp, ns);
+    else this.renderWorld(entry.world, comp, ns);
   }
 
   private _patchDocNodeText(doc: FuiDocument, nodeId: string, text: string): void {

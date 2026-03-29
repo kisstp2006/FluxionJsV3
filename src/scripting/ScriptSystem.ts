@@ -20,6 +20,7 @@ import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiBuilder } from '../ui/FuiBuilder';
 import { EntityRef } from './EntityRef';
+import { FuiRef } from './FuiRef';
 
 // ── THREE math shortcuts injected into every script's scope ──
 
@@ -82,6 +83,7 @@ function loadScriptClass(
     'Mathf',
     'FuiBuilder',
     'EntityRef',
+    'FuiRef',
     'console',
     compiledJs,
   )(
@@ -101,6 +103,7 @@ function loadScriptClass(
     Mathf,
     FuiBuilder,
     EntityRef,
+    FuiRef,
     console,
   );
   return mod.default;
@@ -312,6 +315,8 @@ export class ScriptSystem implements System {
       const current = (instance as any)[key];
       if (current instanceof EntityRef && val && typeof val === 'object') {
         current.entity = typeof (val as any).entity === 'number' ? (val as any).entity : null;
+      } else if (current instanceof FuiRef && val && typeof val === 'object') {
+        current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
       } else {
         (instance as any)[key] = val;
       }

@@ -21,6 +21,7 @@ import type { InputManager } from '../input/InputManager';
 import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
 import type { TransformComponent } from '../core/Components';
+import { FuiComponent } from '../core/Components';
 import { DebugConsole } from '../core/DebugConsole';
 import { DebugDraw } from '../renderer/DebugDraw';
 
@@ -35,6 +36,7 @@ const _ddBindings = {
 };
 
 export { EntityId, ECSManager, Engine, InputManager };
+export { FuiRef } from './FuiRef';
 
 export class FluxionBehaviour {
   // ── Injected by ScriptSystem (underscore prefix = hidden from Inspector) ──
@@ -289,15 +291,15 @@ export class FluxionBehaviour {
 
     return {
       load(path: string): void {
-        const c = getComp();
-        if (!c) return;
+        let c = getComp();
+        if (!c) c = ecs.addComponent(entity, new FuiComponent());
         c.fuiPath = path;
         c._inlineDoc = undefined;
         markDirty(c);
       },
       create(doc: unknown): void {
-        const c = getComp();
-        if (!c) return;
+        let c = getComp();
+        if (!c) c = ecs.addComponent(entity, new FuiComponent());
         c._inlineDoc = doc;
         c.fuiPath = '';
         markDirty(c);

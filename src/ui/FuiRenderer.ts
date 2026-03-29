@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiDocument, FuiIconNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiDocument, FuiIconNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -25,6 +25,22 @@ export interface FuiCompiledNode {
   /** Icon-node only: absolute filesystem path to the SVG source file. */
   src?: string;
   children: FuiCompiledNode[];
+  // ── Button-only extended properties ──
+  /** SVG icon shown left of button text (project-relative path). */
+  icon?: string;
+  tooltip?: string;
+  cursor?: string;
+  disabled?: boolean;
+  clickAnimation?: string;
+  hoverStyle?: Partial<FuiButtonStyle>;
+  activeStyle?: Partial<FuiButtonStyle> & { scale?: number };
+  disabledStyle?: Partial<FuiButtonStyle>;
+}
+
+/** Per-node render state injected by the runtime (hover / active). */
+export interface FuiNodeRenderState {
+  hover?: boolean;
+  active?: boolean;
 }
 
 // ── SVG image cache (module-level, survives across renders) ──
@@ -52,8 +68,10 @@ export function preloadFuiImages(
   onLoaded: () => void,
 ): void {
   for (const node of compiled.drawOrder) {
-    if (node.type !== 'icon' || !node.src) continue;
-    const key = node.src;
+    // 'icon' type nodes use src; button nodes may also have an icon field
+    const srcKey = node.type === 'icon' ? node.src : (node.type === 'button' ? node.icon : undefined);
+    if (!srcKey) continue;
+    const key = srcKey;
     if (_svgCache.has(key)) continue; // already loading or ready
 
     _svgCache.set(key, { state: 'loading' });
@@ -175,6 +193,7 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       h: rect.h,
     };
 
+    const btn = node.type === 'button' ? (node as FuiButtonNode) : null;
     const compiled: FuiCompiledNode = {
       id: node.id,
       type: node.type,
@@ -183,6 +202,17 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       text: (node as any).text,
       src: node.type === 'icon' ? (node as FuiIconNode).src : undefined,
       children: [],
+      // Copy button extended fields
+      ...(btn ? {
+        icon:           btn.icon,
+        tooltip:        btn.tooltip,
+        cursor:         btn.cursor,
+        disabled:       btn.disabled,
+        clickAnimation: btn.clickAnimation,
+        hoverStyle:     btn.hoverStyle,
+        activeStyle:    btn.activeStyle,
+        disabledStyle:  btn.disabledStyle,
+      } : {}),
     };
 
     nodeById.set(compiled.id, compiled);
@@ -213,7 +243,7 @@ export function renderFuiToCanvas(
 export function renderCompiledFuiToCanvas(
   compiled: FuiCompiled,
   ctx: CanvasRenderingContext2D,
-  opts?: { scaleX?: number; scaleY?: number },
+  opts?: { scaleX?: number; scaleY?: number; nodeStates?: Map<string, FuiNodeRenderState> },
 ): void {
   const scaleX = opts?.scaleX ?? 1;
   const scaleY = opts?.scaleY ?? 1;
@@ -277,17 +307,42 @@ export function renderCompiledFuiToCanvas(
       ctx.fillText(text, tx, ty);
       ctx.restore();
     } else if (n.type === 'button') {
-      const bg = resolveBackground(n.style) ?? '#1f2a44';
-      const borderColor = resolveBorderColor(n.style) ?? '#6b8cff';
-      const borderWidth = withDefaultNumber(n.style?.borderWidth, 2) * Math.min(scaleX, scaleY);
-      const radius = withDefaultNumber(n.style?.radius, 6) * Math.min(scaleX, scaleY);
-      const textColor = resolveTextColor(n.style) ?? '#ffffff';
-      const fontSize = resolveFontSize(n.style) * Math.min(scaleX, scaleY);
-      const align = resolveAlign(n.style);
-      const padding = withDefaultNumber(n.style?.padding, 8) * Math.min(scaleX, scaleY);
+      // Resolve which style layer applies (disabled → active → hover → base)
+      const st = opts?.nodeStates?.get(n.id);
+      const isDisabled = n.disabled === true;
+      const isActive   = !isDisabled && (st?.active === true);
+      const isHover    = !isDisabled && !isActive && (st?.hover === true);
+
+      const overlay: Partial<FuiButtonStyle> =
+        isDisabled ? (n.disabledStyle ?? { opacity: 0.38 }) :
+        isActive   ? (n.activeStyle   ?? { backgroundColor: '#3a4a70', borderColor: '#a0b8ff' }) :
+        isHover    ? (n.hoverStyle    ?? { backgroundColor: '#2a3a5a', borderColor: '#8aabff' }) :
+        {};
+
+      const merged = { ...n.style, ...overlay };
+      const bg          = resolveBackground(merged)  ?? '#1f2a44';
+      const borderColor = resolveBorderColor(merged) ?? '#6b8cff';
+      const borderWidth = withDefaultNumber(merged.borderWidth, 2) * Math.min(scaleX, scaleY);
+      const radius      = withDefaultNumber(merged.radius,      6) * Math.min(scaleX, scaleY);
+      const textColor   = resolveTextColor(merged)   ?? '#ffffff';
+      const fontSize    = resolveFontSize(merged) * Math.min(scaleX, scaleY);
+      const align       = resolveAlign(merged);
+      const padding     = withDefaultNumber(merged.padding, 8) * Math.min(scaleX, scaleY);
+      const mergedOpacity = Math.min(1, Math.max(0, withDefaultNumber(merged.opacity, 1)));
+
+      // Scale transform for active press animation
+      const scale = (isActive && (n.activeStyle as any)?.scale != null)
+        ? (n.activeStyle as any).scale as number
+        : (isActive ? 0.96 : 1);
 
       ctx.save();
-      ctx.globalAlpha = opacity;
+      ctx.globalAlpha = mergedOpacity;
+
+      if (scale !== 1) {
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.scale(scale, scale);
+        ctx.translate(-(x + w / 2), -(y + h / 2));
+      }
 
       // Background + border
       ctx.fillStyle = bg;
@@ -297,19 +352,51 @@ export function renderCompiledFuiToCanvas(
       ctx.lineWidth = borderWidth;
       ctx.stroke();
 
-      // Text
+      // Icon left of text
+      const iconSrc = n.icon;
+      const iconSize   = withDefaultNumber(merged.iconSize, Math.round(fontSize)) * 1;
+      const iconGap    = withDefaultNumber(merged.iconGap, 6) * Math.min(scaleX, scaleY);
       const text = n.text ?? '';
+
+      let textOffsetX = 0; // extra left margin when icon is present
+      if (iconSrc) {
+        const entry = _svgCache.get(iconSrc);
+        if (entry?.state === 'ready') {
+          const iSize = iconSize * Math.min(scaleX, scaleY);
+          const ix = x + padding;
+          const iy = y + h / 2 - iSize / 2;
+          ctx.save();
+          if (n.style?.color) {
+            const tmp = document.createElement('canvas');
+            tmp.width = Math.max(1, Math.round(iSize));
+            tmp.height = Math.max(1, Math.round(iSize));
+            const tc = tmp.getContext('2d')!;
+            tc.drawImage(entry.img, 0, 0, tmp.width, tmp.height);
+            tc.globalCompositeOperation = 'source-in';
+            tc.fillStyle = textColor;
+            tc.fillRect(0, 0, tmp.width, tmp.height);
+            ctx.drawImage(tmp, ix, iy, iSize, iSize);
+          } else {
+            ctx.drawImage(entry.img, ix, iy, iSize, iSize);
+          }
+          ctx.restore();
+          textOffsetX = iSize + iconGap;
+        }
+      }
+
+      // Text
       ctx.fillStyle = textColor;
       ctx.font = `${fontSize}px sans-serif`;
       ctx.textAlign = align;
       ctx.textBaseline = 'middle';
 
       const tx =
-        align === 'left' ? x + padding :
+        align === 'left'  ? x + padding + textOffsetX :
         align === 'right' ? x + w - padding :
-        x + w / 2;
+        x + w / 2 + textOffsetX / 2;
       const ty = y + h / 2;
       ctx.fillText(text, tx, ty);
+
       ctx.restore();
     }
 
@@ -380,11 +467,13 @@ export function hitTestFuiButtons(
   compiled: FuiCompiled,
   docX: number,
   docY: number,
+  { includeDisabled = false } = {},
 ): FuiCompiledNode | null {
   // Reverse draw order for topmost element picking.
   for (let i = compiled.drawOrder.length - 1; i >= 0; i--) {
     const n = compiled.drawOrder[i];
     if (n.type !== 'button') continue;
+    if (!includeDisabled && n.disabled) continue; // skip disabled buttons for click events
     const r = n.rect;
     if (docX >= r.x && docX <= r.x + r.w && docY >= r.y && docY <= r.y + r.h) {
       return n;

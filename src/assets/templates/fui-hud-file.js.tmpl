@@ -1,12 +1,12 @@
 export default class $CLS extends FluxionBehaviour {
-  /** Path to the .fui file (project-relative) */
-  fuiFile = 'UI/HUD.fui';
+  /** Drag a .fui asset here in the Inspector */
+  fuiFile = new FuiRef();
 
   score = 0;
   health = 100;
 
   start() {
-    this.ui.load(this.fuiFile);
+    this.ui.load(this.fuiFile.path);
 
     this.ui.onButtonClick('restart_btn', () => {
       this.score = 0;

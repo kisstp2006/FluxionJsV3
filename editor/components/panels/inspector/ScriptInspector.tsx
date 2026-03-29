@@ -13,6 +13,7 @@ import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
 import { FluxionBehaviour } from '../../../../src/scripting/FluxionBehaviour';
 import { EntityRef } from '../../../../src/scripting/EntityRef';
 import { compileScript } from '../../../../src/scripting/ScriptCompiler';
+import { FuiRef } from '../../../../src/scripting/FuiRef';
 import { ComponentSection } from './ComponentSection';
 import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
@@ -31,8 +32,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'console', compiledJs)(
-      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, console,
     );
   } catch {
     return null;
@@ -40,7 +41,7 @@ function loadScriptClass(compiledJs: string): any {
   return mod.default;
 }
 
-type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity';
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui';
 
 interface ScriptProp {
   key: string;
@@ -69,6 +70,15 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
           requireComponent: raw.requireComponent,
           default: raw,
           value: { entity: entityId, requireComponent: raw.requireComponent },
+        });
+      } else if (raw instanceof FuiRef) {
+        const override = overrides[k];
+        const path = typeof override?.path === 'string' ? override.path : raw.path;
+        props.push({
+          key: k,
+          type: 'fui',
+          default: raw,
+          value: { path },
         });
       } else if (typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean') {
         props.push({
@@ -337,6 +347,13 @@ const ScriptEntryRow: React.FC<{
                   requireComponent={p.requireComponent}
                   engine={engine}
                   onChange={(id) => setOverride(p.key, { entity: id, requireComponent: p.requireComponent })}
+                />
+              )}
+              {p.type === 'fui' && (
+                <AssetInput
+                  value={p.value?.path || null}
+                  assetType="fui"
+                  onChange={(v) => setOverride(p.key, { path: v || '' })}
                 />
               )}
             </PropertyRow>

@@ -39,20 +39,42 @@ export interface FuiLabelNode extends FuiBaseNode {
   };
 }
 
+export interface FuiButtonStyle {
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  radius?: number;
+  textColor?: string;
+  fontSize?: number;
+  align?: FuiAlign;
+  padding?: number;
+  opacity?: number;   // 0–1
+  /** Size of the icon in pixels (default: fontSize or 16) */
+  iconSize?: number;
+  /** Gap between icon and text in pixels (default: 6) */
+  iconGap?: number;
+}
+
 export interface FuiButtonNode extends FuiBaseNode {
   type: 'button';
   text?: string;
-  style?: {
-    backgroundColor?: string;
-    borderColor?: string;
-    borderWidth?: number;
-    radius?: number;
-    textColor?: string;
-    fontSize?: number;
-    align?: FuiAlign;
-    padding?: number;
-    opacity?: number; // 0–1
-  };
+  /** Project-relative path to an SVG icon shown to the left of the text. */
+  icon?: string;
+  /** Tooltip text shown when hovering the button. */
+  tooltip?: string;
+  /** CSS cursor applied when hovering. Default: 'pointer'. */
+  cursor?: 'pointer' | 'default' | 'not-allowed';
+  /** Disables click events and applies dimmed appearance. */
+  disabled?: boolean;
+  /** Click animation. 'scale' shrinks the button on press; 'flash' briefly flashes it white. */
+  clickAnimation?: 'none' | 'scale' | 'flash';
+  style?: FuiButtonStyle;
+  /** Style overrides merged on top of base style while the mouse is hovering. */
+  hoverStyle?: Partial<FuiButtonStyle>;
+  /** Style overrides merged on top of base style while the button is being pressed. Supports `scale` (0–1). */
+  activeStyle?: Partial<FuiButtonStyle> & { scale?: number };
+  /** Style overrides applied when `disabled` is true. Defaults to opacity 0.4. */
+  disabledStyle?: Partial<FuiButtonStyle>;
 }
 
 export interface FuiIconNode extends FuiBaseNode {

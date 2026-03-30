@@ -292,7 +292,10 @@ export async function loadDeferredModel(
       loadPath = modelPath;
     }
 
-    const fileUrl = loadPath.startsWith('file://') ? loadPath : `file:///${loadPath.replace(/\\/g, '/')}`;
+    const isWeb = typeof window !== 'undefined' && !(window as any).fluxionAPI;
+    const fileUrl = loadPath.startsWith('file://') || isWeb
+      ? loadPath.replace(/\\/g, '/')
+      : `file:///${loadPath.replace(/\\/g, '/')}`;
     const assets = engine.getSubsystem('assets') as AssetManager;
     const gltf = await assets.loadModel(fileUrl);
     const scene = cloneSkinnedScene(gltf.scene);

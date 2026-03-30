@@ -640,6 +640,9 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Disabled">
           <input type="checkbox" checked={(node as any).disabled === true} onChange={(e) => onChange((n) => { n.disabled = e.target.checked; })} />
         </PropertyRow>
+        <PropertyRow label="Show Border">
+          <input type="checkbox" checked={(node as any).style?.showBorder !== false} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.showBorder = e.target.checked; })} />
+        </PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Brd Width">
           {withKey(<NumberInput value={(node as any).style?.borderWidth ?? 2} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderWidth = v; })} />, 'borderWidth')}

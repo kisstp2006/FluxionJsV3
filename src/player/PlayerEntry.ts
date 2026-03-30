@@ -13,10 +13,14 @@ import { FluxionRenderer } from '../renderer/Renderer';
 import { InputManager }    from '../input/InputManager';
 import { AudioSystem }     from '../audio/AudioSystem';
 import { PhysicsWorld }    from '../physics/PhysicsWorld';
+import { AssetManager }    from '../assets/AssetManager';
+import { MaterialSystem }  from '../renderer/MaterialSystem';
+import { FuiRuntimeSystem } from '../ui/FuiRuntimeSystem';
 import { ScriptSystem }    from '../scripting/ScriptSystem';
 import { LuaScriptSystem } from '../scripting/LuaScriptSystem';
 import { Scene }           from '../scene/Scene';
 import { deserializeScene } from '../project/SceneSerializer';
+import { WebFileSystem, setGlobalFileSystem } from '../filesystem';
 
 // Injected by webpack alias — resolves to .fluxion/game-scripts.ts
 // Using require so we gracefully handle the case where the alias
@@ -55,6 +59,10 @@ async function bootstrap(): Promise<void> {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('Element #game-canvas not found in player.html');
 
+  // Initialize fetch-based filesystem — must happen before any system calls
+  // getFileSystem() (e.g. LuaScriptSystem loading .lua files).
+  setGlobalFileSystem(new WebFileSystem());
+
   // Fetch build manifest to know which scene to load
   let manifest: BuildManifest;
   try {
@@ -71,6 +79,15 @@ async function bootstrap(): Promise<void> {
   const renderer = new FluxionRenderer(engine);
   const input    = new InputManager(engine);
   const audio    = new AudioSystem(engine);
+
+  // ── Asset & material subsystems ──────────────────────────
+  const materials = new MaterialSystem();
+  engine.registerSubsystem('materials', materials);
+  const assets = new AssetManager();
+  engine.registerSubsystem('assets', assets);
+
+  // ── FUI runtime (screen-space UI) ────────────────────────
+  engine.ecs.addSystem(new FuiRuntimeSystem(engine, renderer, input));
 
   // ── Physics (optional) ───────────────────────────────────
   try {

@@ -84,6 +84,8 @@ export interface FuiButtonStyle {
   backgroundColor?: string;
   borderColor?: string;
   borderWidth?: number;
+  /** Set to false to hide the border completely. Defaults to true. */
+  showBorder?: boolean;
   radius?: number;
   /** Base/fallback text colour. Use `textColors` for per-state control. */
   textColor?: string;

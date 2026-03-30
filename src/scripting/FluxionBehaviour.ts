@@ -395,6 +395,65 @@ export class FluxionBehaviour {
     return this._ecs.getChildren(entity ?? this.entity);
   }
 
+  /**
+   * Return the first direct child entity that has the given component type,
+   * or null if none is found.
+   * @example
+   *   const camEntity = this.findChildWithComponent('Camera');
+   */
+  findChildWithComponent(componentType: string, entity?: EntityId): EntityId | null {
+    const children = this._ecs.getChildren(entity ?? this.entity);
+    for (const child of children) {
+      if (this._ecs.hasComponent(child, componentType)) return child;
+    }
+    return null;
+  }
+
+  /**
+   * Return all component instances of the given type from every entity in the
+   * scene. Useful when you need to affect every instance (e.g. all lights).
+   * @example
+   *   const scripts = this.getComponents('Script');
+   */
+  getComponents<T>(type: string): T[] {
+    return Array.from(this._ecs.getComponentsOfType<any>(type).values()) as T[];
+  }
+
+  /**
+   * Search this entity **and all its descendants** (depth-first) for the
+   * first component of the given type. Includes self. Returns null if none.
+   * @example
+   *   const cam = this.getComponentInChildren('Camera');
+   */
+  getComponentInChildren<T>(type: string, entity?: EntityId): T | null {
+    const dfs = (e: EntityId): T | null => {
+      const comp = this._ecs.getComponent<any>(e, type);
+      if (comp !== undefined) return comp as T;
+      for (const child of this._ecs.getChildren(e)) {
+        const found = dfs(child);
+        if (found !== null) return found;
+      }
+      return null;
+    };
+    return dfs(entity ?? this.entity);
+  }
+
+  /**
+   * Walk up the parent chain (**including self**) and return the first
+   * component of the given type found. Returns null if not found.
+   * @example
+   *   const rootTf = this.getComponentInParent('Transform');
+   */
+  getComponentInParent<T>(type: string, entity?: EntityId): T | null {
+    let current: EntityId | undefined = entity ?? this.entity;
+    while (current !== undefined) {
+      const comp = this._ecs.getComponent<any>(current, type);
+      if (comp !== undefined) return comp as T;
+      current = this._ecs.getParent(current);
+    }
+    return null;
+  }
+
   // ── Entity lifecycle ─────────────────────────────────────────
 
   createEntity(name?: string): EntityId {
@@ -479,6 +538,9 @@ export class FluxionBehaviour {
       },
       setText(nodeId: string, text: string): void {
         getRT()?.setNodeText?.(tgt, nodeId, text);
+      },
+      setBorder(nodeId: string, enabled: boolean): void {
+        getRT()?.setNodeBorder?.(tgt, nodeId, enabled);
       },
       show(): void  { const c = getComp(); if (c) c.enabled = true; },
       hide(): void  { const c = getComp(); if (c) c.enabled = false; },

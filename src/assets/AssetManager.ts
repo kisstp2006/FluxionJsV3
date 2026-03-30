@@ -40,6 +40,22 @@ export interface LoadProgress {
   percent: number;
 }
 
+/**
+ * Returns a URL the current runtime can load.
+ * - Electron editor: wraps in file:// so the renderer can fetch local files.
+ * - Web export (no fluxionAPI bridge): returns a relative URL so fetch() works
+ *   from the web server serving Build/Web/.
+ */
+function toAssetUrl(path: string): string {
+  if (path.startsWith('file://') || path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+    return path;
+  }
+  if (typeof window !== 'undefined' && !(window as any).fluxionAPI) {
+    return path.replace(/\\/g, '/');
+  }
+  return `file:///${path.replace(/\\/g, '/')}`;
+}
+
 export class AssetManager {
   private cache: Map<string, AssetEntry> = new Map();
   private loading: Map<string, Promise<any>> = new Map();
@@ -272,7 +288,7 @@ export class AssetManager {
       // Resolve sourceModel path relative to the .fluxmesh location
       const dir = path.substring(0, path.lastIndexOf('/'));
       const modelPath = `${dir}/${data.sourceModel}`;
-      const modelUrl = modelPath.startsWith('file://') ? modelPath : `file:///${modelPath.replace(/\\/g, '/')}`;
+      const modelUrl = toAssetUrl(modelPath);
 
       // Load the actual 3D model
       const modelResult = await this.loadModel(modelUrl);

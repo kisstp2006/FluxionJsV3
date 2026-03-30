@@ -707,6 +707,26 @@ export class FuiRuntimeSystem implements System {
     else this.renderWorld(entry.world, comp, ns);
   }
 
+  /**
+   * Toggle the border of a button node and immediately re-render.
+   * Called from scripts via `this.ui.setBorder(nodeId, enabled)`.
+   */
+  setNodeBorder(entity: EntityId, nodeId: string, enabled: boolean): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    if (!node.style) (node as any).style = {};
+    (node.style as any).showBorder = enabled;
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeStyleProp(comp._inlineDoc as FuiDocument, nodeId, 'showBorder', enabled);
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this._renderScreenFrame(entity, entry.screen, comp, ns, this._activeTooltips.get(entity) ?? undefined);
+    else this.renderWorld(entry.world, comp, ns);
+  }
+
   /** Handle mousedown on any interactable node. */
   private _handleInteractablePress(
     entity: EntityId,
@@ -757,6 +777,24 @@ export class FuiRuntimeSystem implements System {
     const walk = (node: any): boolean => {
       if (node.id === nodeId) { node.value = value; return true; }
       for (const child of node.children ?? []) { if (walk(child)) return true; }
+      return false;
+    };
+    walk(doc.root);
+  }
+
+  private _patchDocNodeStyleProp(doc: FuiDocument, nodeId: string, key: string, value: unknown): void {
+    const walk = (node: FuiNode): boolean => {
+      if (node.id === nodeId) {
+        const n = node as any;
+        n.style = n.style ?? {};
+        n.style[key] = value;
+        return true;
+      }
+      if (node.type === 'panel') {
+        for (const child of (node as FuiPanelNode).children ?? []) {
+          if (walk(child)) return true;
+        }
+      }
       return false;
     };
     walk(doc.root);

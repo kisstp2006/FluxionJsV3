@@ -470,9 +470,11 @@ export function renderCompiledFuiToCanvas(
       ctx.fillStyle = bg;
       drawRoundedRect(ctx, x, y, w, h, radius);
       ctx.fill();
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = borderWidth;
-      ctx.stroke();
+      if (merged.showBorder !== false) {
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = borderWidth;
+        ctx.stroke();
+      }
 
       // Background image (drawn over solid bg, clipped to button shape)
       if (n.image) {

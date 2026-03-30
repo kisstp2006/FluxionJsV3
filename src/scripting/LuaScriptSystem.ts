@@ -230,6 +230,38 @@ export class LuaScriptSystem implements System {
 
     lua.global.set('self', adapter);
 
+    // ── Inject self.ui — mirrors this.ui from FluxionBehaviour ─
+    const _engine = this.engine;
+    const _fuiRT  = () => _engine.ecs.getSystem<any>('FuiRuntime');
+    const _fui    = () => _engine.ecs.getComponent(entity, 'Fui') as any;
+    const _luaUi = {
+      /** Change the text of a label or button node. */
+      setText(nodeId: string, text: string): void {
+        _fuiRT()?.setNodeText?.(entity, nodeId, text);
+      },
+      /** Show or hide the border of a button node. */
+      setBorder(nodeId: string, enabled: boolean): void {
+        _fuiRT()?.setNodeBorder?.(entity, nodeId, enabled);
+      },
+      show():  void { const c = _fui(); if (c) c.enabled = true;  },
+      hide():  void { const c = _fui(); if (c) c.enabled = false; },
+      setVisible(v: boolean): void { const c = _fui(); if (c) c.enabled = v; },
+      /** Register a click listener for the given button node ID. */
+      onButtonClick(nodeId: string, cb: () => void): void {
+        const unsub = _engine.events.on('ui:click', (d: any) => {
+          if (d.entity === entity && d.elementId === nodeId) cb();
+        });
+        adapter._cleanupFns.push(unsub);
+      },
+    };
+    // FluxionBehaviour defines `ui` as a getter-only on the prototype.
+    // Use defineProperty to shadow it on this specific instance.
+    Object.defineProperty(adapter, 'ui', {
+      configurable: true,
+      enumerable:   true,
+      get: () => _luaUi,
+    });
+
     // ── Apply inspector property overrides as Lua globals ──────
     // EntityRef overrides: { entity: number } → set as number (entity ID, -1 = unset)
     // FuiRef/MaterialRef/TextureRef overrides: { path: string } → set as string path

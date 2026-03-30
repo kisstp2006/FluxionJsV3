@@ -12,6 +12,18 @@ export default class $CLS extends FluxionBehaviour {
   start() {
     const tf = this.transform;
     if (tf) this._yaw = tf.rotation.y * Mathf.Rad2Deg;
+
+    // Auto-detect camera child if no EntityRef was set in the Inspector
+    if (this.camera.entity == null) {
+      const camChild = this.findChildWithComponent('Camera');
+      if (camChild != null) {
+        this.camera.entity = camChild;
+        this.log(`FPS: camera child auto-detected (entity ${camChild})`);
+      } else {
+        this.log('FPS: no Camera child found — drag a Camera entity into the "camera" slot, or add a Camera component to a child entity.');
+      }
+    }
+
     this.Input.lockPointer();
     this.log('FPS Character ready — click viewport to capture mouse, Escape to release.');
   }

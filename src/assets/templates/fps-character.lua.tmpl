@@ -3,12 +3,22 @@ sensitivity = 0.15
 maxPitch    = 85.0
 headHeight  = 1.6
 
-local _yaw   = 0
-local _pitch = 0
+local _yaw          = 0
+local _pitch        = 0
+local _cameraEntity = nil
 
 function start()
     local tf = self.transform
     if tf then _yaw = tf.rotation.y * Mathf.Rad2Deg end
+
+    -- Auto-detect camera child entity (first child with a Camera component)
+    _cameraEntity = self.findChildWithComponent("Camera")
+    if _cameraEntity then
+        self.log("FPS: camera child auto-detected (entity " .. tostring(_cameraEntity) .. ")")
+    else
+        self.log("FPS: no Camera child found — add a child entity with a Camera component")
+    end
+
     self.Input.lockPointer()
     self.log("FPS Character ready — click viewport to capture mouse")
 end
@@ -32,9 +42,18 @@ function update(dt)
     _pitch = _pitch - md.y * sensitivity
     _pitch = Mathf.clamp(_pitch, -maxPitch, maxPitch)
 
+    -- Yaw applied to the character body (horizontal rotation)
     local charTf = self.transform
     if charTf then
         charTf.rotation.set(0, _yaw * Mathf.Deg2Rad, 0, "YXZ")
+    end
+
+    -- Pitch applied to the camera child (vertical rotation)
+    if _cameraEntity then
+        local camTf = self.getComponentOf(_cameraEntity, "Transform")
+        if camTf then
+            camTf.rotation.set(_pitch * Mathf.Deg2Rad, 0, 0, "YXZ")
+        end
     end
 
     -- Sprint / crouch
@@ -51,6 +70,19 @@ function fixedUpdate(dt)
 
     if self.Input.isKeyPressed("Space") then
         self.Physics.jump()
+    end
+
+    -- Keep camera positioned at head height above character pivot
+    local charTf = self.transform
+    if charTf and _cameraEntity then
+        local camTf = self.getComponentOf(_cameraEntity, "Transform")
+        if camTf then
+            camTf.position.set(
+                charTf.position.x,
+                charTf.position.y + headHeight,
+                charTf.position.z
+            )
+        end
     end
 end
 

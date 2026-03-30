@@ -331,7 +331,10 @@ declare namespace FluxionEngine {
   interface GameObject {
     readonly id: number;
     name: string;
+    /** Whether this entity is active. Setting to false disables all its components. */
     enabled: boolean;
+    /** Activate or deactivate this entity. Same as setting .enabled. */
+    setActive(active: boolean): void;
     readonly transform: Transform;
     getComponent<K extends string>(typeId: K): (K extends keyof ComponentMap ? ComponentMap[K] : unknown) | null;
     hasComponent(typeId: string): boolean;
@@ -409,6 +412,16 @@ const STATIC_BEHAVIOUR = `\
 
     /** FluxionUI API for the FuiComponent on this entity. */
     protected readonly ui: FuiAPI;
+
+    // ── Entity active state ──────────────────────────────────
+    /** True when this entity is active. False after setActive(false). */
+    readonly isActive: boolean;
+    /**
+     * Activate or deactivate this entity.
+     * Equivalent to \`this.gameObject.setActive(value)\`.
+     * Disabling sets every component's \`enabled = false\`; re-enabling restores them.
+     */
+    setActive(active: boolean): void;
 
     // ── Component access ─────────────────────────────────────
     // Prefer gameObject.getComponent() for high-level access.

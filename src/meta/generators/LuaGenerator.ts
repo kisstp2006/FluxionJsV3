@@ -319,6 +319,41 @@ function FuiAPI:onAnyClick(callback) end
 --- @field enabled boolean
 Component = {}
 
+--- @class GameObject
+--- @field id number Entity ID
+--- @field name string Entity name
+--- @field enabled boolean True when the entity is active
+--- @field transform Transform
+--- @field parent GameObject|nil
+--- @field children GameObject[]
+GameObject = {}
+--- Activate or deactivate this entity (same as setting .enabled).
+--- @param active boolean
+function GameObject:setActive(active) end
+--- @param typeId string
+--- @return any
+function GameObject:getComponent(typeId) return nil end
+--- @param typeId string
+--- @return boolean
+function GameObject:hasComponent(typeId) return false end
+--- @param typeId string
+--- @return any
+function GameObject:addComponent(typeId) return nil end
+--- @param typeId string
+function GameObject:removeComponent(typeId) end
+--- @param tag string
+function GameObject:addTag(tag) end
+--- @param tag string
+--- @return boolean
+function GameObject:hasTag(tag) return false end
+--- @param name string
+--- @return GameObject|nil
+function GameObject:find(name) return nil end
+--- @param tag string
+--- @return GameObject[]
+function GameObject:findAll(tag) return {} end
+function GameObject:destroy() end
+
 `;
 
 const LUA_BEHAVIOUR_HEAD = `\
@@ -337,6 +372,8 @@ const LUA_BEHAVIOUR_HEAD = `\
 
 --- @class FluxionBehaviour
 --- @field entity number Low-level ECS entity ID. Prefer gameObject for most operations.
+--- @field gameObject GameObject High-level entity wrapper — preferred API.
+--- @field isActive boolean True when the entity is active (not disabled via setActive).
 --- @field transform Transform Shortcut to this entity's Transform (high-level alias).
 --- @field Time TimeAPI
 --- @field Input InputAPI
@@ -349,6 +386,12 @@ FluxionBehaviour = {}
 `;
 
 const LUA_BEHAVIOUR_TAIL = `\
+--- Activate or deactivate this entity.
+--- Disabling sets every component's enabled=false; re-enabling restores them.
+--- Same as: self.gameObject.enabled = value
+--- @param active boolean
+function FluxionBehaviour:setActive(active) end
+
 --- @param typeId string
 --- @return boolean
 function FluxionBehaviour:hasComponent(typeId) return false end

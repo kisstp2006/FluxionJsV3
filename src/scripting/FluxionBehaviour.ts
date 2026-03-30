@@ -100,8 +100,10 @@ export class FluxionBehaviour {
       get id()      { return entity; },
       get name()    { return ecs.getEntityName(entity); },
       set name(v)   { ecs.setEntityName(entity, v); },
-      get enabled() { return (ecs as any).isEntityEnabled?.(entity) ?? true; },
-      set enabled(v){ (ecs as any).setEntityEnabled?.(entity, v); },
+      get enabled() { return ecs.isEntityEnabled(entity); },
+      set enabled(v: boolean) { ecs.setEntityEnabled(entity, v); },
+      /** Activate or deactivate this entity (same as setting .enabled). */
+      setActive(value: boolean) { ecs.setEntityEnabled(entity, value); },
       get transform() {
         return ecs.getComponent<TransformComponent>(entity, 'Transform') ?? null;
       },
@@ -131,6 +133,20 @@ export class FluxionBehaviour {
       findAll:   (tag: string) => ecs.getEntitiesWithTag(tag),
       destroy:   () => ecs.destroyEntity(entity),
     };
+  }
+
+  /**
+   * Activate or deactivate this script's entity.
+   * Shorthand for `this.gameObject.setActive(value)`.
+   * Disabling sets every component's `enabled = false`; enabling restores them all.
+   */
+  setActive(value: boolean): void {
+    this._ecs.setEntityEnabled(this.entity, value);
+  }
+
+  /** True when this entity is active (none of its components are force-disabled by setActive). */
+  get isActive(): boolean {
+    return this._ecs.isEntityEnabled(this.entity);
   }
 
   /** Physics world access — raycast, forces, gravity, CharacterController. */

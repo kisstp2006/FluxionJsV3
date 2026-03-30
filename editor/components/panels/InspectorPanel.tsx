@@ -210,15 +210,10 @@ export const InspectorPanel: React.FC = () => {
   // Use component count as part of key to force re-render when components are added/removed
   const componentCount = engine.engine.ecs.getAllComponents(entity).length;
 
-  // Entity active = all components are enabled
-  const allComps = engine.engine.ecs.getAllComponents(entity);
-  const isEntityActive = allComps.length === 0 || allComps.every(c => c.enabled !== false);
+  const isEntityActive = engine.engine.ecs.isEntityEnabled(entity);
 
   const handleToggleActive = () => {
-    const target = !isEntityActive;
-    for (const comp of engine.engine.ecs.getAllComponents(entity)) {
-      comp.enabled = target;
-    }
+    engine.engine.ecs.setEntityEnabled(entity, !isEntityActive);
     refreshInspector();
   };
 

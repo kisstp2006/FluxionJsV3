@@ -500,6 +500,24 @@ export class FluxionBehaviour {
         );
         cleanups.push(unsub);
       },
+      onMouseEnter(nodeId: string, cb: () => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string }>(
+          'ui:mouseenter',
+          (d) => { if (d.entity === tgt && d.elementId === nodeId) cb(); },
+        );
+        cleanups.push(unsub);
+      },
+      onMouseExit(nodeId: string, cb: () => void): void {
+        const unsub = engine.events.on<{ entity: number; elementId: string }>(
+          'ui:mouseexit',
+          (d) => { if (d.entity === tgt && d.elementId === nodeId) cb(); },
+        );
+        cleanups.push(unsub);
+      },
+      /** Returns true if the mouse is currently hovering over the given FUI node. */
+      isHovered(nodeId: string): boolean {
+        return getRT()?.isNodeHovered?.(tgt, nodeId) ?? false;
+      },
       /** Find the first node ID of the given type in this entity's FUI document. */
       findByType(type: string): string | null {
         return getRT()?.getCompiled(tgt)?.drawOrder.find((n: any) => n.type === type)?.id ?? null;

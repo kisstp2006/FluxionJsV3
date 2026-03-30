@@ -64,6 +64,23 @@ export const ComponentSection: React.FC<ComponentSectionProps> = ({
     onRemoved();
   };
 
+  const handleReset = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!reg) return;
+    const defaults = ComponentRegistry.create(componentType);
+    if (!defaults) return;
+    for (const field of reg.fields) {
+      const key = field.key as keyof typeof comp;
+      if (key === 'type' || key === 'enabled') continue;
+      try {
+        (comp as any)[key] = (defaults as any)[key];
+      } catch { /* skip read-only */ }
+    }
+    dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+    forceUpdate((n) => n + 1);
+    log(`Reset ${displayName} to defaults`, 'info');
+  };
+
   const actions = (
     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
       {/* Enabled toggle */}
@@ -82,6 +99,23 @@ export const ComponentSection: React.FC<ComponentSectionProps> = ({
         }}
       >
         {comp.enabled ? '●' : '○'}
+      </button>
+
+      {/* Reset to defaults */}
+      <button
+        onClick={handleReset}
+        title={`Reset ${displayName} to default values`}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '0 2px',
+          color: 'var(--text-muted)',
+          fontSize: '11px',
+          lineHeight: 1,
+        }}
+      >
+        {Icons.refresh}
       </button>
 
       {/* Remove button */}

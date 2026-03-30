@@ -60,6 +60,7 @@ export interface EditorState {
   activeTool: EditorTool;
   transformSpace: TransformSpace;
   isPlaying: boolean;
+  isPaused: boolean;
   snapEnabled: boolean;
   snapConfig: SnapConfig;
   bottomTab: BottomTab;
@@ -95,6 +96,7 @@ export type EditorAction =
   | { type: 'SET_TOOL'; tool: EditorTool }
   | { type: 'SET_TRANSFORM_SPACE'; space: TransformSpace }
   | { type: 'TOGGLE_PLAY' }
+  | { type: 'TOGGLE_PAUSE' }
   | { type: 'STOP_PLAY' }
   | { type: 'TOGGLE_SNAP' }
   | { type: 'SET_SNAP_CONFIG'; config: Partial<SnapConfig> }
@@ -124,6 +126,7 @@ export const initialEditorState: EditorState = {
   activeTool: 'select',
   transformSpace: 'local',
   isPlaying: false,
+  isPaused: false,
   snapEnabled: false,
   snapConfig: {
     translationSnap: 1,
@@ -175,9 +178,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_TRANSFORM_SPACE':
       return { ...state, transformSpace: action.space };
     case 'TOGGLE_PLAY':
-      return { ...state, isPlaying: !state.isPlaying };
+      return { ...state, isPlaying: !state.isPlaying, isPaused: false };
+    case 'TOGGLE_PAUSE':
+      return { ...state, isPaused: !state.isPaused };
     case 'STOP_PLAY':
-      return { ...state, isPlaying: false };
+      return { ...state, isPlaying: false, isPaused: false };
     case 'TOGGLE_SNAP':
       return { ...state, snapEnabled: !state.snapEnabled };
     case 'SET_SNAP_CONFIG':

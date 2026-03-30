@@ -19,6 +19,7 @@ import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils
 import { loadAnimClipsFor, getCachedAnimClips } from '../../utils/AnimationClipCache';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
+import { ModelPreviewModal } from './ModelPreviewModal';
 
 interface DirEntry {
   name: string;
@@ -267,6 +268,7 @@ export const AssetBrowserPanel: React.FC<{
   const [outdatedPaths, setOutdatedPaths] = useState<Set<string>>(new Set());
   const [pendingModelImport, setPendingModelImport] = useState<{ fileCount: number } | null>(null);
   const modelImportResolveRef = useRef<((s: ModelImportSettings | null) => void) | null>(null);
+  const [modelPreviewPath, setModelPreviewPath] = useState<string | null>(null);
   type SortMode = 'name-asc' | 'name-desc' | 'type';
   const [sortMode, setSortMode] = useState<SortMode>('name-asc');
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -344,6 +346,8 @@ export const AssetBrowserPanel: React.FC<{
   const handleDoubleClick = (entry: DirEntry) => {
     if (entry.isDirectory) {
       setSelectedFolder(entry.path);
+    } else if (isModelFile(entry.name)) {
+      setModelPreviewPath(entry.path);
     } else if (entry.name.endsWith('.fluxscene')) {
       window.dispatchEvent(new CustomEvent('fluxion:open-scene', { detail: entry.path }));
     } else if (entry.name.endsWith('.fluxvismat')) {
@@ -1550,6 +1554,14 @@ export const AssetBrowserPanel: React.FC<{
             </div>
           </div>
         </div>
+      )}
+
+      {/* Model Preview Modal (double-click on model asset) */}
+      {modelPreviewPath && (
+        <ModelPreviewModal
+          path={modelPreviewPath}
+          onClose={() => setModelPreviewPath(null)}
+        />
       )}
 
       {/* Model Import Settings Dialog */}

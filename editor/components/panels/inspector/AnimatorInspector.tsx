@@ -19,6 +19,15 @@ import type { ComponentInspectorProps } from '../../../core/ComponentInspectorRe
 
 // ── Component inspector ───────────────────────────────────────
 
+interface LiveDebugInfo {
+  bones: string[];
+  skinnedCount: number;
+  actionTime: number;
+  actionDuration: number;
+  actionWeight: number;
+  mixerTime: number;
+}
+
 export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => void }> = ({
   entity,
   onRemoved,
@@ -26,6 +35,9 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
   const engine = useEngine();
   const [, forceUpdate] = useState(0);
   const [runtimeClips, setRuntimeClips] = useState<string[]>([]);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [bonesOpen, setBonesOpen] = useState(false);
+  const [liveDebug, setLiveDebug] = useState<LiveDebugInfo | null>(null);
 
   if (!engine) return null;
 
@@ -38,6 +50,42 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
   const availableClips = anim.availableClips.length > 0
     ? anim.availableClips
     : runtimeClips;
+
+  // ── Live debug polling ──
+  useEffect(() => {
+    if (!debugOpen || !engine) { setLiveDebug(null); return; }
+    const ecs = engine.engine.ecs;
+    const collect = () => {
+      const animComp = ecs.getComponent<AnimationComponent>(entity, 'Animation');
+      const meshC    = ecs.getComponent<MeshRendererComponent>(entity, 'MeshRenderer');
+      if (!animComp) return;
+      const bones: string[] = [];
+      let skinnedCount = 0;
+      const root = meshC?.mesh as any;
+      if (root?.traverse) {
+        root.traverse((child: any) => {
+          if (child.isSkinnedMesh && child.skeleton) {
+            skinnedCount++;
+            for (const bone of child.skeleton.bones as any[]) {
+              if (!bones.includes(bone.name)) bones.push(bone.name);
+            }
+          }
+        });
+      }
+      const act = animComp.currentAction as any;
+      setLiveDebug({
+        bones,
+        skinnedCount,
+        actionTime:     act?.time                   ?? 0,
+        actionDuration: act?.getClip?.()?.duration  ?? 0,
+        actionWeight:   act?.getEffectiveWeight?.() ?? 1,
+        mixerTime:      (animComp.mixer as any)?.time ?? 0,
+      });
+    };
+    collect();
+    const id = setInterval(collect, 100);
+    return () => clearInterval(id);
+  }, [debugOpen, entity, engine]);
 
   // Poll for clip availability after model loads (availableClips starts empty)
   useEffect(() => {
@@ -102,6 +150,35 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
   const isPlaying = anim.currentAction?.isRunning() ?? false;
   const hasClips = availableClips.length > 0;
   const isSkinned = meshComp?.isSkinnedMesh ?? false;
+
+  const handleDump = () => {
+    console.group(`[Animator Debug] Entity ${entity}`);
+    console.log('Available clips:', availableClips);
+    console.log('Current clip:', anim.currentClip || '(none)');
+    console.log('Mixer:', anim.mixer ?? 'null');
+    console.log('Current action:', anim.currentAction ?? 'null');
+    console.log('Actions map:', anim.actions);
+    if (liveDebug) {
+      console.log(`SkinnedMesh count: ${liveDebug.skinnedCount}`);
+      console.log(`Bones (${liveDebug.bones.length}):`, liveDebug.bones);
+      console.log(`Action time: ${liveDebug.actionTime.toFixed(3)}s / ${liveDebug.actionDuration.toFixed(3)}s`);
+      console.log(`Effective weight: ${liveDebug.actionWeight.toFixed(3)}`);
+      console.log(`Mixer time: ${liveDebug.mixerTime.toFixed(3)}s`);
+    }
+    if (meshComp?.mesh) {
+      const root = meshComp.mesh as any;
+      console.group('Scene graph SkinnedMesh breakdown');
+      root.traverse?.((child: any) => {
+        if (child.isSkinnedMesh && child.skeleton) {
+          console.group(`SkinnedMesh: "${child.name}" — ${child.skeleton.bones.length} bones`);
+          (child.skeleton.bones as any[]).forEach((b: any, i: number) => console.log(`  [${i}] ${b.name}`));
+          console.groupEnd();
+        }
+      });
+      console.groupEnd();
+    }
+    console.groupEnd();
+  };
 
   return (
     <ComponentSection entity={entity} componentType="Animation" onRemoved={onRemoved}>
@@ -279,6 +356,127 @@ export const AnimatorInspector: React.FC<{ entity: EntityId; onRemoved: () => vo
           {availableClips.length} clip{availableClips.length !== 1 ? 's' : ''} available
         </div>
       )}
+
+      {/* ── Debug section ── */}
+      <div style={{ marginTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <button
+          onClick={() => setDebugOpen(o => !o)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 8px', background: 'none', border: 'none',
+            color: '#556', cursor: 'pointer', fontSize: 11, textAlign: 'left',
+          }}
+        >
+          <span>{debugOpen ? '▾' : '▸'}</span>
+          <span>Debug</span>
+          {debugOpen && liveDebug && (
+            <span style={{ marginLeft: 'auto', color: '#445' }}>
+              {liveDebug.skinnedCount} mesh · {liveDebug.bones.length} bones
+            </span>
+          )}
+        </button>
+
+        {debugOpen && (
+          <div style={{ padding: '4px 8px 8px', fontSize: 11, color: '#99a' }}>
+
+            {/* Skeleton info */}
+            {liveDebug && liveDebug.skinnedCount === 0 && (
+              <div style={{
+                padding: '4px 8px', marginBottom: 6,
+                background: 'rgba(200,100,40,0.10)',
+                border: '1px solid rgba(200,100,40,0.3)',
+                borderRadius: 3, color: '#c87848',
+              }}>
+                ⚠ No SkinnedMesh found in scene graph
+              </div>
+            )}
+
+            {liveDebug && liveDebug.skinnedCount > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer', marginBottom: 3, color: '#80e0a0' }}
+                  onClick={() => setBonesOpen(o => !o)}
+                >
+                  <span>{liveDebug.skinnedCount} SkinnedMesh · {liveDebug.bones.length} bones</span>
+                  <span>{bonesOpen ? '▾' : '▸'}</span>
+                </div>
+                {bonesOpen && (
+                  <div style={{
+                    maxHeight: 120, overflowY: 'auto',
+                    background: 'rgba(0,0,0,0.25)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 3, padding: '3px 6px',
+                    fontFamily: 'monospace', fontSize: 10, color: '#8ab', lineHeight: 1.8,
+                  }}>
+                    {liveDebug.bones.map((b, i) => (
+                      <div key={i}><span style={{ color: '#445', marginRight: 6 }}>{i}</span>{b}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action time progress bar */}
+            {liveDebug && liveDebug.actionDuration > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span>Time</span>
+                  <span style={{ fontFamily: 'monospace', color: '#aac' }}>
+                    {liveDebug.actionTime.toFixed(2)}s / {liveDebug.actionDuration.toFixed(2)}s
+                  </span>
+                </div>
+                <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.min(100, (liveDebug.actionTime / liveDebug.actionDuration) * 100)}%`,
+                    background: '#5090d0', borderRadius: 2,
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* Blend weight (only shown when blending) */}
+            {liveDebug && liveDebug.actionWeight < 0.995 && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                  <span>Blend weight</span>
+                  <span style={{ fontFamily: 'monospace', color: '#e0a060' }}>
+                    {liveDebug.actionWeight.toFixed(2)}
+                  </span>
+                </div>
+                <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${liveDebug.actionWeight * 100}%`,
+                    background: '#d08040', borderRadius: 2,
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* Mixer time */}
+            {liveDebug && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, color: '#667' }}>
+                <span>Mixer time</span>
+                <span style={{ fontFamily: 'monospace' }}>{liveDebug.mixerTime.toFixed(3)}s</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleDump}
+              style={{
+                width: '100%', padding: '4px 8px',
+                background: 'rgba(80,80,160,0.15)',
+                border: '1px solid rgba(80,80,160,0.3)',
+                borderRadius: 3, color: '#7878b8',
+                cursor: 'pointer', fontSize: 11,
+              }}
+            >
+              Dump State to Console
+            </button>
+          </div>
+        )}
+      </div>
     </ComponentSection>
   );
 };

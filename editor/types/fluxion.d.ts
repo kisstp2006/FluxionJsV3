@@ -388,6 +388,121 @@ interface FuiDocument {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Animation helpers
+// ─────────────────────────────────────────────────────────────
+
+/** Inspector-assignable animation clip reference. */
+declare class AnimationRef {
+  path: string;
+  clip: string;
+  constructor(path?: string, clip?: string);
+}
+
+/** A single keyframe-based property animation clip authored in the timeline. */
+interface PropertyClip {
+  readonly id: string;
+  readonly name: string;
+  readonly duration: number;
+  readonly loop: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────
+// FUI UI accessor
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Accessor returned by `this.ui` and `this.ui.fromEntity(ref)`.
+ * All callback methods auto-unsubscribe when the script is destroyed.
+ */
+interface FuiUiAccessor {
+  /** Load a `.fui` file from the given project-relative path. */
+  load(path: string): void;
+  /** Directly assign an inline FuiDocument built with FuiBuilder. */
+  create(doc: FuiDocument): void;
+  /** Change the display text of a label or button node at runtime. */
+  setText(nodeId: string, text: string): void;
+  /** Show this entity's FUI component. */
+  show(): void;
+  /** Hide this entity's FUI component. */
+  hide(): void;
+  /** Show or hide this entity's FUI component. */
+  setVisible(v: boolean): void;
+  /** Start a FUI animation clip by its ID. */
+  playAnimation(id: string): void;
+  /** Stop the currently playing FUI animation. */
+  stopAnimation(): void;
+  /** Move the screen-space FUI to a new canvas position. */
+  setScreenPosition(x: number, y: number): void;
+  /** Register a callback fired when a button node is clicked. */
+  onButtonClick(elementId: string, cb: () => void): void;
+  /** Register a callback fired when any interactable node on this FUI is clicked. */
+  onAnyClick(cb: (elementId: string) => void): void;
+  /** Register a callback fired when a toggle node changes value. */
+  onToggle(elementId: string, cb: (value: boolean) => void): void;
+  /** Register a callback fired when a slider node value changes during drag. */
+  onSliderChange(elementId: string, cb: (value: number) => void): void;
+  /** Register a callback fired when the mouse cursor enters a FUI node. */
+  onMouseEnter(nodeId: string, cb: () => void): void;
+  /** Register a callback fired when the mouse cursor leaves a FUI node. */
+  onMouseExit(nodeId: string, cb: () => void): void;
+  /** Returns true if the mouse cursor is currently over the given FUI node. */
+  isHovered(nodeId: string): boolean;
+  /** Find the first node ID of the given type ('button', 'label', 'toggle', etc.). */
+  findByType(type: string): string | null;
+  /** Find all node IDs of the given type. */
+  findAllByType(type: string): string[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// Anim accessor
+// ─────────────────────────────────────────────────────────────
+
+/** Accessor returned by `this.anim`. Controls both skeletal and property-clip animations. */
+interface FluxionAnimAccessor {
+  // ── Skeletal / mesh clip ──────────────────────────────────
+  /** Start playing a clip immediately. */
+  play(clip: string | AnimationRef): void;
+  /** Stop the current mesh animation. */
+  stop(): void;
+  /**
+   * Cross-fade to a different clip.
+   * @param duration Blend duration in seconds (overrides component blendTime).
+   */
+  crossFade(to: string | AnimationRef, duration?: number): void;
+  /** Set the playback speed multiplier (1 = normal). */
+  setSpeed(v: number): void;
+  /** Enable or disable clip looping. */
+  setLoop(v: boolean): void;
+  /** Name of the currently active mesh clip. */
+  readonly clip: string;
+  /** Whether the mesh animation action is currently running. */
+  readonly isPlaying: boolean;
+  /** All clip names loaded from the model. */
+  readonly availableClips: readonly string[];
+  // ── Property / keyframe clip ──────────────────────────────
+  /** Activate and play a property clip by its ID or name. Rewinds to time 0. */
+  playPropertyClip(idOrName: string): void;
+  /** Stop and rewind the active property clip. */
+  stopPropertyClip(): void;
+  /** Pause playback without rewinding. */
+  pausePropertyClip(): void;
+  /** Resume a paused property clip. */
+  resumePropertyClip(): void;
+  /** Seek the active property clip to a specific time in seconds. */
+  setPropertyTime(t: number): void;
+  /** Set the playback speed multiplier for property clips. */
+  setPropertySpeed(v: number): void;
+  /** All property clips authored in the editor. */
+  readonly propertyClips: readonly PropertyClip[];
+  /** ID of the currently active property clip. */
+  readonly activePropertyClip: string;
+  /** Whether the property clip is currently playing. */
+  readonly isPropertyPlaying: boolean;
+  /** Current playhead position of the active property clip in seconds. */
+  readonly propertyTime: number;
+}
+
+// ─────────────────────────────────────────────────────────────
 // Engine sub-systems exposed through FluxionBehaviour
 // ─────────────────────────────────────────────────────────────
 
@@ -481,6 +596,35 @@ declare class FluxionBehaviour {
 
   /** The Transform component of this entity (shortcut). */
   readonly transform: TransformComponent | null;
+
+  /**
+   * Fluxion UI accessor for this entity's FUI component.
+   * Use `.fromEntity(ref)` to target another entity's UI.
+   *
+   * @example
+   *   this.ui.load('Assets/UI/HUD.fui');
+   *   this.ui.onButtonClick('play_btn', () => this.startGame());
+   *   this.ui.onMouseEnter('icon', () => this.ui.setText('tip', 'Click me!'));
+   *   const other = this.ui.fromEntity(this.hudRef);
+   *   other.setText('score', '100');
+   */
+  readonly ui: FuiUiAccessor & {
+    /**
+     * Get a UI accessor targeting another entity's FUI component.
+     * Accepts an EntityId (number), an EntityRef object, or null/undefined.
+     */
+    fromEntity(entityOrRef: number | { entity: number | null } | null | undefined): FuiUiAccessor;
+  };
+
+  /**
+   * Animation accessor — skeletal clip playback and property clip control.
+   *
+   * @example
+   *   this.anim.play('Run');
+   *   this.anim.crossFade('Idle', 0.3);
+   *   this.anim.playPropertyClip('Jump');
+   */
+  readonly anim: FluxionAnimAccessor;
 
   // ── Component access ─────────────────────────────────────────
 

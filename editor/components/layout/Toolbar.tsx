@@ -3,14 +3,16 @@
 // Tool selection + play controls + stats (Nuake toolbar style)
 // ============================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, Tooltip, Icons, NumberInput, Select } from '../../ui';
 import { useEditor, EditorTool, ViewportShadingMode } from '../../core/EditorContext';
 import { DebugGroups } from '../../core/EditorState';
+import { ShortcutsPanel } from '../panels/ShortcutsPanel';
 
 export const Toolbar: React.FC = () => {
   const { state, dispatch } = useEditor();
-  const [showGizmosMenu, setShowGizmosMenu] = React.useState(false);
+  const [showGizmosMenu, setShowGizmosMenu] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const gizmosMenuRef = React.useRef<HTMLDivElement>(null);
 
   // Close gizmos menu on outside click
@@ -230,20 +232,36 @@ export const Toolbar: React.FC = () => {
         padding: '0 4px',
         borderRight: '1px solid var(--border)',
       }}>
-        <Tooltip text={state.isPlaying ? 'Pause' : 'Play'}>
-          <Button
-            variant="icon"
-            onClick={() => dispatch({ type: 'TOGGLE_PLAY' })}
-            style={{ color: state.isPlaying ? 'var(--accent-yellow)' : 'var(--accent-green)' }}
-          >
-            {state.isPlaying ? Icons.pause : Icons.play}
-          </Button>
-        </Tooltip>
-        <Tooltip text="Stop">
-          <Button
-            variant="icon"
+        {/* Play / Pause / Resume */}
+        {!state.isPlaying && (
+          <Tooltip text="Play">
+            <Button variant="icon" onClick={() => dispatch({ type: 'TOGGLE_PLAY' })}
+              style={{ color: 'var(--accent-green)' }}>
+              {Icons.play}
+            </Button>
+          </Tooltip>
+        )}
+        {state.isPlaying && !state.isPaused && (
+          <Tooltip text="Pause (freeze sim, keep scene)">
+            <Button variant="icon" onClick={() => dispatch({ type: 'TOGGLE_PAUSE' })}
+              style={{ color: 'var(--accent-yellow)' }}>
+              {Icons.pause}
+            </Button>
+          </Tooltip>
+        )}
+        {state.isPlaying && state.isPaused && (
+          <Tooltip text="Resume">
+            <Button variant="icon" onClick={() => dispatch({ type: 'TOGGLE_PAUSE' })}
+              style={{ color: 'var(--accent)' }}>
+              {Icons.play}
+            </Button>
+          </Tooltip>
+        )}
+        <Tooltip text="Stop (restore scene)">
+          <Button variant="icon"
             onClick={() => dispatch({ type: 'STOP_PLAY' })}
-          >
+            style={{ opacity: state.isPlaying ? 1 : 0.4 }}
+            disabled={!state.isPlaying}>
             {Icons.stop}
           </Button>
         </Tooltip>
@@ -254,13 +272,23 @@ export const Toolbar: React.FC = () => {
         marginLeft: 'auto',
         display: 'flex',
         gap: '12px',
+        alignItems: 'center',
         color: 'var(--text-secondary)',
         fontSize: '11px',
         fontFamily: 'var(--font-mono)',
       }}>
         <span style={{ color: 'var(--accent-green)' }}>{state.fps} FPS</span>
         <span>{state.entityCount} entities</span>
+        <Tooltip text="Keyboard Shortcuts (?)">
+          <Button variant="icon" onClick={() => setShowShortcuts(true)}
+            style={{ fontSize: '12px', fontWeight: 700, width: '22px', height: '22px' }}
+          >
+            ?
+          </Button>
+        </Tooltip>
       </div>
+
+      {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 };

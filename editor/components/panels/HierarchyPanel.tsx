@@ -19,6 +19,8 @@ interface HierarchyItemProps {
   entity: EntityId;
   depth: number;
   isSelected: boolean;
+  isHidden: boolean;
+  isLocked: boolean;
   selectedEntity: EntityId | null;
   editingEntity: EntityId | null;
   onSelect: (entity: EntityId) => void;
@@ -28,12 +30,18 @@ interface HierarchyItemProps {
   onDragStart: (entity: EntityId) => void;
   onDragOver: (entity: EntityId, e: React.DragEvent) => void;
   onDrop: (entity: EntityId) => void;
+  onToggleHide: (entity: EntityId) => void;
+  onToggleLock: (entity: EntityId) => void;
+  hiddenEntities: Set<EntityId>;
+  lockedEntities: Set<EntityId>;
 }
 
 const HierarchyItem: React.FC<HierarchyItemProps> = ({
   entity,
   depth,
   isSelected,
+  isHidden,
+  isLocked,
   selectedEntity,
   editingEntity,
   onSelect,
@@ -43,7 +51,12 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
   onDragStart,
   onDragOver,
   onDrop,
+  onToggleHide,
+  onToggleLock,
+  hiddenEntities,
+  lockedEntities,
 }) => {
+  const [hovering, setHovering] = useState(false);
   const engine = useEngine();
   const [dropTarget, setDropTarget] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,30 +111,27 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
           setDropTarget(false);
           onDrop(entity);
         }}
-        onClick={(e) => { e.stopPropagation(); onSelect(entity); }}
-        onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(entity); }}
+        onClick={(e) => { e.stopPropagation(); if (!isLocked) onSelect(entity); }}
+        onDoubleClick={(e) => { e.stopPropagation(); if (!isLocked) onDoubleClick(entity); }}
         onContextMenu={(e) => { e.preventDefault(); onContextMenu(entity, e); }}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
         style={{
           display: 'flex',
           alignItems: 'center',
           padding: '3px 8px',
           paddingLeft: `${8 + depth * 16}px`,
-          cursor: 'pointer',
+          cursor: isLocked ? 'not-allowed' : 'pointer',
           fontSize: '12px',
           gap: '6px',
-          background: dropTarget ? 'var(--accent-blue-dim, rgba(88,166,255,0.15))' : isSelected ? 'var(--bg-active)' : 'transparent',
-          color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+          background: dropTarget ? 'var(--accent-blue-dim, rgba(88,166,255,0.15))' : isSelected ? 'var(--bg-active)' : hovering ? 'var(--bg-hover)' : 'transparent',
+          color: isLocked ? 'var(--text-muted)' : isSelected ? 'var(--accent)' : 'var(--text-primary)',
+          opacity: isHidden ? 0.45 : 1,
           transition: 'background 150ms ease',
           borderTop: dropTarget ? '2px solid var(--accent)' : '2px solid transparent',
         }}
-        onMouseEnter={(e) => {
-          if (!isSelected && !dropTarget) (e.currentTarget).style.background = 'var(--bg-hover)';
-        }}
-        onMouseLeave={(e) => {
-          if (!isSelected && !dropTarget) (e.currentTarget).style.background = 'transparent';
-        }}
       >
-        <span style={{ fontSize: '11px', color: iconColor, width: '14px', textAlign: 'center' }}>
+        <span style={{ fontSize: '11px', color: isLocked ? 'var(--text-muted)' : iconColor, width: '14px', textAlign: 'center' }}>
           {icon}
         </span>
         {isEditing ? (
@@ -147,7 +157,35 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span>{name}</span>
+          <span style={{ flex: 1 }}>{name}</span>
+        )}
+        {/* Hide / Lock icons — shown on hover */}
+        {hovering && (
+          <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto', flexShrink: 0 }}
+            onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => onToggleHide(entity)}
+              title={isHidden ? 'Show in scene' : 'Hide in scene'}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                fontSize: '11px', lineHeight: 1,
+                color: isHidden ? 'var(--accent-yellow)' : 'var(--text-muted)',
+              }}
+            >
+              {Icons.eye}
+            </button>
+            <button
+              onClick={() => onToggleLock(entity)}
+              title={isLocked ? 'Unlock' : 'Lock (prevent selection)'}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                fontSize: '11px', lineHeight: 1,
+                color: isLocked ? 'var(--accent-yellow)' : 'var(--text-muted)',
+              }}
+            >
+              {Icons.lock}
+            </button>
+          </div>
         )}
       </div>
 
@@ -158,6 +196,8 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
           entity={child}
           depth={depth + 1}
           isSelected={child === selectedEntity}
+          isHidden={hiddenEntities.has(child)}
+          isLocked={lockedEntities.has(child)}
           selectedEntity={selectedEntity}
           editingEntity={editingEntity}
           onSelect={onSelect}
@@ -167,6 +207,10 @@ const HierarchyItem: React.FC<HierarchyItemProps> = ({
           onDragStart={onDragStart}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onToggleHide={onToggleHide}
+          onToggleLock={onToggleLock}
+          hiddenEntities={hiddenEntities}
+          lockedEntities={lockedEntities}
         />
       ))}
     </>
@@ -181,7 +225,30 @@ export const HierarchyPanel: React.FC = () => {
   const [contextMenu, setContextMenu] = useState<{ entity: EntityId; pos: { x: number; y: number } } | null>(null);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   const [editingEntity, setEditingEntity] = useState<EntityId | null>(null);
+  const [hiddenEntities, setHiddenEntities] = useState<Set<EntityId>>(new Set());
+  const [lockedEntities, setLockedEntities] = useState<Set<EntityId>>(new Set());
   const draggedEntity = useRef<EntityId | null>(null);
+
+  const handleToggleHide = useCallback((entity: EntityId) => {
+    if (!engine) return;
+    setHiddenEntities(prev => {
+      const next = new Set(prev);
+      const isNowHidden = !next.has(entity);
+      if (isNowHidden) { next.add(entity); } else { next.delete(entity); }
+      // Toggle MeshRenderer visibility
+      const mr = engine.engine.ecs.getComponent<any>(entity, 'MeshRenderer');
+      if (mr) mr.enabled = !isNowHidden;
+      return next;
+    });
+  }, [engine]);
+
+  const handleToggleLock = useCallback((entity: EntityId) => {
+    setLockedEntities(prev => {
+      const next = new Set(prev);
+      if (next.has(entity)) { next.delete(entity); } else { next.add(entity); }
+      return next;
+    });
+  }, []);
 
   // Track ECS topology changes without triggering on every frame.
   // hierarchyRevision only increments when entities are created/destroyed.
@@ -297,15 +364,32 @@ export const HierarchyPanel: React.FC = () => {
   }, [engine, log, dispatch]);
 
   // Filter entities
+  // Collect all entity ids whose name matches the filter (recursive)
+  const matchedEntities = useMemo<Set<EntityId> | null>(() => {
+    if (!engine || !state.hierarchyFilter) return null;
+    const q = state.hierarchyFilter.toLowerCase();
+    const ecs = engine.engine.ecs;
+    const matched = new Set<EntityId>();
+    for (const id of ecs.getAllEntities()) {
+      if (ecs.getEntityName(id).toLowerCase().includes(q)) {
+        // Mark entity and all its ancestors so the tree stays connected
+        matched.add(id);
+        let parent = ecs.getParent(id);
+        while (parent !== undefined) {
+          matched.add(parent);
+          parent = ecs.getParent(parent);
+        }
+      }
+    }
+    return matched;
+  }, [engine, state.hierarchyFilter, hierarchyRevision]);
+
   const rootEntities = useMemo(() => {
     if (!engine) return [];
     const roots = engine.engine.ecs.getRootEntities();
-    if (!state.hierarchyFilter) return roots;
-    return roots.filter((e) => {
-      const name = engine.engine.ecs.getEntityName(e);
-      return name.toLowerCase().includes(state.hierarchyFilter.toLowerCase());
-    });
-  }, [engine, state.hierarchyFilter, state.selectedEntity, hierarchyRevision]);
+    if (!matchedEntities) return roots;
+    return roots.filter((e) => matchedEntities.has(e));
+  }, [engine, matchedEntities, state.selectedEntity, hierarchyRevision]);
 
   return (
     <div style={{
@@ -358,6 +442,8 @@ export const HierarchyPanel: React.FC = () => {
             entity={entity}
             depth={0}
             isSelected={entity === state.selectedEntity}
+            isHidden={hiddenEntities.has(entity)}
+            isLocked={lockedEntities.has(entity)}
             selectedEntity={state.selectedEntity}
             editingEntity={editingEntity}
             onSelect={handleSelect}
@@ -367,6 +453,10 @@ export const HierarchyPanel: React.FC = () => {
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            onToggleHide={handleToggleHide}
+            onToggleLock={handleToggleLock}
+            hiddenEntities={hiddenEntities}
+            lockedEntities={lockedEntities}
           />
         ))}
       </div>

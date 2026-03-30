@@ -421,7 +421,12 @@ export class FuiRuntimeSystem implements System {
           tooltipState = { text: hovered.tooltip, x: _docX, y: _docY };
         }
 
-        const stateChanged = newHoverId !== ist.hoveredId || pressed !== ist.pressedId;
+        const hoverChanged = newHoverId !== ist.hoveredId;
+        if (hoverChanged) {
+          if (ist.hoveredId) this.engine.events.emit('ui:mouseexit',  { entity, elementId: ist.hoveredId });
+          if (newHoverId)    this.engine.events.emit('ui:mouseenter', { entity, elementId: newHoverId });
+        }
+        const stateChanged = hoverChanged || pressed !== ist.pressedId;
         if (stateChanged) {
           ist.hoveredId = newHoverId;
           ist.nodeStates.clear();
@@ -476,6 +481,23 @@ export class FuiRuntimeSystem implements System {
         // Billboard: override rotation to face active camera
         const cam = this.renderer.getActiveCamera();
         if (comp.billboard && cam) world.mesh.quaternion.copy(cam.quaternion);
+
+        // ── World-space hover ──
+        if (cam) {
+          const ndc = this.getPointerNDC();
+          const wDir = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(cam).sub(cam.position).normalize();
+          const worldHit = this.hitTestWorld(world.compiled, world, new THREE.Ray(cam.position.clone(), wDir));
+          const newWorldHoverId = worldHit?.id ?? null;
+          const wIst = this._getInteractState(entity);
+          if (newWorldHoverId !== wIst.hoveredId) {
+            if (wIst.hoveredId) this.engine.events.emit('ui:mouseexit',  { entity, elementId: wIst.hoveredId });
+            if (newWorldHoverId) this.engine.events.emit('ui:mouseenter', { entity, elementId: newWorldHoverId });
+            wIst.hoveredId = newWorldHoverId;
+            wIst.nodeStates.clear();
+            if (newWorldHoverId) wIst.nodeStates.set(newWorldHoverId, { hover: !worldHit?.disabled, active: false });
+            this.renderWorld(world, comp, wIst.nodeStates);
+          }
+        }
 
         // ── Animation ──
         if (comp.playAnimation) {
@@ -647,6 +669,11 @@ export class FuiRuntimeSystem implements System {
     const entry = this.entries.get(entity);
     if (!entry) return null;
     return entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+  }
+
+  /** Return whether a specific FUI node is currently hovered by the mouse. */
+  isNodeHovered(entity: EntityId, nodeId: string): boolean {
+    return this.interactStates.get(entity)?.hoveredId === nodeId;
   }
 
   /**

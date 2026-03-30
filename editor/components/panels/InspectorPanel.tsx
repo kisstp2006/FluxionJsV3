@@ -4,7 +4,7 @@
 // override only for complex cases (Transform, MeshRenderer).
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   PanelHeader, Section, PropertyRow,
   TextInput,
@@ -38,6 +38,78 @@ AssetInspectorRegistry.register('model', ModelInspector);
 AssetInspectorRegistry.register('visual_material', VisualMaterialInspector);
 AssetInspectorRegistry.register('fui', FuiInspector);
 
+
+// ── Tag Editor ──
+const TagEditor: React.FC<{ entity: EntityId }> = ({ entity }) => {
+  const engine = useEngine();
+  const [, forceUpdate] = useState(0);
+  const [inputVal, setInputVal] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  if (!engine) return null;
+  const ecs = engine.engine.ecs;
+
+  const tagSet: Set<string> | undefined = (ecs as any).entityTags?.get(entity);
+  const tags: string[] = tagSet ? [...tagSet] : [];
+
+  const addTag = () => {
+    const t = inputVal.trim();
+    if (!t || ecs.hasTag(entity, t)) return;
+    ecs.addTag(entity, t);
+    setInputVal('');
+    forceUpdate(v => v + 1);
+  };
+
+  const removeTag = (t: string) => {
+    (ecs as any).entityTags?.get(entity)?.delete(t);
+    (ecs as any).tagIndex?.get(t)?.delete(entity);
+    forceUpdate(v => v + 1);
+  };
+
+  return (
+    <div style={{ padding: '2px 0 4px 0' }}>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '0 0 3px 0' }}>Tags</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: tags.length ? '4px' : 0 }}>
+        {tags.map(t => (
+          <span key={t} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '3px',
+            background: 'var(--bg-hover)', border: '1px solid var(--border)',
+            borderRadius: '3px', padding: '0 5px', fontSize: '10px',
+            color: 'var(--accent)', fontFamily: 'var(--font-mono)',
+          }}>
+            {t}
+            <button
+              onClick={() => removeTag(t)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0', fontSize: '10px', lineHeight: 1 }}
+            >×</button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <input
+          ref={inputRef}
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+          placeholder="Add tag..."
+          style={{
+            flex: 1, background: 'var(--bg-input, #1c2128)', border: '1px solid var(--border)',
+            borderRadius: '3px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)',
+            fontSize: '11px', padding: '2px 6px', outline: 'none',
+          }}
+        />
+        <button
+          onClick={addTag}
+          style={{
+            background: 'var(--bg-hover)', border: '1px solid var(--border)',
+            borderRadius: '3px', color: 'var(--text-secondary)', fontSize: '11px',
+            padding: '2px 8px', cursor: 'pointer',
+          }}
+        >+</button>
+      </div>
+    </div>
+  );
+};
 
 // ── Add Component Button ──
 const AddComponentButton: React.FC<{ entity: EntityId; onAdded: () => void }> = ({ entity, onAdded }) => {
@@ -138,6 +210,33 @@ export const InspectorPanel: React.FC = () => {
   // Use component count as part of key to force re-render when components are added/removed
   const componentCount = engine.engine.ecs.getAllComponents(entity).length;
 
+  // Entity active = all components are enabled
+  const allComps = engine.engine.ecs.getAllComponents(entity);
+  const isEntityActive = allComps.length === 0 || allComps.every(c => c.enabled !== false);
+
+  const handleToggleActive = () => {
+    const target = !isEntityActive;
+    for (const comp of engine.engine.ecs.getAllComponents(entity)) {
+      comp.enabled = target;
+    }
+    refreshInspector();
+  };
+
+  const entityActions = (
+    <button
+      onClick={(e) => { e.stopPropagation(); handleToggleActive(); }}
+      title={isEntityActive ? 'Deactivate entity (disable all components)' : 'Activate entity'}
+      style={{
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: '0 2px', fontSize: '13px', lineHeight: 1,
+        color: isEntityActive ? 'var(--accent-green)' : 'var(--text-muted)',
+        opacity: isEntityActive ? 1 : 0.5,
+      }}
+    >
+      {isEntityActive ? '●' : '○'}
+    </button>
+  );
+
   return (
     <div style={{
       width: '100%',
@@ -149,7 +248,7 @@ export const InspectorPanel: React.FC = () => {
       <PanelHeader title="Inspector" />
       <div key={`${entity}-${componentCount}-${revision}`} style={{ flex: 1, overflowY: 'auto' }}>
         {/* Entity identity */}
-        <Section title="Entity" defaultOpen>
+        <Section title="Entity" defaultOpen actions={entityActions}>
           <PropertyRow label="Name">
             <TextInput
               value={name}
@@ -165,6 +264,7 @@ export const InspectorPanel: React.FC = () => {
               {entity}
             </span>
           </PropertyRow>
+          <TagEditor entity={entity} key={`tags-${entity}-${revision}`} />
         </Section>
 
         {/* Component inspectors — custom inspectors self-register; rest auto-generated */}

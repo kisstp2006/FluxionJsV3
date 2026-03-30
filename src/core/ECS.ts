@@ -75,6 +75,8 @@ export class ECSManager {
   private _entityCount = 0;
   /** Increments on every entity create/destroy — lets UI components detect topology changes. */
   private _hierarchyRevision = 0;
+  /** Entity IDs that have been explicitly deactivated via setEntityEnabled(false). */
+  private inactiveEntities: Set<EntityId> = new Set();
 
   // ── Entity management ──
 
@@ -133,6 +135,7 @@ export class ECSManager {
     this.entityTags.delete(entity);
     this.entityNames.delete(entity);
     this.childrenMap.delete(entity);
+    this.inactiveEntities.delete(entity);
     this._entityCount--;
     this._hierarchyRevision++;
     this.dirty = true;
@@ -140,6 +143,32 @@ export class ECSManager {
 
   entityExists(entity: EntityId): boolean {
     return this.entities.has(entity);
+  }
+
+  /**
+   * Returns true when the entity is active (not explicitly deactivated).
+   * An active entity has all its components responding normally.
+   */
+  isEntityEnabled(entity: EntityId): boolean {
+    return !this.inactiveEntities.has(entity);
+  }
+
+  /**
+   * Activate or deactivate an entity.
+   * Enabling/disabling an entity toggles every component's `enabled` flag at once.
+   * The entity's inactive state is tracked separately from individual component flags
+   * so re-activating reliably restores all components.
+   */
+  setEntityEnabled(entity: EntityId, value: boolean): void {
+    if (value) {
+      this.inactiveEntities.delete(entity);
+    } else {
+      this.inactiveEntities.add(entity);
+    }
+    for (const [, store] of this.components) {
+      const comp = store.get(entity);
+      if (comp) comp.enabled = value;
+    }
   }
 
   getEntityName(entity: EntityId): string {
@@ -472,5 +501,6 @@ export class ECSManager {
     this.nextEntityId = 1;
     this.rootEntities.clear();
     this.tagIndex.clear();
+    this.inactiveEntities.clear();
   }
 }

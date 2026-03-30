@@ -8,7 +8,10 @@ import * as THREE from 'three';
 import { TabBar, ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { ViewCube } from './ViewCube';
+import { AddEntityPopup } from './hierarchy/AddEntityPopup';
 import { CameraComponent, MeshRendererComponent } from '../../../src/core/Components';
+import { ComponentRegistry } from '../../../src/core/ComponentRegistry';
+import { undoManager, CreateEntityCommand } from '../../core/UndoService';
 import { ViewportDropService } from '../../core/ViewportDropService';
 import type { DropHitInfo } from '../../core/ViewportDropService';
 import { applyDebugMode, restoreDebugMode } from '../../core/ViewportDebugMaterials';
@@ -32,7 +35,10 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [vpContextMenu, setVpContextMenu] = useState<{ pos: { x: number; y: number }; worldPos?: THREE.Vector3 } | null>(null);
+  const [addEntityPopupPos, setAddEntityPopupPos] = useState<{ x: number; y: number } | null>(null);
+  const addEntityWorldPosRef = useRef<THREE.Vector3 | undefined>(undefined);
   const [dragDelta, setDragDelta] = useState<string | null>(null);
+  const [cameraSpeed, setCameraSpeed] = useState(1);
   const dragStartPosRef = useRef<THREE.Vector3 | null>(null);
   const rightDownRef = useRef<{ x: number; y: number } | null>(null);
   const rightDraggedRef = useRef(false);
@@ -297,6 +303,14 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     engine.gizmoService.setSpace(state.transformSpace);
   }, [engine, state.transformSpace]);
 
+  // Sync camera speed to OrbitControls
+  useEffect(() => {
+    if (!engine) return;
+    engine.orbitControls.zoomSpeed   = cameraSpeed;
+    engine.orbitControls.rotateSpeed = cameraSpeed;
+    engine.orbitControls.panSpeed    = cameraSpeed;
+  }, [engine, cameraSpeed]);
+
   // Sync snap settings
   useEffect(() => {
     if (!engine) return;
@@ -535,6 +549,30 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         style={{ width: '100%', height: '100%', display: 'block' }}
       />
 
+      {/* Game View — stats overlay */}
+      {isGameView && (
+        <div style={{
+          position: 'absolute',
+          top: '32px',
+          right: '8px',
+          zIndex: 8,
+          pointerEvents: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '2px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '10px',
+        }}>
+          <span style={{ color: 'var(--accent-green)', background: 'rgba(0,0,0,0.5)', padding: '1px 5px', borderRadius: '2px' }}>
+            {state.fps} FPS
+          </span>
+          <span style={{ color: 'var(--text-muted)', background: 'rgba(0,0,0,0.5)', padding: '1px 5px', borderRadius: '2px' }}>
+            {state.drawCalls} DC · {state.triangles.toLocaleString()} tris
+          </span>
+        </div>
+      )}
+
       {/* Game View — no main camera message */}
       {isGameView && engine && !findMainCamera(engine) && (
         <div style={{
@@ -556,6 +594,39 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           <span style={{ fontSize: '11px', color: 'var(--text-disabled)' }}>
             Add a Camera component and mark it as Main
           </span>
+        </div>
+      )}
+
+      {/* Camera Speed picker (Scene view only) */}
+      {!isGameView && (
+        <div style={{
+          position: 'absolute',
+          bottom: '8px',
+          left: '8px',
+          zIndex: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '3px',
+        }}>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Spd:</span>
+          {[0.25, 0.5, 1, 2, 4].map(s => (
+            <button
+              key={s}
+              onClick={() => setCameraSpeed(s)}
+              style={{
+                padding: '1px 5px',
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                background: cameraSpeed === s ? 'var(--accent)' : 'rgba(0,0,0,0.5)',
+                border: `1px solid ${cameraSpeed === s ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: '2px',
+                color: cameraSpeed === s ? '#000' : 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {s}×
+            </button>
+          ))}
         </div>
       )}
 
@@ -638,6 +709,55 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
         </div>
       )}
 
+      {/* Add Entity popup (opened from viewport right-click) */}
+      {addEntityPopupPos && engine && (
+        <AddEntityPopup
+          position={addEntityPopupPos}
+          onClose={() => setAddEntityPopupPos(null)}
+          onAdd={(_cat, type) => {
+            const worldPos = addEntityWorldPosRef.current;
+            const ecs = engine.engine.ecs;
+            const scene = engine.scene;
+            const materials = engine.materials;
+            const createFn = () => {
+              let eid: number;
+              switch (type) {
+                case 'empty':    eid = scene.createEmpty('Empty Entity'); break;
+                case 'cube': case 'sphere': case 'cylinder': case 'cone':
+                case 'plane': case 'capsule': case 'torus':
+                  eid = scene.createPrimitive(type.charAt(0).toUpperCase() + type.slice(1), type as any); break;
+                case 'directional': eid = scene.createLight('Directional Light', 'directional', 0xffffff, 1); break;
+                case 'point':       eid = scene.createLight('Point Light', 'point', 0xffffff, 1); break;
+                case 'spot':        eid = scene.createLight('Spot Light', 'spot', 0xffffff, 1); break;
+                case 'ambient':     eid = scene.createLight('Ambient Light', 'ambient', 0xffffff, 0.5); break;
+                case 'camera':      eid = scene.createCamera('Camera'); break;
+                case 'particle': {
+                  eid = scene.createEmpty('Particle System');
+                  const pe = ComponentRegistry.create('ParticleEmitter');
+                  if (pe) { (pe as any).maxParticles = 200; (pe as any).emissionRate = 30; ecs.addComponent(eid, pe); }
+                  break;
+                }
+                case 'text3d':  eid = scene.createText('3D Text'); break;
+                case 'sprite':  eid = scene.createSprite('Sprite'); break;
+                case 'physics_box': eid = scene.createPhysicsBox('Physics Box', new THREE.Vector3(1,1,1), materials.createPBR({ name:'pb', albedo:0x888888, roughness:0.6, metalness:0.1 }), 'dynamic'); break;
+                case 'physics_sphere': eid = scene.createPhysicsSphere('Physics Sphere', 0.5, materials.createPBR({ name:'ps', albedo:0x888888, roughness:0.6, metalness:0.1 }), 'dynamic'); break;
+                default: eid = scene.createEmpty('Entity');
+              }
+              if (worldPos) {
+                const t = ecs.getComponent<any>(eid, 'Transform');
+                if (t) t.position.copy(worldPos);
+              }
+              return eid;
+            };
+            undoManager.execute(new CreateEntityCommand(createFn, ecs, (entity) => {
+              log(`Created: ${ecs.getEntityName(entity)}`, 'info');
+              dispatch({ type: 'SELECT_ENTITY', entity });
+              dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+            }));
+          }}
+        />
+      )}
+
       {/* Viewport Right-Click Context Menu (Scene view only) */}
       {!isGameView && vpContextMenu && engine && (
         <ContextMenu
@@ -645,42 +765,12 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
           onClose={() => setVpContextMenu(null)}
           items={[
             {
-              label: 'Add Empty at Position',
-              icon: Icons.entity,
+              label: 'Add Entity...',
+              icon: Icons.plus,
               onClick: () => {
-                const e = engine.scene.createEmpty('Empty Entity');
-                if (vpContextMenu.worldPos) {
-                  const t = engine.engine.ecs.getComponent<any>(e, 'Transform');
-                  if (t) t.position.copy(vpContextMenu.worldPos);
-                }
-                dispatch({ type: 'SELECT_ENTITY', entity: e });
-                log('Created entity at click position', 'info');
-              },
-            },
-            {
-              label: 'Add Cube at Position',
-              icon: Icons.cube,
-              onClick: () => {
-                const e = engine.scene.createPrimitive('Cube', 'cube');
-                if (vpContextMenu.worldPos) {
-                  const t = engine.engine.ecs.getComponent<any>(e, 'Transform');
-                  if (t) t.position.copy(vpContextMenu.worldPos);
-                }
-                dispatch({ type: 'SELECT_ENTITY', entity: e });
-                log('Created cube at click position', 'info');
-              },
-            },
-            {
-              label: 'Add Point Light at Position',
-              icon: Icons.pointLight,
-              onClick: () => {
-                const e = engine.scene.createLight('Point Light', 'point', 0xffffff, 1);
-                if (vpContextMenu.worldPos) {
-                  const t = engine.engine.ecs.getComponent<any>(e, 'Transform');
-                  if (t) t.position.copy(vpContextMenu.worldPos);
-                }
-                dispatch({ type: 'SELECT_ENTITY', entity: e });
-                log('Created point light at click position', 'info');
+                addEntityWorldPosRef.current = vpContextMenu.worldPos;
+                setAddEntityPopupPos(vpContextMenu.pos);
+                setVpContextMenu(null);
               },
             },
             { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },

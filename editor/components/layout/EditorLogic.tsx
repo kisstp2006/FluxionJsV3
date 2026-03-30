@@ -277,11 +277,14 @@ export const SimulationSync: React.FC = () => {
   // Snapshot captured when play starts — restored when play stops (if setting enabled)
   const sceneSnapshot = useRef<SceneFileData | null>(null);
 
+  // Effect 1: handle play START and full STOP (with scene restore)
   useEffect(() => {
     if (!engine) return;
-    engine.engine.simulationPaused = !state.isPlaying;
 
     if (state.isPlaying) {
+      // Freeze simulation until we fully start (isPaused handled by effect 2)
+      engine.engine.simulationPaused = false;
+
       // Capture scene state before simulation begins
       if (SettingsRegistry.get<boolean>('editor.playMode.restoreSceneOnStop')) {
         sceneSnapshot.current = serializeScene(engine.scene, engine.engine, engine.editorCamera, engine.orbitControls.target);
@@ -296,6 +299,9 @@ export const SimulationSync: React.FC = () => {
         }
       }
     } else {
+      // Full stop — freeze clock first
+      engine.engine.simulationPaused = true;
+
       // Restore editor camera
       engine.renderer.setActiveCamera(engine.editorCamera);
 
@@ -319,6 +325,12 @@ export const SimulationSync: React.FC = () => {
       }
     }
   }, [engine, state.isPlaying]);
+
+  // Effect 2: handle PAUSE / RESUME — only toggles the sim clock, never restores scene
+  useEffect(() => {
+    if (!engine || !state.isPlaying) return;
+    engine.engine.simulationPaused = state.isPaused;
+  }, [engine, state.isPlaying, state.isPaused]);
 
   return null;
 };

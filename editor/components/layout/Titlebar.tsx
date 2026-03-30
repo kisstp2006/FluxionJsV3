@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { ContextMenu, Icons } from '../../ui';
-import { useEditor } from '../../core/EditorContext';
-import { undoManager } from '../../core/UndoService';
+import { useEditor, useEngine } from '../../core/EditorContext';
+import { undoManager, DuplicateEntityCommand, DeleteEntityCommand } from '../../core/UndoService';
+import { initialEditorState } from '../../core/EditorState';
 
 export const Titlebar: React.FC<{
   onSaveScene?: () => void;
@@ -17,6 +18,7 @@ export const Titlebar: React.FC<{
   onOpenProjectSettings?: () => void;
 }> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings, onOpenProjectSettings }) => {
   const { state, dispatch, log } = useEditor();
+  const engine = useEngine();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [, forceUpdate] = useState(0);
@@ -84,18 +86,60 @@ export const Titlebar: React.FC<{
       disabled: !canRedo,
     },
     { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D', onClick: () => {} },
-    { label: 'Delete', icon: Icons.trash, shortcut: 'Del', onClick: () => {} },
+    {
+      label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D',
+      disabled: state.selectedEntity === null,
+      onClick: () => {
+        if (!engine || state.selectedEntity === null) return;
+        const ecs = engine.engine.ecs;
+        undoManager.execute(new DuplicateEntityCommand(
+          () => engine.scene.cloneEntity(state.selectedEntity!),
+          ecs,
+          (clone) => {
+            log(`Duplicated: ${ecs.getEntityName(clone)}`, 'info');
+            dispatch({ type: 'SELECT_ENTITY', entity: clone });
+            dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+          },
+        ));
+      },
+    },
+    {
+      label: 'Delete', icon: Icons.trash, shortcut: 'Del',
+      disabled: state.selectedEntity === null,
+      onClick: () => {
+        if (!engine || state.selectedEntity === null) return;
+        const target = state.selectedEntity;
+        const name = engine.engine.ecs.getEntityName(target);
+        undoManager.execute(new DeleteEntityCommand(
+          target, engine.engine.ecs, engine.engine,
+          (newId) => {
+            dispatch({ type: 'SELECT_ENTITY', entity: newId });
+            dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+          },
+        ));
+        dispatch({ type: 'SELECT_ENTITY', entity: null });
+        dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+        log(`Deleted entity: ${name}`, 'warn');
+      },
+    },
   ];
 
   const viewMenuItems = [
-    { label: 'Toggle Grid', icon: Icons.grid, onClick: () => log('Grid toggled', 'info') },
-    { label: 'Toggle Wireframe', icon: Icons.eye, onClick: () => log('Wireframe toggled', 'info') },
+    { label: 'Toggle Grid', icon: Icons.grid, onClick: () => dispatch({ type: 'TOGGLE_GRID' }) },
+    { label: 'Toggle Wireframe', icon: Icons.eye, onClick: () => dispatch({ type: 'SET_VIEWPORT_SHADING', mode: state.viewportShading === 'wireframe' ? 'lit' : 'wireframe' }) },
     { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
     { label: 'Settings', icon: Icons.settings, onClick: () => onOpenSettings?.() },
     { label: 'Project Settings', icon: Icons.clipboard, onClick: () => onOpenProjectSettings?.() },
     { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Reset Layout', icon: Icons.refresh, onClick: () => log('Layout reset', 'info') },
+    {
+      label: 'Reset Layout', icon: Icons.refresh,
+      onClick: () => {
+        dispatch({ type: 'SET_LEFT_WIDTH', width: initialEditorState.leftPanelWidth });
+        dispatch({ type: 'SET_RIGHT_WIDTH', width: initialEditorState.rightPanelWidth });
+        dispatch({ type: 'SET_BOTTOM_HEIGHT', height: initialEditorState.bottomPanelHeight });
+        log('Layout reset', 'info');
+      },
+    },
   ];
 
   return (
@@ -197,11 +241,16 @@ export const Titlebar: React.FC<{
           </div>
 
           <button
-            onClick={() => dispatch({ type: 'TOGGLE_PLAY' })}
+            onClick={() => {
+              if (!state.isPlaying) dispatch({ type: 'TOGGLE_PLAY' });
+              else dispatch({ type: 'TOGGLE_PAUSE' });
+            }}
             style={{
               background: 'none',
               border: 'none',
-              color: state.isPlaying ? 'var(--accent-yellow)' : 'var(--accent-green)',
+              color: !state.isPlaying ? 'var(--accent-green)'
+                   : state.isPaused  ? 'var(--accent)'
+                   : 'var(--accent-yellow)',
               padding: '4px 10px',
               borderRadius: '4px',
               cursor: 'pointer',
@@ -210,7 +259,9 @@ export const Titlebar: React.FC<{
               transition: 'all 150ms ease',
             }}
           >
-            {state.isPlaying ? <>{Icons.pause} Pause</> : <>{Icons.play} Play</>}
+            {!state.isPlaying && <>{Icons.play} Play</>}
+            {state.isPlaying && !state.isPaused && <>{Icons.pause} Pause</>}
+            {state.isPlaying && state.isPaused && <>{Icons.play} Resume</>}
           </button>
         </div>
       </div>

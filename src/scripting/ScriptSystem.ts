@@ -24,6 +24,7 @@ import { FuiRef } from './FuiRef';
 import { MaterialRef } from './MaterialRef';
 import { TextureRef } from './TextureRef';
 import { AnimationRef } from './AnimationRef';
+import { FontRef } from './FontRef';
 
 // ── THREE math shortcuts injected into every script's scope ──
 
@@ -90,6 +91,7 @@ function loadScriptClass(
     'MaterialRef',
     'TextureRef',
     'AnimationRef',
+    'FontRef',
     'console',
     compiledJs,
   )(
@@ -113,6 +115,7 @@ function loadScriptClass(
     MaterialRef,
     TextureRef,
     AnimationRef,
+    FontRef,
     console,
   );
   return mod.default;
@@ -128,6 +131,14 @@ export class ScriptSystem implements System {
 
   /** Max ms allowed per update() call (0 = disabled). Set from project settings. */
   updateTimeout = 0;
+
+  /**
+   * Pre-bundled script registry injected by the game player build.
+   * Keys are project-relative paths (e.g. "Assets/Scripts/Foo.ts"),
+   * values are the module namespace objects (import * as Mod from '...').
+   * When set, _loadScript checks here before hitting the filesystem.
+   */
+  private _bundledRegistry: Record<string, any> = {};
 
   private engine:   Engine;
   private input:    InputManager;
@@ -147,6 +158,11 @@ export class ScriptSystem implements System {
   }
 
   init(): void {}
+
+  /** Register the auto-generated script map from the game build. */
+  setBundledRegistry(registry: Record<string, any>): void {
+    this._bundledRegistry = registry ?? {};
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager, dt: number): void {
     const nowSec = performance.now() / 1000;
@@ -283,34 +299,53 @@ export class ScriptSystem implements System {
       return;
     }
 
-    const source = await fs.readFile(absPath);
+    // ── Bundled registry (game build) — skip filesystem + eval ──
+    const normalizedAbs = absPath.replace(/\\/g, '/');
+    const registryKey = Object.keys(this._bundledRegistry).find(
+      k => normalizedAbs.endsWith(k.replace(/\\/g, '/')) || entry.path === k,
+    );
+    let ScriptClass: any;
+    if (registryKey) {
+      const mod = this._bundledRegistry[registryKey];
+      ScriptClass = mod?.default ?? Object.values(mod ?? {}).find((v: any) => typeof v === 'function');
+      if (!ScriptClass) {
+        DebugConsole.LogWarning(`[ScriptSystem] Bundled registry entry "${registryKey}" has no default export.`);
+        comp._loading.delete(entry.path);
+        return;
+      }
+    } else {
+      // ── Filesystem load (editor / dev mode) ──────────────────────
+      const source = await fs.readFile(absPath);
+
+      if (!ecs.entityExists(entity)) return;
+      if (comp._loading.get(entry.path) !== token) return; // stale load
+
+      let compiled: string;
+      try {
+        compiled = compileScript(source, absPath);
+      } catch (err) {
+        DebugConsole.LogError(`[ScriptSystem] Compile error in "${entry.path}": ${err}`);
+        comp._loading.delete(entry.path);
+        return;
+      }
+
+      try {
+        ScriptClass = loadScriptClass(compiled, FluxionBehaviour);
+      } catch (err) {
+        DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
+        comp._loading.delete(entry.path);
+        return;
+      }
+
+      if (!ScriptClass) {
+        DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" has no default export.`);
+        comp._loading.delete(entry.path);
+        return;
+      }
+    }
 
     if (!ecs.entityExists(entity)) return;
-    if (comp._loading.get(entry.path) !== token) return; // stale load — a newer reload superseded this one
-
-    let compiled: string;
-    try {
-      compiled = compileScript(source, absPath);
-    } catch (err) {
-      DebugConsole.LogError(`[ScriptSystem] Compile error in "${entry.path}": ${err}`);
-      comp._loading.delete(entry.path);
-      return;
-    }
-
-    let ScriptClass: any;
-    try {
-      ScriptClass = loadScriptClass(compiled, FluxionBehaviour);
-    } catch (err) {
-      DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
-      comp._loading.delete(entry.path);
-      return;
-    }
-
-    if (!ScriptClass) {
-      DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" has no default export.`);
-      comp._loading.delete(entry.path);
-      return;
-    }
+    if (comp._loading.get(entry.path) !== token) return;
 
     const instance = new ScriptClass() as FluxionBehaviour;
     instance.entity    = entity;
@@ -335,6 +370,9 @@ export class ScriptSystem implements System {
       } else if (current instanceof AnimationRef && val && typeof val === 'object') {
         current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
         current.clip = typeof (val as any).clip === 'string' ? (val as any).clip : '';
+      } else if (current instanceof FontRef && val && typeof val === 'object') {
+        current.path   = typeof (val as any).path   === 'string' ? (val as any).path   : '';
+        current.family = typeof (val as any).family === 'string' ? (val as any).family : '';
       } else {
         (instance as any)[key] = val;
       }

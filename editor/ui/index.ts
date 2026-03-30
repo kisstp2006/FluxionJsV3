@@ -12,6 +12,10 @@ export { Slider } from './inputs/Slider';
 export { Checkbox } from './inputs/Checkbox';
 export { Select } from './inputs/Select';
 export { AssetInput } from './inputs/AssetInput';
+export { PathInput } from './inputs/PathInput';
+export type { PathInputProps, PathFilter } from './inputs/PathInput';
+export { FontInput } from './inputs/FontInput';
+export type { FontInputProps, FontValue } from './inputs/FontInput';
 
 // Layout
 export { Button } from './layout/Button';

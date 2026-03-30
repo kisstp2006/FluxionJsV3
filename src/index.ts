@@ -53,6 +53,7 @@ export { AudioSystem } from './audio/AudioSystem';
 export { FluxionBehaviour } from './scripting/FluxionBehaviour';
 export { ScriptSystem } from './scripting/ScriptSystem';
 export { EntityRef } from './scripting/EntityRef';
+export { FontRef } from './scripting/FontRef';
 
 // Meta / API generation
 export { MetaRegistry } from './meta/MetaRegistry';

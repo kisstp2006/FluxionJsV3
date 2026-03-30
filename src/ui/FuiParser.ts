@@ -1,4 +1,4 @@
-import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiImageNode, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiFont, FuiImageNode, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
 
 const ANIMATABLE_PROPS = new Set<string>(['x', 'y', 'w', 'h', 'opacity', 'fontSize', 'borderWidth']);
 
@@ -205,6 +205,7 @@ export function parseFuiJson(text: string): FuiDocument {
   }
 
   const animations = parseAnimations(raw.animations);
+  const fonts = parseFonts(raw.fonts);
 
   return {
     version,
@@ -216,6 +217,18 @@ export function parseFuiJson(text: string): FuiDocument {
       children: root.children ?? [],
     },
     ...(animations.length > 0 ? { animations } : {}),
+    ...(fonts.length > 0 ? { fonts } : {}),
   };
+}
+
+function parseFonts(raw: any): FuiFont[] {
+  if (!Array.isArray(raw)) return [];
+  const result: FuiFont[] = [];
+  for (const f of raw) {
+    if (!isRecord(f) || typeof f.family !== 'string' || typeof f.path !== 'string') continue;
+    if (f.family.trim().length === 0 || f.path.trim().length === 0) continue;
+    result.push({ family: f.family.trim(), path: f.path.trim() });
+  }
+  return result;
 }
 

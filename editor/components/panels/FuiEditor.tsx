@@ -6,11 +6,11 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, ColorInputAlpha, Select, Slider, Icons } from '../../ui';
+import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, ColorInputAlpha, Select, Slider, Icons, FontInput } from '../../ui';
 import { getFileSystem } from '../../../src/filesystem';
-import type { FuiDocument, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty, FuiAnchor, FuiScaleMode } from '../../../src/ui/FuiTypes';
+import type { FuiDocument, FuiFont, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty, FuiAnchor, FuiScaleMode } from '../../../src/ui/FuiTypes';
 import { parseFuiJson } from '../../../src/ui/FuiParser';
-import { compileFui, renderFuiToCanvas } from '../../../src/ui/FuiRenderer';
+import { compileFui, renderFuiToCanvas, loadFuiFonts } from '../../../src/ui/FuiRenderer';
 import { applyAnimation } from '../../../src/ui/FuiAnimator';
 
 // ═══════════════════════════════════════════
@@ -257,10 +257,11 @@ const InteractiveCanvas: React.FC<{
   gridEnabled: boolean;
   snapEnabled: boolean;
   snapSize: number;
+  fontsVersion: number;
   statusRef: React.RefObject<HTMLSpanElement | null>;
   onSelectPath: (path: number[] | null) => void;
   onCommit: (path: number[], newRelRect: FuiRect) => void;
-}> = ({ doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, statusRef, onSelectPath, onCommit }) => {
+}> = ({ doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, fontsVersion, statusRef, onSelectPath, onCommit }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
 
@@ -335,7 +336,7 @@ const InteractiveCanvas: React.FC<{
     }
   }, []); // stable — uses only refs
 
-  useEffect(() => { drawCanvas(); }, [doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, drawCanvas]);
+  useEffect(() => { drawCanvas(); }, [doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, fontsVersion, drawCanvas]);
 
   // ── Mouse down ──
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -536,7 +537,33 @@ const NodeProperties: React.FC<{
   onChange: (updater: (n: any) => void) => void;
   animActive?: boolean;
   onInsertKeyframe?: (prop: FuiAnimatableProperty) => void;
-}> = ({ node, onChange, animActive, onInsertKeyframe }) => {
+  /** Registered document fonts — used to populate the font family picker. */
+  fonts?: FuiFont[];
+  /** Called when the user picks a font file not yet in the document's fonts list. */
+  onAddFont?: (font: FuiFont) => void;
+}> = ({ node, onChange, animActive, onInsertKeyframe, fonts = [], onAddFont }) => {
+  const fontOptions = [
+    { value: '', label: '(default)' },
+    ...fonts.map((f) => ({ value: f.family, label: f.family })),
+  ];
+  const FontPicker: React.FC<{ value: string | undefined }> = ({ value }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+      <Select
+        value={value ?? ''}
+        options={fontOptions}
+        onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })}
+      />
+      <FontInput
+        value={value ? { path: fonts.find((f) => f.family === value)?.path ?? '', family: value } : null}
+        onChange={(fv) => {
+          if (!fv) { onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = undefined; }); return; }
+          if (fv.path && !fonts.find((f) => f.family === fv.family)) onAddFont?.(fv);
+          onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = fv.family || undefined; });
+        }}
+        familyLabel=""
+      />
+    </div>
+  );
   const withKey = (input: React.ReactNode, prop: FuiAnimatableProperty): React.ReactNode => {
     if (!animActive) return input;
     return (
@@ -602,7 +629,7 @@ const NodeProperties: React.FC<{
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 18} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
         <PropertyRow label="Color"><ColorInput value={(node as any).style?.color ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.color = v; })} /></PropertyRow>
-        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Font"><FontPicker value={(node as any).style?.fontFamily} /></PropertyRow>
         <PropertyRow label="Align">
           <Select value={(node as any).style?.align ?? 'left'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
@@ -628,7 +655,7 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 18} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
-        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Font"><FontPicker value={(node as any).style?.fontFamily} /></PropertyRow>
         <PropertyRow label="Align">
           <Select value={(node as any).style?.align ?? 'center'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
@@ -674,7 +701,7 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
-        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Font"><FontPicker value={(node as any).style?.fontFamily} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
         <PropertyRow label="Navigation">
@@ -729,7 +756,7 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
-        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Font"><FontPicker value={(node as any).style?.fontFamily} /></PropertyRow>
         <PropertyRow label="Navigation">
           <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
         </PropertyRow>
@@ -787,6 +814,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
   const [panY, setPanY] = useState(24);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | null>(null);
+  const [fontsVersion, setFontsVersion] = useState(0);
   const [gridEnabled, setGridEnabled] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapSize, setSnapSize] = useState(10);
@@ -819,6 +847,18 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
     }).catch((e) => { if (!cancelled) setError(e?.message ?? String(e)); });
     return () => { cancelled = true; };
   }, [filePath, fs]);
+
+  // ── Load custom fonts declared in the document ──
+  useEffect(() => {
+    if (!doc?.fonts?.length) return;
+    const projectDir = (window as any).fluxionAPI?.projectDir as string | undefined;
+    loadFuiFonts(doc.fonts, (rel) => {
+      const base = projectDir ?? '';
+      const abs = base ? `${base.replace(/\\/g, '/')}/${rel.replace(/\\/g, '/')}` : rel;
+      return abs.startsWith('file://') ? abs : `file:///${abs.replace(/\\/g, '/')}`;
+    }).then(() => setFontsVersion((v) => v + 1));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.fonts]);
 
   // ── Parse on text change (only when not suppressed by applyDocChange/undo/redo) ──
   useEffect(() => {
@@ -1507,6 +1547,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                   gridEnabled={gridEnabled}
                   snapEnabled={snapEnabled}
                   snapSize={snapSize}
+                  fontsVersion={fontsVersion}
                   statusRef={statusDomRef}
                   onSelectPath={handleSelectPath}
                   onCommit={handleCommit}
@@ -1556,6 +1597,41 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             </>)}
           </Section>
 
+          {/* Fonts */}
+          <Section title={`Fonts${doc?.fonts?.length ? ` (${doc.fonts.length})` : ''}`} defaultOpen={false}>
+            <div style={{ padding: '4px 8px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(doc?.fonts ?? []).map((font, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <FontInput
+                      value={{ path: font.path, family: font.family }}
+                      onChange={(fv) => {
+                        if (!fv) {
+                          updateDocProp((d) => ({ ...d, fonts: (d.fonts ?? []).filter((_, j) => j !== i) }));
+                        } else {
+                          updateDocProp((d) => {
+                            const next = [...(d.fonts ?? [])];
+                            next[i] = { family: fv.family, path: fv.path };
+                            return { ...d, fonts: next };
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => updateDocProp((d) => ({ ...d, fonts: (d.fonts ?? []).filter((_, j) => j !== i) }))}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', fontSize: 14, lineHeight: 1, flexShrink: 0, marginTop: 2 }}
+                    title="Remove font"
+                  >×</button>
+                </div>
+              ))}
+              <button
+                onClick={() => updateDocProp((d) => ({ ...d, fonts: [...(d.fonts ?? []), { family: '', path: '' }] }))}
+                style={{ alignSelf: 'flex-start', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 10, padding: '3px 8px' }}
+              >+ Add Font</button>
+            </div>
+          </Section>
+
           {/* Selected node properties */}
           <Section title={selected ? `${selected.node.type} — ${selected.node.id}` : 'Properties'} defaultOpen>
             {!selected ? (
@@ -1566,6 +1642,8 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                 onChange={updateSelected}
                 animActive={animPanelOpen && selectedAnim !== null}
                 onInsertKeyframe={(prop) => handleInsertKeyframe(selected.node.id, prop)}
+                fonts={doc?.fonts ?? []}
+                onAddFont={(font) => updateDocProp((d) => ({ ...d, fonts: [...(d.fonts ?? []), font] }))}
               />
             )}
           </Section>

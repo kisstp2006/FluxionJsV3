@@ -596,6 +596,7 @@ const buildSettings: SettingDescriptor[] = [
 // ── Editor Debug Draw ──
 
 const debugDrawSettings: SettingDescriptor[] = [
+  { key: 'editor.debug.showGrid',       label: 'Show Grid',         type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 0, description: 'Draw the viewport XZ grid. Visible in both Scene and Game view.' },
   { key: 'editor.debug.physics',        label: 'Physics',           type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 1, description: 'Draw collider wireframes and character controller capsules.' },
   { key: 'editor.debug.camera',         label: 'Camera',            type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 2, description: 'Draw camera frustum gizmos.' },
   { key: 'editor.debug.lights',         label: 'Lights',            type: 'boolean', defaultValue: true,  category: 'Editor/Debug', order: 3, description: 'Draw light range and direction gizmos.' },

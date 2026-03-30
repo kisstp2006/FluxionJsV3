@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../../ui/Icons';
+import { PathInput } from '../../ui/inputs/PathInput';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager, RecentProject } from '../../../src/project/ProjectManager';
 
@@ -26,11 +27,6 @@ const NewProjectModal: React.FC<{
 }> = ({ onConfirm, onCancel, loading }) => {
   const [name, setName] = useState('');
   const [dir, setDir] = useState('');
-
-  const pickDir = async () => {
-    const picked = await (window.fluxionAPI as any)?.openDirDialog?.();
-    if (picked) setDir(picked);
-  };
 
   const canCreate = name.trim().length > 0 && dir.length > 0;
 
@@ -63,16 +59,12 @@ const NewProjectModal: React.FC<{
         />
 
         <label style={{ ...labelStyle, marginTop: 14 }}>Location</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            placeholder="Choose folder..."
-            value={dir}
-            readOnly
-            style={{ ...modalInputStyle, flex: 1, cursor: 'default', color: dir ? '#d0d0e0' : '#555' }}
-          />
-          <button onClick={pickDir} style={secondaryBtnStyle}>Browse</button>
-        </div>
+        <PathInput
+          value={dir}
+          onChange={setDir}
+          mode="folder"
+          placeholder="Choose project folder…"
+        />
 
         <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={secondaryBtnStyle}>Cancel</button>

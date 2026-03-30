@@ -12,7 +12,7 @@
 // ============================================================
 
 import type {
-  FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode, FuiImageNode,
+  FuiDocument, FuiFont, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode, FuiImageNode,
   FuiToggleNode, FuiSliderNode, FuiProgressBarNode, FuiInputFieldNode,
   FuiAnimation, FuiAnimatableProperty, FuiAlign, FuiTransition, FuiNavigation, FuiColorBlock, FuiTextColorBlock,
 } from './FuiTypes';
@@ -174,6 +174,7 @@ export class FuiBuilder {
   private _nodeMap: Map<string, FuiNode> = new Map();
   private _nodeParent: Map<string, string> = new Map();
   private _animations: FuiAnimation[] = [];
+  private _fonts: FuiFont[] = [];
   private _width: number;
   private _height: number;
   private _mode: FuiMode;
@@ -460,6 +461,20 @@ export class FuiBuilder {
     });
   }
 
+  // ── Fonts ──────────────────────────────────────────────────
+
+  /**
+   * Register a custom font for this document.
+   * The font is loaded from `path` and available as CSS font-family `family`.
+   * @example builder.addFont('Orbitron', 'Assets/Fonts/Orbitron.ttf')
+   */
+  addFont(family: string, path: string): this {
+    if (family && path && !this._fonts.find((f) => f.family === family)) {
+      this._fonts.push({ family, path });
+    }
+    return this;
+  }
+
   // ── Animation ─────────────────────────────────────────────
 
   /**
@@ -528,6 +543,7 @@ export class FuiBuilder {
       canvas: { width: this._width, height: this._height },
       root,
       animations: this._animations.length > 0 ? [...this._animations] : undefined,
+      fonts: this._fonts.length > 0 ? [...this._fonts] : undefined,
     };
   }
 

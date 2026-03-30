@@ -18,6 +18,7 @@ import type { AudioSystem } from '../audio/AudioSystem';
 import { ScriptComponent, ScriptEntry } from '../core/Components';
 import { FluxionBehaviour } from './FluxionBehaviour';
 import { AnimationRef } from './AnimationRef';
+import { FontRef } from './FontRef';
 import { DebugConsole } from '../core/DebugConsole';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
@@ -212,6 +213,7 @@ export class LuaScriptSystem implements System {
     // FuiRef/MaterialRef/TextureRef()   → default empty path string
     lua.global.set('EntityRef',   (req?: string) => ({ entity: null, requireComponent: req ?? undefined }));
     lua.global.set('AnimationRef', (path?: string, clip?: string) => new AnimationRef(path ?? '', clip ?? ''));
+    lua.global.set('FontRef',     (path?: string, family?: string) => new FontRef(path ?? '', family ?? ''));
     lua.global.set('FuiRef',      () => '');
     lua.global.set('MaterialRef', () => '');
     lua.global.set('TextureRef',  () => '');

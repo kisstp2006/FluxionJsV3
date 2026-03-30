@@ -22,6 +22,7 @@ import { CSGSystem } from '../../src/csg/CSGSystem';
 import { ScriptSystem } from '../../src/scripting/ScriptSystem';
 import { LuaScriptSystem } from '../../src/scripting/LuaScriptSystem';
 import { DebugDraw } from '../../src/renderer/DebugDraw';
+import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 import { PhysicsGizmoSystem } from '../../src/physics/PhysicsGizmoSystem';
 import { setPlatformBridge } from '../../src/platform/PlatformBridge';
 import { registerSnapshotHelpers } from './UndoService';
@@ -138,8 +139,6 @@ export async function initEditorEngine(
   selectionOutline.visible = false;
   renderer.gizmoScene.add(selectionOutline);
 
-  // Grid is now drawn via DebugDraw each frame (see EditorLogic GridSync)
-
   // Environment
   renderer.scene.background = new THREE.Color(0x0a0e17);
   renderer.scene.fog = new THREE.FogExp2(0x0a0e17, 0.008);
@@ -150,6 +149,13 @@ export async function initEditorEngine(
     orbitControls.update();
     // Feed camera to particle system for billboard + soft-particle near/far
     particleSys.setCamera(editorCamera, renderer.renderer.domElement.width, renderer.renderer.domElement.height);
+
+    // ── Grid ──
+    const showGrid      = ProjectSettingsRegistry.get<boolean>('editor.debug.showGrid')      ?? true;
+    const drawInPlay    = ProjectSettingsRegistry.get<boolean>('editor.debug.drawInPlayMode') ?? true;
+    if (showGrid && (engine.simulationPaused || drawInPlay)) {
+      DebugDraw.drawGrid();
+    }
 
     // Show engine stats via debug text when the simulation is running (game view).
     // Scene view already has the React stats overlay; debug text covers game view.

@@ -6,6 +6,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
 let vmeWindow: BrowserWindow | null = null;
@@ -408,5 +409,140 @@ ipcMain.handle('shell:showItemInFolder', async (_, itemPath: string) => {
 
 ipcMain.handle('shell:openPath', async (_, targetPath: string) => {
   await shell.openPath(targetPath);
+  return true;
+});
+
+// ── Engine root path ──
+
+ipcMain.handle('app:getEngineRoot', async () => {
+  if (app.isPackaged) {
+    // electron-builder is configured with asar:false, so all files (src/,
+    // node_modules/, tsconfig.json) are real files accessible to child
+    // processes. app.getAppPath() points to the directory that contains them.
+    return app.getAppPath();
+  }
+  // Development: compiled output is at dist/electron/, project root is two
+  // levels up from __dirname.
+  return path.resolve(__dirname, '..', '..');
+});
+
+// ── Build System ──
+
+/** Active webpack child processes, keyed by jobId */
+const buildJobs = new Map<string, ChildProcess>();
+let buildJobCounter = 0;
+
+/**
+ * build:run — spawns webpack in a child process.
+ * Streams stdout/stderr back to the renderer via 'build:event'.
+ * Returns the jobId so the renderer can cancel it.
+ */
+ipcMain.handle('build:run', async (event, engineRoot: string, configPath: string) => {
+  const jobId = `build_${++buildJobCounter}`;
+  const sender = event.sender;
+
+  // Resolve the webpack binary from the engine's own node_modules
+  const webpackBin = path.join(engineRoot, 'node_modules', 'webpack', 'bin', 'webpack.js');
+
+  // Use 'node' instead of process.execPath — inside Electron, process.execPath
+  // points to the Electron binary, which would try to launch webpack.js as an
+  // Electron app rather than running it with Node.
+  const child = spawn('node', [webpackBin, '--config', configPath], {
+    cwd: engineRoot,
+    env: { ...process.env, FORCE_COLOR: '0' },
+    shell: true,
+  });
+
+  buildJobs.set(jobId, child);
+
+  const send = (type: string, data: string) => {
+    if (!sender.isDestroyed()) {
+      sender.send('build:event', { jobId, type, data });
+    }
+  };
+
+  child.stdout?.on('data', (chunk: Buffer) => send('stdout', chunk.toString()));
+  child.stderr?.on('data', (chunk: Buffer) => send('stderr', chunk.toString()));
+
+  child.on('close', (code) => {
+    buildJobs.delete(jobId);
+    if (code === 0) {
+      send('done', `Build finished successfully (exit 0).`);
+    } else {
+      send('error', `Build process exited with code ${code}.`);
+    }
+  });
+
+  child.on('error', (err) => {
+    buildJobs.delete(jobId);
+    send('error', `Failed to start build process: ${err.message}`);
+  });
+
+  return jobId;
+});
+
+/** build:cancel — kills a running webpack job by jobId. */
+ipcMain.handle('build:cancel', async (_, jobId: string) => {
+  const child = buildJobs.get(jobId);
+  if (child) {
+    child.kill('SIGTERM');
+    buildJobs.delete(jobId);
+  }
+  return true;
+});
+
+// ── npm commands ──
+
+/** Active npm child processes, keyed by jobId */
+const npmJobs = new Map<string, ChildProcess>();
+let npmJobCounter = 0;
+
+/**
+ * npm:run — runs an npm command (e.g. ['install', 'fluxion-plugin-foo'])
+ * inside the given projectDir. Streams output via 'npm:event'.
+ */
+ipcMain.handle('npm:run', async (event, projectDir: string, args: string[]) => {
+  const jobId = `npm_${++npmJobCounter}`;
+  const sender = event.sender;
+
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+  const child = spawn(npmCmd, args, {
+    cwd: projectDir,
+    env: { ...process.env },
+    shell: true,
+  });
+
+  npmJobs.set(jobId, child);
+
+  const send = (type: string, data: string) => {
+    if (!sender.isDestroyed()) {
+      sender.send('npm:event', { jobId, type, data });
+    }
+  };
+
+  child.stdout?.on('data', (chunk: Buffer) => send('stdout', chunk.toString()));
+  child.stderr?.on('data', (chunk: Buffer) => send('stderr', chunk.toString()));
+
+  child.on('close', (code) => {
+    npmJobs.delete(jobId);
+    send(code === 0 ? 'done' : 'error', `npm exited with code ${code}.`);
+  });
+
+  child.on('error', (err) => {
+    npmJobs.delete(jobId);
+    send('error', `Failed to start npm: ${err.message}`);
+  });
+
+  return jobId;
+});
+
+/** npm:cancel — kills a running npm job. */
+ipcMain.handle('npm:cancel', async (_, jobId: string) => {
+  const child = npmJobs.get(jobId);
+  if (child) {
+    child.kill('SIGTERM');
+    npmJobs.delete(jobId);
+  }
   return true;
 });

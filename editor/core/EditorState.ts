@@ -9,7 +9,7 @@ import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 // ── Types ──
 export type EditorTool = 'select' | 'move' | 'rotate' | 'scale';
 export type TransformSpace = 'local' | 'world';
-export type BottomTab = 'console' | 'assets' | 'profiler' | 'history' | 'timeline';
+export type BottomTab = 'console' | 'assets' | 'profiler' | 'history' | 'timeline' | 'build';
 
 export interface ConsoleEntry {
   text: string;

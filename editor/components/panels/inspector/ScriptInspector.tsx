@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PropertyRow, NumberInput, Checkbox, AssetInput, ColorInput, Icons } from '../../../ui';
+import { PropertyRow, NumberInput, Checkbox, AssetInput, ColorInput, Icons, FontInput } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
@@ -16,6 +16,7 @@ import { compileScript } from '../../../../src/scripting/ScriptCompiler';
 import { FuiRef } from '../../../../src/scripting/FuiRef';
 import { MaterialRef } from '../../../../src/scripting/MaterialRef';
 import { TextureRef } from '../../../../src/scripting/TextureRef';
+import { FontRef } from '../../../../src/scripting/FontRef';
 import { SceneRef } from '../../../../src/scripting/SceneRef';
 import { ColorRef } from '../../../../src/scripting/ColorRef';
 import { ComponentSection } from './ComponentSection';
@@ -36,8 +37,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'SceneRef', 'ColorRef', 'console', compiledJs)(
-      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, SceneRef, ColorRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'FontRef', 'SceneRef', 'ColorRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, FontRef, SceneRef, ColorRef, console,
     );
   } catch {
     return null;
@@ -45,7 +46,7 @@ function loadScriptClass(compiledJs: string): any {
   return mod.default;
 }
 
-type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture' | 'scene' | 'color';
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture' | 'font' | 'scene' | 'color';
 
 interface ScriptProp {
   key: string;
@@ -101,6 +102,16 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
           type: 'texture',
           default: raw,
           value: { path },
+        });
+      } else if (raw instanceof FontRef) {
+        const override = overrides[k];
+        const path   = typeof override?.path   === 'string' ? override.path   : raw.path;
+        const family = typeof override?.family === 'string' ? override.family : raw.family;
+        props.push({
+          key: k,
+          type: 'font',
+          default: raw,
+          value: { path, family },
         });
       } else if (raw instanceof SceneRef) {
         const override = overrides[k];
@@ -192,6 +203,11 @@ function parseLuaProperties(source: string, overrides: Record<string, any>): Scr
           } else if (/^TextureRef\s*\(/.test(raw)) {
             const path = typeof override?.path === 'string' ? override.path : '';
             props.push({ key, type: 'texture', default: '', value: { path } });
+          // FontRef(path?, family?) — font asset picker
+          } else if (/^FontRef\s*\(/.test(raw)) {
+            const path   = typeof override?.path   === 'string' ? override.path   : '';
+            const family = typeof override?.family === 'string' ? override.family : '';
+            props.push({ key, type: 'font', default: '', value: { path, family } });
           // SceneRef() — scene asset picker
           } else if (/^SceneRef\s*\(/.test(raw)) {
             const path = typeof override?.path === 'string' ? override.path : '';
@@ -493,6 +509,12 @@ const ScriptEntryRow: React.FC<{
                   value={p.value?.path || null}
                   assetType="texture"
                   onChange={(v) => setOverride(p.key, { path: v || '' })}
+                />
+              )}
+              {p.type === 'font' && (
+                <FontInput
+                  value={p.value?.path ? { path: p.value.path, family: p.value.family || '' } : null}
+                  onChange={(fv) => setOverride(p.key, fv ? { path: fv.path, family: fv.family } : { path: '', family: '' })}
                 />
               )}
               {p.type === 'scene' && (

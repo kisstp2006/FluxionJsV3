@@ -663,6 +663,17 @@ AssetTypeRegistry.register({
 });
 
 AssetTypeRegistry.register({
+  type: 'font',
+  displayName: 'Font',
+  icon: 'font',
+  extensions: ['.ttf', '.otf', '.woff', '.woff2'],
+  category: 'UI',
+  color: '#ce93d8',
+  canImport: true,
+  importFilters: [{ name: 'Font Files', extensions: ['ttf', 'otf', 'woff', 'woff2'] }],
+});
+
+AssetTypeRegistry.register({
   type: 'fui',
   displayName: 'UI (FUI)',
   icon: 'json',

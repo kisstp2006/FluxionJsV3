@@ -8,7 +8,7 @@ import { EngineEvents } from '../core/EventSystem';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
 import { FuiComponent } from '../core/Components';
-import { compileFui, hitTestFuiButtons, hitTestInteractable, preloadFuiImages, renderCompiledFuiToCanvas } from './FuiRenderer';
+import { compileFui, hitTestFuiButtons, hitTestInteractable, loadFuiFonts, preloadFuiImages, renderCompiledFuiToCanvas } from './FuiRenderer';
 import type { FuiCompiled, FuiCompiledNode, FuiNodeRenderState } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
@@ -147,6 +147,12 @@ export class FuiRuntimeSystem implements System {
     const abs = resolveFuiPath(fuiPath);
     const text = await fs.readFile(abs);
     const doc = parseFuiJson(text);
+    if (doc.fonts?.length) {
+      await loadFuiFonts(doc.fonts, (rel) => {
+        const resolved = resolveFuiPath(rel);
+        return resolved.startsWith('file://') ? resolved : `file:///${resolved.replace(/\\/g, '/')}`;
+      });
+    }
     const compiled = compileFui(doc);
     return { compiled };
   }
@@ -422,7 +428,7 @@ export class FuiRuntimeSystem implements System {
         }
 
         const hoverChanged = newHoverId !== ist.hoveredId;
-        if (hoverChanged) {
+        if (hoverChanged && !this.engine.simulationPaused) {
           if (ist.hoveredId) this.engine.events.emit('ui:mouseexit',  { entity, elementId: ist.hoveredId });
           if (newHoverId)    this.engine.events.emit('ui:mouseenter', { entity, elementId: newHoverId });
         }
@@ -490,8 +496,10 @@ export class FuiRuntimeSystem implements System {
           const newWorldHoverId = worldHit?.id ?? null;
           const wIst = this._getInteractState(entity);
           if (newWorldHoverId !== wIst.hoveredId) {
-            if (wIst.hoveredId) this.engine.events.emit('ui:mouseexit',  { entity, elementId: wIst.hoveredId });
-            if (newWorldHoverId) this.engine.events.emit('ui:mouseenter', { entity, elementId: newWorldHoverId });
+            if (!this.engine.simulationPaused) {
+              if (wIst.hoveredId) this.engine.events.emit('ui:mouseexit',  { entity, elementId: wIst.hoveredId });
+              if (newWorldHoverId) this.engine.events.emit('ui:mouseenter', { entity, elementId: newWorldHoverId });
+            }
             wIst.hoveredId = newWorldHoverId;
             wIst.nodeStates.clear();
             if (newWorldHoverId) wIst.nodeStates.set(newWorldHoverId, { hover: !worldHit?.disabled, active: false });
@@ -518,8 +526,11 @@ export class FuiRuntimeSystem implements System {
     }
 
     // ── Interaction (click + active-state tracking) ──
-    const clicked  = this.input.isMousePressed(MouseButton.Left);
-    const released = this.input.isMouseReleased(MouseButton.Left);
+    // Gate on simulationPaused: editor clicks (panel interactions, camera orbit, etc.)
+    // must not bleed into FUI event emission.
+    const _simRunning = !this.engine.simulationPaused;
+    const clicked  = _simRunning && this.input.isMousePressed(MouseButton.Left);
+    const released = _simRunning && this.input.isMouseReleased(MouseButton.Left);
     const ray = new THREE.Ray();
 
     if (clicked) {

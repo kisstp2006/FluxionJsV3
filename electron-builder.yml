@@ -1,0 +1,51 @@
+appId: com.fluxionjs.editor
+productName: FluxionJS V3 Editor
+copyright: "Copyright © 2024 FluxionJS"
+
+# asar: false is critical — the game-export webpack child process cannot
+# read files from inside an ASAR archive, so everything must be real files.
+asar: false
+
+directories:
+  output: release
+  buildResources: Data
+
+# Files included from the project root in addition to node_modules.
+# Production dependencies (dependencies in package.json) are bundled
+# automatically by electron-builder.
+files:
+  - "dist/**/*"
+  # Engine TypeScript source — needed by ts-loader at game-export time.
+  - "src/**/*"
+  - "tsconfig.json"
+  - "package.json"
+  - "!node_modules/.cache/**"
+  - "!**/*.map"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # Place a 256x256 icon.ico inside the Data/ folder.
+  # icon: "Data/icon.ico"
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  # icon: "Data/icon.png"
+
+mac:
+  target:
+    - target: dmg
+  # icon: "Data/icon.icns"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: "Data/icon.ico"
+  uninstallerIcon: "Data/icon.ico"
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

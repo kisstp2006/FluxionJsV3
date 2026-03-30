@@ -11,6 +11,7 @@ import {
 } from '../filesystem';
 import { ShaderCache } from '../materials/ShaderCache';
 import { ShaderCompileService } from '../renderer/ShaderCompileService';
+import { npmProjectService } from './NpmProjectService';
 
 // ── Project Configuration (stored in .fluxproj) ──
 
@@ -33,6 +34,21 @@ export interface ProjectEditorSettings {
   showGrid: boolean;
 }
 
+export interface BuildSettings {
+  /** Project-relative output directory, e.g. "Build/Web" */
+  outputDir: string;
+  /** Project-relative path to the start scene */
+  startScene: string;
+  /** Display name embedded in the generated index.html */
+  gameName: string;
+  /** Game version string */
+  gameVersion: string;
+  /** Minify the output bundle */
+  minify: boolean;
+  /** Emit source maps */
+  includeSourceMaps: boolean;
+}
+
 export interface ProjectSettings {
   physics: ProjectPhysicsSettings;
   rendering: ProjectRenderSettings;
@@ -46,6 +62,7 @@ export interface ProjectConfig {
   schema: number;
   defaultScene: string;
   settings: ProjectSettings;
+  build: BuildSettings;
 }
 
 export interface RecentProject {
@@ -62,6 +79,15 @@ const DEFAULT_SETTINGS: ProjectSettings = {
   editor: { snapTranslation: 1, snapRotation: 15, snapScale: 0.25, showGrid: true },
 };
 
+const DEFAULT_BUILD_SETTINGS: BuildSettings = {
+  outputDir: 'Build/Web',
+  startScene: 'Scenes/Main.fluxscene',
+  gameName: '',
+  gameVersion: '1.0.0',
+  minify: true,
+  includeSourceMaps: false,
+};
+
 function defaultProjectConfig(name: string): ProjectConfig {
   return {
     name,
@@ -70,6 +96,7 @@ function defaultProjectConfig(name: string): ProjectConfig {
     schema: 1,
     defaultScene: 'Scenes/Main.fluxscene',
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+    build: { ...DEFAULT_BUILD_SETTINGS, gameName: name, startScene: 'Scenes/Main.fluxscene' },
   };
 }
 
@@ -198,6 +225,9 @@ export class ProjectManager {
     const editorConfig = { windowState: {}, recentScenes: ['Scenes/Main.fluxscene'] };
     await fs.writeFile(pathJoin(projectDir, '.fluxion', 'editor.json'), JSON.stringify(editorConfig, null, 2));
 
+    // Ensure project has its own npm package.json
+    await npmProjectService.ensurePackageJson(projectDir, name);
+
     // Set current project
     this._config = config;
     this._projectDir = projectDir;
@@ -217,12 +247,20 @@ export class ProjectManager {
     const content = await fs.readFile(projectFilePath);
     const config = JSON.parse(content) as ProjectConfig;
 
+    // Back-fill build settings for projects that predate this feature
+    if (!config.build) {
+      config.build = { ...DEFAULT_BUILD_SETTINGS, gameName: config.name, startScene: config.defaultScene };
+    }
+
     this._config = config;
     this._projectDir = pathDirname(projectFilePath);
     this._projectFilePath = projectFilePath;
     this._isDirty = false;
 
     await this.addToRecent(config.name, projectFilePath);
+
+    // Ensure project npm package.json exists (non-blocking)
+    npmProjectService.ensurePackageJson(this._projectDir, config.name).catch(() => {});
 
     // Init shader cache for this project and kick off background precompile
     await ShaderCache.init(fs, this._projectDir);

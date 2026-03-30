@@ -275,6 +275,14 @@ export interface FuiAnimation {
   tracks: FuiAnimationTrack[];
 }
 
+/** A custom font loaded from the project's asset folder. */
+export interface FuiFont {
+  /** CSS font-family name used in node styles (e.g. "Orbitron"). */
+  family: string;
+  /** Project-relative path to the font file (.ttf/.otf/.woff/.woff2). */
+  path: string;
+}
+
 export interface FuiDocument {
   version: number;
   mode: FuiMode;
@@ -292,5 +300,7 @@ export interface FuiDocument {
   };
   root: FuiPanelNode;
   animations?: FuiAnimation[];
+  /** Custom fonts registered for this document. Loaded before rendering. */
+  fonts?: FuiFont[];
 }
 

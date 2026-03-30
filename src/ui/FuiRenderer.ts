@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiFont, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -116,6 +116,51 @@ export function preloadFuiImages(
  */
 export function invalidateFuiSvgCache(projectRelSrc: string): void {
   _svgCache.delete(projectRelSrc);
+}
+
+/** Set of already-loaded font families (to avoid re-loading). */
+const _loadedFontFamilies = new Set<string>();
+
+/**
+ * Pre-load custom fonts declared in a FUI document's `fonts` array.
+ * Uses the FontFace API — fonts are added to `document.fonts` and
+ * become available as CSS font-family values in the 2D canvas context.
+ *
+ * @param fonts       The FuiFont[] from FuiDocument.fonts.
+ * @param resolveUrl  Converts a project-relative path to a `file:///` URL.
+ */
+export async function loadFuiFonts(
+  fonts: FuiFont[] | undefined,
+  resolveUrl: (path: string) => string,
+): Promise<void> {
+  if (!fonts?.length) return;
+  const promises: Promise<void>[] = [];
+  for (const f of fonts) {
+    if (!f.family || !f.path) continue;
+    if (_loadedFontFamilies.has(f.family)) continue;
+    _loadedFontFamilies.add(f.family);
+    promises.push(
+      (async () => {
+        try {
+          const url = resolveUrl(f.path);
+          const ff = new FontFace(f.family, `url("${url}")`);
+          await ff.load();
+          (document as any).fonts.add(ff);
+        } catch (e) {
+          console.warn(`[FuiRenderer] Failed to load font "${f.family}" from "${f.path}":`, e);
+        }
+      })(),
+    );
+  }
+  await Promise.all(promises);
+}
+
+/**
+ * Evict a font family from the loaded-font cache (call when the font file
+ * changes on disk so the next render re-loads it).
+ */
+export function invalidateFuiFont(family: string): void {
+  _loadedFontFamilies.delete(family);
 }
 
 export interface FuiCompiled {

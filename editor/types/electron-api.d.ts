@@ -25,7 +25,6 @@ interface FluxionAPI {
   openVisualMaterialEditor?(path: string): void;
   openFuiEditor?(path: string): void;
   openScriptEditor?(path: string): void;
-
   // ── Cross-window IPC relay ───────────────────────────────────
   notifyMaterialChanged?(filePath: string): void;
   onMaterialChangedRelay?(callback: (changedPath: string) => void): void;
@@ -41,6 +40,39 @@ interface FluxionAPI {
 
   // ── Scripting settings ───────────────────────────────────────
   sendScriptSettings?(settings: unknown): void;
+
+  // ── Build system ─────────────────────────────────────────────
+  build?: {
+    /** Start a webpack build. Returns a jobId string. */
+    run(engineRoot: string, configPath: string): Promise<string>;
+    /** Cancel a running build by jobId. */
+    cancel(jobId: string): Promise<void>;
+    /** Subscribe to build streaming events. */
+    onEvent(callback: (event: BuildStreamEvent) => void): void;
+    offEvent(): void;
+  };
+
+  // ── npm commands ─────────────────────────────────────────────
+  npm?: {
+    /** Run an npm command in projectDir. Returns jobId. */
+    run(projectDir: string, args: string[]): Promise<string>;
+    /** Cancel a running npm job. */
+    cancel(jobId: string): Promise<void>;
+    /** Subscribe to npm streaming events. */
+    onEvent(callback: (event: BuildStreamEvent) => void): void;
+    offEvent(): void;
+  };
+
+  /** Get a named Electron app path (e.g. 'exe', 'userData'). */
+  getAppPath?(name: string): Promise<string>;
+  /** Get the engine root directory (where node_modules/webpack lives). */
+  getEngineRoot?(): Promise<string>;
+}
+
+interface BuildStreamEvent {
+  jobId: string;
+  type: 'stdout' | 'stderr' | 'done' | 'error';
+  data: string;
 }
 
 declare interface Window {

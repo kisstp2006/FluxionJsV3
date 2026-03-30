@@ -51,6 +51,7 @@ const _ddBindings = {
 
 export { EntityId, ECSManager, Engine, InputManager };
 export { FuiRef } from './FuiRef';
+export { FontRef } from './FontRef';
 export { MaterialRef } from './MaterialRef';
 export { TextureRef } from './TextureRef';
 export { AnimationRef } from './AnimationRef';

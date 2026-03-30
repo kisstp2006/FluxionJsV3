@@ -102,4 +102,47 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
     ipcRenderer.removeAllListeners('script:settings-update');
   },
   getScriptSettings: () => ipcRenderer.invoke('script:get-settings'),
+
+  // ── Build system ─────────────────────────────────────────────
+  build: {
+    /** Start a webpack build. Returns a jobId string. */
+    run: (engineRoot: string, configPath: string): Promise<string> =>
+      ipcRenderer.invoke('build:run', engineRoot, configPath),
+    /** Cancel a running build by jobId. */
+    cancel: (jobId: string): Promise<void> =>
+      ipcRenderer.invoke('build:cancel', jobId),
+    /** Subscribe to build streaming events (stdout/stderr/done/error). */
+    onEvent: (callback: (event: { jobId: string; type: string; data: string }) => void) => {
+      ipcRenderer.on('build:event', (_, event) => callback(event));
+    },
+    offEvent: () => {
+      ipcRenderer.removeAllListeners('build:event');
+    },
+  },
+
+  // ── npm commands ─────────────────────────────────────────────
+  npm: {
+    /** Run an npm command in projectDir (e.g. args=['install','pkg']). Returns jobId. */
+    run: (projectDir: string, args: string[]): Promise<string> =>
+      ipcRenderer.invoke('npm:run', projectDir, args),
+    /** Cancel a running npm job. */
+    cancel: (jobId: string): Promise<void> =>
+      ipcRenderer.invoke('npm:cancel', jobId),
+    /** Subscribe to npm streaming events. */
+    onEvent: (callback: (event: { jobId: string; type: string; data: string }) => void) => {
+      ipcRenderer.on('npm:event', (_, event) => callback(event));
+    },
+    offEvent: () => {
+      ipcRenderer.removeAllListeners('npm:event');
+    },
+  },
+
+  // ── App paths ─────────────────────────────────────────────────
+  /** Get a named Electron app path (e.g. 'exe', 'userData'). */
+  getAppPath: (name: string): Promise<string> =>
+    ipcRenderer.invoke('app:getPath', name),
+
+  /** Get the engine root directory (app.getAppPath()). */
+  getEngineRoot: (): Promise<string> =>
+    ipcRenderer.invoke('app:getEngineRoot'),
 });

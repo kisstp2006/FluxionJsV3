@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, Select, Slider, Icons } from '../../ui';
+import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, ColorInputAlpha, Select, Slider, Icons } from '../../ui';
 import { getFileSystem } from '../../../src/filesystem';
 import type { FuiDocument, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty, FuiAnchor, FuiScaleMode } from '../../../src/ui/FuiTypes';
 import { parseFuiJson } from '../../../src/ui/FuiParser';
@@ -18,7 +18,7 @@ import { applyAnimation } from '../../../src/ui/FuiAnimator';
 // ═══════════════════════════════════════════
 
 type SelectedNode = { node: FuiNode; path: number[] } | null;
-type AddNodeType = 'panel' | 'label' | 'button' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
+type AddNodeType = 'panel' | 'label' | 'button' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 type AlignType = 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom';
 
 const ANCHOR_GRID: FuiAnchor[][] = [
@@ -126,6 +126,8 @@ function makeNode(type: AddNodeType): FuiNode {
     return { id, type: 'progressBar', rect: { x: 10, y: 10, w: 200, h: 16 }, value: 0.5, direction: 'horizontal', style: {} } as any;
   if (type === 'inputField')
     return { id, type: 'inputField', rect: { x: 10, y: 10, w: 200, h: 36 }, text: '', placeholder: 'Enter text...', contentType: 'standard', style: {} } as any;
+  if (type === 'image')
+    return { id, type: 'image', rect: { x: 10, y: 10, w: 200, h: 150 }, src: '', style: { fit: 'contain' } } as any;
   return { id, type: 'button', rect: { x: 10, y: 10, w: 120, h: 36 }, text: 'Button', style: {} } as any;
 }
 
@@ -498,6 +500,7 @@ const NODE_ICONS: Record<string, React.ReactElement> = {
   panel:       Icons.layout,
   label:       Icons.typeText,
   button:      Icons.plane,
+  image:       Icons.image,
   toggle:      Icons.toggleLeft,
   slider:      Icons.sliders,
   progressBar: Icons.barChart,
@@ -599,6 +602,7 @@ const NodeProperties: React.FC<{
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 18} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
         <PropertyRow label="Color"><ColorInput value={(node as any).style?.color ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.color = v; })} /></PropertyRow>
+        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
         <PropertyRow label="Align">
           <Select value={(node as any).style?.align ?? 'left'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
@@ -609,16 +613,22 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Disabled">
           <input type="checkbox" checked={(node as any).disabled === true} onChange={(e) => onChange((n) => { n.disabled = e.target.checked; })} />
         </PropertyRow>
-        <PropertyRow label="Background"><ColorInput value={(node as any).style?.backgroundColor ?? '#1f2a44'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Brd Width">
           {withKey(<NumberInput value={(node as any).style?.borderWidth ?? 2} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderWidth = v; })} />, 'borderWidth')}
         </PropertyRow>
         <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 6} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
-        <PropertyRow label="Text Color"><ColorInput value={(node as any).style?.textColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColor = v; })} /></PropertyRow>
+        {/* ── Text Colors ── */}
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Text Color</div>
+        <PropertyRow label="Normal"><ColorInput value={(node as any).style?.textColors?.normalColor ?? (node as any).style?.textColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColors = n.style.textColors ?? {}; n.style.textColors.normalColor = v; })} /></PropertyRow>
+        <PropertyRow label="Highlighted"><ColorInput value={(node as any).style?.textColors?.highlightedColor ?? '#e0eaff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColors = n.style.textColors ?? {}; n.style.textColors.highlightedColor = v; })} /></PropertyRow>
+        <PropertyRow label="Pressed"><ColorInput value={(node as any).style?.textColors?.pressedColor ?? '#b0c8ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColors = n.style.textColors ?? {}; n.style.textColors.pressedColor = v; })} /></PropertyRow>
+        <PropertyRow label="Selected"><ColorInput value={(node as any).style?.textColors?.selectedColor ?? '#90b0ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColors = n.style.textColors ?? {}; n.style.textColors.selectedColor = v; })} /></PropertyRow>
+        <PropertyRow label="Disabled"><ColorInput value={(node as any).style?.textColors?.disabledColor ?? '#6b7280'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColors = n.style.textColors ?? {}; n.style.textColors.disabledColor = v; })} /></PropertyRow>
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 18} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
+        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
         <PropertyRow label="Align">
           <Select value={(node as any).style?.align ?? 'center'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
@@ -629,11 +639,11 @@ const NodeProperties: React.FC<{
           <Select value={(node as any).transition ?? 'colorTint'} options={[{ value: 'colorTint', label: 'Color Tint' }, { value: 'none', label: 'None' }]} onChange={(v) => onChange((n) => { n.transition = v; })} />
         </PropertyRow>
         {((node as any).transition ?? 'colorTint') === 'colorTint' && (<>
-          <PropertyRow label="Normal"><ColorInput value={(node as any).colors?.normalColor ?? '#1f2a44'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.normalColor = v; })} /></PropertyRow>
-          <PropertyRow label="Highlighted"><ColorInput value={(node as any).colors?.highlightedColor ?? '#2a3a5a'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.highlightedColor = v; })} /></PropertyRow>
-          <PropertyRow label="Pressed"><ColorInput value={(node as any).colors?.pressedColor ?? '#3a4a70'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.pressedColor = v; })} /></PropertyRow>
-          <PropertyRow label="Selected"><ColorInput value={(node as any).colors?.selectedColor ?? '#1f3060'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.selectedColor = v; })} /></PropertyRow>
-          <PropertyRow label="Disabled"><ColorInput value={(node as any).colors?.disabledColor ?? '#111827'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.disabledColor = v; })} /></PropertyRow>
+          <PropertyRow label="Normal"><ColorInputAlpha value={(node as any).colors?.normalColor ?? '#1f2a44ff'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.normalColor = v; })} /></PropertyRow>
+          <PropertyRow label="Highlighted"><ColorInputAlpha value={(node as any).colors?.highlightedColor ?? '#2a3a5aff'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.highlightedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Pressed"><ColorInputAlpha value={(node as any).colors?.pressedColor ?? '#3a4a70ff'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.pressedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Selected"><ColorInputAlpha value={(node as any).colors?.selectedColor ?? '#1f3060ff'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.selectedColor = v; })} /></PropertyRow>
+          <PropertyRow label="Disabled"><ColorInputAlpha value={(node as any).colors?.disabledColor ?? '#111827ff'} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.disabledColor = v; })} /></PropertyRow>
           <PropertyRow label="Multiplier"><NumberInput value={(node as any).colors?.colorMultiplier ?? 1} step={0.1} min={1} max={5} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.colorMultiplier = v; })} /></PropertyRow>
           <PropertyRow label="Fade Dur."><NumberInput value={(node as any).colors?.fadeDuration ?? 0.1} step={0.01} min={0} onChange={(v) => onChange((n) => { n.colors = n.colors ?? {}; n.colors.fadeDuration = v; })} /></PropertyRow>
         </>)}
@@ -645,6 +655,12 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Click Anim">
           <Select value={(node as any).clickAnimation ?? 'none'} options={[{ value: 'none', label: 'None' }, { value: 'scale', label: 'Scale' }, { value: 'flash', label: 'Flash' }]} onChange={(v) => onChange((n) => { n.clickAnimation = v; })} />
         </PropertyRow>
+        {/* ── Image background ── */}
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Image</div>
+        <PropertyRow label="Source"><TextInput value={(node as any).image ?? ''} placeholder="Assets/UI/btn.png" onChange={(v) => onChange((n) => { n.image = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Fit">
+          <Select value={(node as any).imageFit ?? 'fill'} options={[{ value: 'fill', label: 'Fill' }, { value: 'contain', label: 'Contain' }, { value: 'cover', label: 'Cover' }]} onChange={(v) => onChange((n) => { n.imageFit = v; })} />
+        </PropertyRow>
       </>)}
 
       {node.type === 'toggle' && (<>
@@ -652,12 +668,13 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Checked">
           <input type="checkbox" checked={(node as any).value === true} onChange={(e) => onChange((n) => { n.value = e.target.checked; })} />
         </PropertyRow>
-        <PropertyRow label="Box Color"><ColorInput value={(node as any).style?.backgroundColor ?? '#1a2340'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
+        <PropertyRow label="Box Color"><ColorInputAlpha value={(node as any).style?.backgroundColor ?? '#1a2340ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
         <PropertyRow label="Check Color"><ColorInput value={(node as any).style?.checkColor ?? '#58c4ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.checkColor = v; })} /></PropertyRow>
         <PropertyRow label="Text Color"><ColorInput value={(node as any).style?.textColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.textColor = v; })} /></PropertyRow>
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
+        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#6b8cff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
         <PropertyRow label="Navigation">
@@ -701,7 +718,7 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Content Type">
           <Select value={(node as any).contentType ?? 'standard'} options={[{ value: 'standard', label: 'Standard' }, { value: 'integer', label: 'Integer' }, { value: 'decimal', label: 'Decimal' }, { value: 'password', label: 'Password' }]} onChange={(v) => onChange((n) => { n.contentType = v; })} />
         </PropertyRow>
-        <PropertyRow label="Background"><ColorInput value={(node as any).style?.backgroundColor ?? '#111827'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
+        <PropertyRow label="Background"><ColorInputAlpha value={(node as any).style?.backgroundColor ?? '#111827ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#374151'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Brd Width">
           {withKey(<NumberInput value={(node as any).style?.borderWidth ?? 1} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderWidth = v; })} />, 'borderWidth')}
@@ -712,13 +729,23 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Font Size">
           {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
         </PropertyRow>
+        <PropertyRow label="Font"><TextInput value={(node as any).style?.fontFamily ?? ''} placeholder="sans-serif" onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontFamily = v || undefined; })} /></PropertyRow>
         <PropertyRow label="Navigation">
           <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
         </PropertyRow>
       </>)}
 
+      {node.type === 'image' && (<>
+        <PropertyRow label="Source"><TextInput value={(node as any).src ?? ''} placeholder="Assets/UI/image.png" onChange={(v) => onChange((n) => { n.src = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Fit">
+          <Select value={(node as any).style?.fit ?? 'contain'} options={[{ value: 'contain', label: 'Contain' }, { value: 'cover', label: 'Cover' }, { value: 'fill', label: 'Fill' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fit = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Background"><ColorInputAlpha value={(node as any).style?.backgroundColor ?? '#00000000'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Radius"><NumberInput value={(node as any).style?.radius ?? 0} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.radius = v; })} /></PropertyRow>
+      </>)}
+
       {node.type === 'panel' && (<>
-        <PropertyRow label="Background"><ColorInput value={(node as any).style?.backgroundColor ?? '#0b1020'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
+        <PropertyRow label="Background"><ColorInputAlpha value={(node as any).style?.backgroundColor ?? '#0b1020ff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.backgroundColor = v; })} /></PropertyRow>
         <PropertyRow label="Border"><ColorInput value={(node as any).style?.borderColor ?? '#000000'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderColor = v; })} /></PropertyRow>
         <PropertyRow label="Brd Width">
           {withKey(<NumberInput value={(node as any).style?.borderWidth ?? 0} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.borderWidth = v; })} />, 'borderWidth')}
@@ -1391,7 +1418,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%', marginBottom: 2 }}>
               Add {canAddChild ? 'child to selected' : '(select a panel)'}
             </span>
-            {(['panel', 'label', 'button', 'toggle', 'slider', 'progressBar', 'inputField'] as AddNodeType[]).map((t) => (
+            {(['panel', 'label', 'button', 'image', 'toggle', 'slider', 'progressBar', 'inputField'] as AddNodeType[]).map((t) => (
               <button key={t} onClick={() => canAddChild && handleAddNode(t)} style={toolBtn(canAddChild)} title={`Add ${t}`}>
                 {NODE_ICONS[t]} {t}
               </button>

@@ -20,8 +20,10 @@ import type { Engine } from '../core/Engine';
 import type { InputManager } from '../input/InputManager';
 import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
-import type { TransformComponent } from '../core/Components';
+import type { TransformComponent, AnimationComponent } from '../core/Components';
 import { FuiComponent } from '../core/Components';
+import type { PropertyClip } from '../core/PropertyAnimationTypes';
+import { AnimationRef } from './AnimationRef';
 import { DebugConsole } from '../core/DebugConsole';
 import { DebugDraw } from '../renderer/DebugDraw';
 
@@ -183,6 +185,143 @@ export class FluxionBehaviour {
       get isEditor() { return getPlatformBridge()?.isEditor ?? false; },
       get platform() { return 'electron'; },
       quit:          () => { getPlatformBridge()?.close?.(); },
+    };
+  }
+
+  // ── Animation ─────────────────────────────────────────────────
+
+  /**
+   * Accessor for the Animator component on this entity.
+   * Covers both mesh (clip-based) and property (keyframe) animations.
+   *
+   * @example — TS/JS
+   *   this.anim.play('Run');
+   *   this.anim.crossFade(this.runClip, 0.3);
+   *   this.anim.playPropertyClip('Jump');
+   *
+   * @example — Lua
+   *   self.anim:play('Run')
+   *   self.anim:playPropertyClip('Bounce')
+   */
+  get anim() {
+    const ecs    = this._ecs;
+    const entity = this.entity;
+    const get    = () => ecs.getComponent<AnimationComponent>(entity, 'Animation');
+
+    return {
+      // ── Mesh / skeletal clip animation ───────────────────────
+
+      /**
+       * Start playing a clip immediately.
+       * @param clip  Clip name string or an `AnimationRef` assigned from the inspector.
+       */
+      play(clip: string | AnimationRef): void {
+        const c = get();
+        if (!c) return;
+        c.currentClip = clip instanceof AnimationRef ? clip.clip : clip;
+      },
+
+      /** Stop the current mesh animation. */
+      stop(): void {
+        const c = get();
+        if (c) c.currentClip = '';
+      },
+
+      /**
+       * Cross-fade to a different clip.
+       * @param to        Target clip name or AnimationRef.
+       * @param duration  Blend duration in seconds (overrides the component's blendTime).
+       */
+      crossFade(to: string | AnimationRef, duration?: number): void {
+        const c = get();
+        if (!c) return;
+        if (duration !== undefined) c.blendTime = duration;
+        c.currentClip = to instanceof AnimationRef ? to.clip : to;
+      },
+
+      /** Set playback speed multiplier (1 = normal). */
+      setSpeed(v: number): void {
+        const c = get();
+        if (c) c.speed = v;
+      },
+
+      /** Enable or disable clip looping. */
+      setLoop(v: boolean): void {
+        const c = get();
+        if (c) c.loop = v;
+      },
+
+      /** Name of the currently active mesh animation clip. */
+      get clip(): string        { return get()?.currentClip ?? ''; },
+
+      /** Whether the mesh animation action is currently running. */
+      get isPlaying(): boolean  { return get()?.currentAction?.isRunning() ?? false; },
+
+      /** All clip names loaded from the model. */
+      get availableClips(): readonly string[] { return get()?.availableClips ?? []; },
+
+      // ── Property (keyframe) clip animation ───────────────────
+
+      /**
+       * Activate and play a property clip by its ID or name.
+       * Rewinds to time 0 before playing.
+       */
+      playPropertyClip(idOrName: string): void {
+        const c = get();
+        if (!c) return;
+        const found = c.propertyClips.find(
+          (p: PropertyClip) => p.id === idOrName || p.name === idOrName,
+        );
+        if (!found) return;
+        c.activePropertyClip = found.id;
+        c.propertyTime       = 0;
+        c.isPropertyPlaying  = true;
+      },
+
+      /** Stop and rewind the active property clip. */
+      stopPropertyClip(): void {
+        const c = get();
+        if (c) { c.isPropertyPlaying = false; c.propertyTime = 0; }
+      },
+
+      /** Pause playback of the active property clip without rewinding. */
+      pausePropertyClip(): void {
+        const c = get();
+        if (c) c.isPropertyPlaying = false;
+      },
+
+      /** Resume a paused property clip. */
+      resumePropertyClip(): void {
+        const c = get();
+        if (c) c.isPropertyPlaying = true;
+      },
+
+      /**
+       * Seek the active property clip to a specific time.
+       * @param t  Time in seconds.
+       */
+      setPropertyTime(t: number): void {
+        const c = get();
+        if (c) c.propertyTime = t;
+      },
+
+      /** Set the playback speed multiplier for property clips. */
+      setPropertySpeed(v: number): void {
+        const c = get();
+        if (c) c.propertySpeed = v;
+      },
+
+      /** All property clips authored in the editor. */
+      get propertyClips(): readonly PropertyClip[] { return get()?.propertyClips ?? []; },
+
+      /** ID of the currently active property clip. */
+      get activePropertyClip(): string { return get()?.activePropertyClip ?? ''; },
+
+      /** Whether the property clip is currently playing. */
+      get isPropertyPlaying(): boolean { return get()?.isPropertyPlaying ?? false; },
+
+      /** Current playhead position of the active property clip in seconds. */
+      get propertyTime(): number { return get()?.propertyTime ?? 0; },
     };
   }
 

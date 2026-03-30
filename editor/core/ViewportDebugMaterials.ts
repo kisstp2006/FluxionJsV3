@@ -1,4 +1,4 @@
-// ============================================================
+/*  */// ============================================================
 // FluxionJS V3 — Viewport Debug Material Controller
 //
 // Design:
@@ -22,7 +22,7 @@ type StoredData = {
   onBefore: THREE.Object3D['onBeforeRender'];
 };
 const _stored = new Map<THREE.Mesh, StoredData>();
-let _activeRenderer: THREE.WebGLRenderer | null = null;
+let _activeScene: THREE.Scene | null = null;
 let _currentMode: ViewportShadingMode = 'lit';
 
 // ── Singleton shared materials (created once, reused) ────────
@@ -285,10 +285,10 @@ function _doRestore(): void {
   }
   _stored.clear();
 
-  if (_activeRenderer) {
-    (_activeRenderer as any).overrideMaterial = null;
+  if (_activeScene) {
+    _activeScene.overrideMaterial = null;
   }
-  _activeRenderer = null;
+  _activeScene = null;
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -304,8 +304,8 @@ export function applyDebugMode(
 
   if (mode === 'lit') return;
 
-  _activeRenderer = renderer;
-  (renderer as any).overrideMaterial = _getOverrideMat(mode);
+  _activeScene = scene as unknown as THREE.Scene;
+  _activeScene.overrideMaterial = _getOverrideMat(mode);
 
   if (!_needsCallbacks(mode)) return;
 

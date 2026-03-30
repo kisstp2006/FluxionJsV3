@@ -9,7 +9,7 @@ import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 // ── Types ──
 export type EditorTool = 'select' | 'move' | 'rotate' | 'scale';
 export type TransformSpace = 'local' | 'world';
-export type BottomTab = 'console' | 'assets' | 'profiler' | 'history';
+export type BottomTab = 'console' | 'assets' | 'profiler' | 'history' | 'timeline';
 
 export interface ConsoleEntry {
   text: string;
@@ -42,13 +42,24 @@ export interface DebugGroups {
   drawInPlayMode: boolean;
 }
 
+// ── Stats snapshot (used by UPDATE_STATS action) ──
+export interface EditorStats {
+  fps?: number;
+  entityCount?: number;
+  frameTime?: number;
+  drawCalls?: number;
+  triangles?: number;
+  textures?: number;
+  geometries?: number;
+  physicsBodies?: number;
+}
+
 export interface EditorState {
   selectedEntity: EntityId | null;
   selectedAsset: SelectedAsset | null;
   activeTool: EditorTool;
   transformSpace: TransformSpace;
   isPlaying: boolean;
-  isPaused: boolean;
   snapEnabled: boolean;
   snapConfig: SnapConfig;
   bottomTab: BottomTab;
@@ -98,7 +109,7 @@ export type EditorAction =
   | { type: 'SET_RIGHT_WIDTH'; width: number }
   | { type: 'SET_BOTTOM_HEIGHT'; height: number }
   | { type: 'SET_HIERARCHY_FILTER'; filter: string }
-  | { type: 'UPDATE_STATS'; stats: Partial<EditorState> }
+  | { type: 'UPDATE_STATS'; stats: EditorStats }
   | { type: 'LOAD_PROJECT'; path: string; name: string }
   | { type: 'CLOSE_PROJECT' }
   | { type: 'SET_SCENE_PATH'; path: string | null }
@@ -113,7 +124,6 @@ export const initialEditorState: EditorState = {
   activeTool: 'select',
   transformSpace: 'local',
   isPlaying: false,
-  isPaused: false,
   snapEnabled: false,
   snapConfig: {
     translationSnap: 1,
@@ -165,9 +175,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_TRANSFORM_SPACE':
       return { ...state, transformSpace: action.space };
     case 'TOGGLE_PLAY':
-      return { ...state, isPlaying: !state.isPlaying, isPaused: false };
+      return { ...state, isPlaying: !state.isPlaying };
     case 'STOP_PLAY':
-      return { ...state, isPlaying: false, isPaused: false };
+      return { ...state, isPlaying: false };
     case 'TOGGLE_SNAP':
       return { ...state, snapEnabled: !state.snapEnabled };
     case 'SET_SNAP_CONFIG':

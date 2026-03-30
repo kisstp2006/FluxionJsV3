@@ -33,6 +33,7 @@ import { ComponentRegistry } from '../../../../src/core/ComponentRegistry';
 import type { FieldMeta } from '../../../../src/core/ComponentDecorators';
 import { undoManager } from '../../../core/UndoService';
 import { setProperty, setColorProperty, markComponentDirty } from '../../../core/ComponentService';
+import { useTimeline } from '../../../core/TimelineContext';
 
 const RAD2DEG = 180 / Math.PI;
 const DEG2RAD = Math.PI / 180;
@@ -550,6 +551,22 @@ const EntityPickerWidget: React.FC<{
   );
 };
 
+// ── ◆ Keyframe insert button ──────────────────────────────────────────────────
+
+const KeyBtn: React.FC<{ title: string; onClick: () => void; label?: string }> = ({ title, onClick, label }) => (
+  <button
+    onClick={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }}
+    title={title}
+    style={{
+      background: 'none', border: 'none', cursor: 'pointer',
+      padding: '0 3px', fontSize: 11, color: '#ffd740',
+      lineHeight: 1, flexShrink: 0,
+    }}
+  >
+    ◆{label ? <span style={{ fontSize: 8, opacity: 0.7, marginLeft: 1 }}>{label}</span> : null}
+  </button>
+);
+
 // ── Single field renderer ─────────────────────────────────────────────────────
 
 interface AutoPropertyProps {
@@ -569,41 +586,58 @@ const AutoProperty = React.memo<AutoPropertyProps>(
     const [activeUnionType, setActiveUnionType] = useState<string>(
       field.unionTypes?.[0] ?? 'string',
     );
+    const tl = useTimeline();
+    const compType: string = (comp as any).typeId ?? '';
 
     switch (field.type) {
       case 'number':
         return (
           <PropertyRow label={label}>
-            <NumberInput
-              value={typeof value === 'number' ? value : 0}
-              step={field.step}
-              min={field.min}
-              max={field.max}
-              onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <NumberInput
+                  value={typeof value === 'number' ? value : 0}
+                  step={field.step}
+                  min={field.min}
+                  max={field.max}
+                  onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); if (tl.isRecording) tl.insertKeyframe(compType, field.key, v); }}
+                />
+              </div>
+              {tl.isActive && <KeyBtn title={`Key ${field.key}`} onClick={() => tl.insertKeyframe(compType, field.key, typeof value === 'number' ? value : 0)} />}
+            </div>
           </PropertyRow>
         );
 
       case 'slider':
         return (
           <PropertyRow label={label}>
-            <Slider
-              value={typeof value === 'number' ? value : 0}
-              min={field.min ?? 0}
-              max={field.max ?? 1}
-              step={field.step}
-              onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Slider
+                  value={typeof value === 'number' ? value : 0}
+                  min={field.min ?? 0}
+                  max={field.max ?? 1}
+                  step={field.step}
+                  onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); if (tl.isRecording) tl.insertKeyframe(compType, field.key, v); }}
+                />
+              </div>
+              {tl.isActive && <KeyBtn title={`Key ${field.key}`} onClick={() => tl.insertKeyframe(compType, field.key, typeof value === 'number' ? value : 0)} />}
+            </div>
           </PropertyRow>
         );
 
       case 'boolean':
         return (
           <PropertyRow label={label}>
-            <Checkbox
-              checked={!!value}
-              onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Checkbox
+                  checked={!!value}
+                  onChange={(v) => { setProperty(undoManager, comp, field.key, v); onUpdate(); if (tl.isRecording) tl.insertKeyframe(compType, field.key, v ? 1 : 0); }}
+                />
+              </div>
+              {tl.isActive && <KeyBtn title={`Key ${field.key}`} onClick={() => tl.insertKeyframe(compType, field.key, value ? 1 : 0)} />}
+            </div>
           </PropertyRow>
         );
 
@@ -632,10 +666,21 @@ const AutoProperty = React.memo<AutoPropertyProps>(
         if (!(value instanceof THREE.Color)) return null;
         return (
           <PropertyRow label={label}>
-            <ColorInput
-              value={`#${value.getHexString()}`}
-              onChange={(v) => { setColorProperty(undoManager, comp, field.key, v); onUpdate(); }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <ColorInput
+                  value={`#${value.getHexString()}`}
+                  onChange={(v) => { setColorProperty(undoManager, comp, field.key, v); onUpdate(); if (tl.isRecording) { tl.insertKeyframe(compType, `${field.key}.r`, value.r); tl.insertKeyframe(compType, `${field.key}.g`, value.g); tl.insertKeyframe(compType, `${field.key}.b`, value.b); } }}
+                />
+              </div>
+              {tl.isActive && (
+                <>
+                  <KeyBtn title={`Key ${field.key}.r`} label="r" onClick={() => tl.insertKeyframe(compType, `${field.key}.r`, value.r)} />
+                  <KeyBtn title={`Key ${field.key}.g`} label="g" onClick={() => tl.insertKeyframe(compType, `${field.key}.g`, value.g)} />
+                  <KeyBtn title={`Key ${field.key}.b`} label="b" onClick={() => tl.insertKeyframe(compType, `${field.key}.b`, value.b)} />
+                </>
+              )}
+            </div>
           </PropertyRow>
         );
       }
@@ -659,6 +704,7 @@ const AutoProperty = React.memo<AutoPropertyProps>(
                     }
                     markComponentDirty(comp, field.key);
                     onUpdate();
+                    if (tl.isRecording) { tl.insertKeyframe(compType, `${field.key}.x`, value.x); tl.insertKeyframe(compType, `${field.key}.y`, value.y); tl.insertKeyframe(compType, `${field.key}.z`, value.z); }
                   }}
                 />
                 <button
@@ -678,20 +724,31 @@ const AutoProperty = React.memo<AutoPropertyProps>(
                 >
                   {uniformLocked ? Icons.lock : Icons.unlock}
                 </button>
+                {tl.isActive && (['x', 'y', 'z'] as const).map(ax => (
+                  <KeyBtn key={ax} label={ax} title={`Key ${field.key}.${ax}`} onClick={() => tl.insertKeyframe(compType, `${field.key}.${ax}`, value[ax])} />
+                ))}
               </div>
             </PropertyRow>
           );
         }
         return (
           <PropertyRow label={label}>
-            <Vector3Input
-              value={value}
-              onChange={(axis, val) => {
-                (value as any)[axis] = val;
-                markComponentDirty(comp, field.key);
-                onUpdate();
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Vector3Input
+                  value={value}
+                  onChange={(axis, val) => {
+                    (value as any)[axis] = val;
+                    markComponentDirty(comp, field.key);
+                    onUpdate();
+                    if (tl.isRecording) tl.insertKeyframe(compType, `${field.key}.${axis}`, val);
+                  }}
+                />
+              </div>
+              {tl.isActive && (['x', 'y', 'z'] as const).map(ax => (
+                <KeyBtn key={ax} label={ax} title={`Key ${field.key}.${ax}`} onClick={() => tl.insertKeyframe(compType, `${field.key}.${ax}`, value[ax])} />
+              ))}
+            </div>
           </PropertyRow>
         );
       }
@@ -700,14 +757,22 @@ const AutoProperty = React.memo<AutoPropertyProps>(
         if (!(value instanceof THREE.Vector2)) return null;
         return (
           <PropertyRow label={label}>
-            <Vector2Input
-              value={value}
-              onChange={(axis, val) => {
-                (value as any)[axis] = val;
-                markComponentDirty(comp, field.key);
-                onUpdate();
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Vector2Input
+                  value={value}
+                  onChange={(axis, val) => {
+                    (value as any)[axis] = val;
+                    markComponentDirty(comp, field.key);
+                    onUpdate();
+                    if (tl.isRecording) tl.insertKeyframe(compType, `${field.key}.${axis}`, val);
+                  }}
+                />
+              </div>
+              {tl.isActive && (['x', 'y'] as const).map(ax => (
+                <KeyBtn key={ax} label={ax} title={`Key ${field.key}.${ax}`} onClick={() => tl.insertKeyframe(compType, `${field.key}.${ax}`, value[ax])} />
+              ))}
+            </div>
           </PropertyRow>
         );
       }
@@ -722,15 +787,23 @@ const AutoProperty = React.memo<AutoPropertyProps>(
         };
         return (
           <PropertyRow label={label}>
-            <Vector3Input
-              value={asDeg}
-              step={0.1}
-              onChange={(axis, deg) => {
-                (value as any)[axis] = deg * DEG2RAD;
-                markComponentDirty(comp, field.key);
-                onUpdate();
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Vector3Input
+                  value={asDeg}
+                  step={0.1}
+                  onChange={(axis, deg) => {
+                    (value as any)[axis] = deg * DEG2RAD;
+                    markComponentDirty(comp, field.key);
+                    onUpdate();
+                    if (tl.isRecording) tl.insertKeyframe(compType, `${field.key}.${axis}`, deg * DEG2RAD);
+                  }}
+                />
+              </div>
+              {tl.isActive && (['x', 'y', 'z'] as const).map(ax => (
+                <KeyBtn key={ax} label={ax} title={`Key ${field.key}.${ax} (rad)`} onClick={() => tl.insertKeyframe(compType, `${field.key}.${ax}`, value[ax])} />
+              ))}
+            </div>
           </PropertyRow>
         );
       }
@@ -742,6 +815,19 @@ const AutoProperty = React.memo<AutoPropertyProps>(
             <AssetInput
               value={value}
               assetType={field.assetType}
+              onChange={(v) => { setProperty(undoManager, comp, field.key, v || null); onUpdate(); }}
+            />
+          </PropertyRow>
+        );
+      }
+
+      case 'scene': {
+        return (
+          <PropertyRow label={label}>
+            <AssetInput
+              value={typeof value === 'string' ? value : (value as any)?.path ?? null}
+              assetType="scene"
+              placeholder="Select scene…"
               onChange={(v) => { setProperty(undoManager, comp, field.key, v || null); onUpdate(); }}
             />
           </PropertyRow>

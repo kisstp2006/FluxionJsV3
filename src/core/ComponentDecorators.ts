@@ -40,6 +40,7 @@ export type FieldType =
   | 'curve'     // AnimationCurve — array of CurveKeyframe { time, value, inTangent?, outTangent? }
   | 'gradient'  // color gradient — array of GradientStop { time, color: [r, g, b] }
   | 'entity'    // reference to another entity by numeric ID
+  | 'scene'     // reference to a .fluxscene file; renders AssetInput with assetType='scene'
   | 'button'    // inspector-only button; use onClick to specify the method name to call
   | 'header'    // decorative bold label; no property value
   | 'separator'; // decorative horizontal rule; no property value

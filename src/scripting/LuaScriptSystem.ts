@@ -17,6 +17,7 @@ import type { FluxionRenderer } from '../renderer/Renderer';
 import type { AudioSystem } from '../audio/AudioSystem';
 import { ScriptComponent, ScriptEntry } from '../core/Components';
 import { FluxionBehaviour } from './FluxionBehaviour';
+import { AnimationRef } from './AnimationRef';
 import { DebugConsole } from '../core/DebugConsole';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
@@ -132,7 +133,25 @@ export class LuaScriptSystem implements System {
   lateUpdate (_entities: Set<EntityId>, _ecs: ECSManager, _dt: number): void {}
 
   onSceneClear(): void {}
-  onSimulationStop(): void {}
+
+  /** Called when play mode stops — resets Lua script instances so onStart() re-arms next session. */
+  onSimulationStop(): void {
+    const ecs = this.engine.ecs;
+    for (const entity of ecs.getAllEntities()) {
+      const comp = ecs.getComponent<ScriptComponent>(entity, 'Script');
+      if (!comp) continue;
+      for (const [path, inst] of comp._instances) {
+        if (!path.endsWith('.lua') || !inst) continue;
+        if (Array.isArray(inst._cleanupFns)) {
+          for (const fn of inst._cleanupFns) { try { fn(); } catch {} }
+          inst._cleanupFns = [];
+        }
+        inst._coroutines?.clear();
+        inst._started = false;
+      }
+    }
+  }
+
   destroy(): void {}
 
   // ── Private ──────────────────────────────────────────────────
@@ -188,9 +207,11 @@ export class LuaScriptSystem implements System {
     lua.global.set('Mathf', LUA_MATHF);
 
     // ── Typed ref constructors (mirrors JS/TS API) ──────────────
-    // EntityRef(requireComponent?)  → {entity: null, requireComponent?}
-    // FuiRef/MaterialRef/TextureRef()  → default empty path string
+    // EntityRef(requireComponent?)      → {entity: null, requireComponent?}
+    // AnimationRef(path?, clip?)        → AnimationRef instance
+    // FuiRef/MaterialRef/TextureRef()   → default empty path string
     lua.global.set('EntityRef',   (req?: string) => ({ entity: null, requireComponent: req ?? undefined }));
+    lua.global.set('AnimationRef', (path?: string, clip?: string) => new AnimationRef(path ?? '', clip ?? ''));
     lua.global.set('FuiRef',      () => '');
     lua.global.set('MaterialRef', () => '');
     lua.global.set('TextureRef',  () => '');

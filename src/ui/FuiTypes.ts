@@ -9,13 +9,22 @@ export type FuiAnchor =
 /** How the UI canvas scales relative to the actual screen in screen-space mode. */
 export type FuiScaleMode = 'constantPixelSize' | 'scaleWithScreenSize';
 
-export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
+export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
 
 /** How a button visually responds to interaction. */
 export type FuiTransition = 'none' | 'colorTint';
 
 /** Gamepad/keyboard navigation mode. */
 export type FuiNavigation = 'none' | 'automatic' | 'horizontal' | 'vertical' | 'explicit';
+
+/** Per-state text color block for the button label. */
+export interface FuiTextColorBlock {
+  normalColor?:      string;
+  highlightedColor?: string;
+  pressedColor?:     string;
+  selectedColor?:    string;
+  disabledColor?:    string;
+}
 
 /** Unity-style color block used by the colorTint transition. */
 export interface FuiColorBlock {
@@ -65,6 +74,7 @@ export interface FuiLabelNode extends FuiBaseNode {
   style?: {
     color?: string;
     fontSize?: number;
+    fontFamily?: string;
     align?: FuiAlign;
     opacity?: number; // 0–1
   };
@@ -75,8 +85,12 @@ export interface FuiButtonStyle {
   borderColor?: string;
   borderWidth?: number;
   radius?: number;
+  /** Base/fallback text colour. Use `textColors` for per-state control. */
   textColor?: string;
+  /** Per-state text colours (normal / highlighted / pressed / selected / disabled). */
+  textColors?: FuiTextColorBlock;
   fontSize?: number;
+  fontFamily?: string;
   align?: FuiAlign;
   padding?: number;
   opacity?: number;   // 0–1
@@ -91,6 +105,10 @@ export interface FuiButtonNode extends FuiBaseNode {
   text?: string;
   /** Project-relative path to an SVG icon shown to the left of the text. */
   icon?: string;
+  /** Project-relative path to a raster image (PNG / JPG / WebP) used as the button background. */
+  image?: string;
+  /** How the background image fills the button rect. Default: 'fill'. */
+  imageFit?: 'contain' | 'cover' | 'fill';
   /** Tooltip text shown when hovering the button. */
   tooltip?: string;
   /** CSS cursor applied when hovering. Default: 'pointer'. */
@@ -112,6 +130,25 @@ export interface FuiButtonNode extends FuiBaseNode {
   activeStyle?: Partial<FuiButtonStyle> & { scale?: number };
   /** Style overrides applied when `disabled` is true. Defaults to opacity 0.4. */
   disabledStyle?: Partial<FuiButtonStyle>;
+}
+
+export interface FuiImageNode extends FuiBaseNode {
+  type: 'image';
+  /** Project-relative path to a raster image (PNG / JPG / WebP / SVG). */
+  src?: string;
+  style?: {
+    opacity?: number;
+    /**
+     * How the image fills its rect. Default: `'contain'`.
+     * - `'contain'` — scale uniformly so the image fits inside the rect.
+     * - `'cover'`   — scale uniformly so the image covers the entire rect.
+     * - `'fill'`    — stretch to exactly fill width and height.
+     */
+    fit?: 'contain' | 'cover' | 'fill';
+    /** Optional background/matte colour visible in letterbox areas. */
+    backgroundColor?: string;
+    radius?: number;
+  };
 }
 
 export interface FuiIconNode extends FuiBaseNode {
@@ -152,6 +189,7 @@ export interface FuiToggleNode extends FuiBaseNode {
     checkColor?: string;
     textColor?: string;
     fontSize?: number;
+    fontFamily?: string;
     opacity?: number;
   };
 }
@@ -202,11 +240,12 @@ export interface FuiInputFieldNode extends FuiBaseNode {
     textColor?: string;
     placeholderColor?: string;
     fontSize?: number;
+    fontFamily?: string;
     opacity?: number;
   };
 }
 
-export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiIconNode | FuiToggleNode | FuiSliderNode | FuiProgressBarNode | FuiInputFieldNode;
+export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiImageNode | FuiIconNode | FuiToggleNode | FuiSliderNode | FuiProgressBarNode | FuiInputFieldNode;
 
 // ── Animation ──
 

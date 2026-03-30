@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { cloneSkinnedScene } from '../assets/SkinnedMeshUtils';
 import { DebugConsole } from '../core/DebugConsole';
 import { EntityId } from '../core/ECS';
 import {
@@ -1046,7 +1047,7 @@ async function loadDeferredFluxMesh(
 
     const assets = engine.getSubsystem('assets') as AssetManager;
     const result: FluxMeshLoadResult = await assets.loadFluxMesh(loadPath);
-    const scene = result.scene.clone();
+    const scene = cloneSkinnedScene(result.scene);
     scene.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = meshComp.castShadow;
@@ -1131,7 +1132,7 @@ async function loadDeferredModel(
     const fileUrl = loadPath.startsWith('file://') ? loadPath : `file:///${loadPath.replace(/\\/g, '/')}`;
     const assets = engine.getSubsystem('assets') as AssetManager;
     const gltf = await assets.loadModel(fileUrl);
-    const scene = gltf.scene.clone();
+    const scene = cloneSkinnedScene(gltf.scene);
     scene.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = meshComp.castShadow;

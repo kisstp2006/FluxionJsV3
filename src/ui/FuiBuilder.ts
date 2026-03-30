@@ -12,9 +12,9 @@
 // ============================================================
 
 import type {
-  FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode,
+  FuiDocument, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode, FuiImageNode,
   FuiToggleNode, FuiSliderNode, FuiProgressBarNode, FuiInputFieldNode,
-  FuiAnimation, FuiAnimatableProperty, FuiAlign, FuiTransition, FuiNavigation, FuiColorBlock,
+  FuiAnimation, FuiAnimatableProperty, FuiAlign, FuiTransition, FuiNavigation, FuiColorBlock, FuiTextColorBlock,
 } from './FuiTypes';
 
 // ── Option types ──────────────────────────────────────────────
@@ -32,6 +32,7 @@ export interface FuiPanelOpts {
 export interface FuiLabelOpts {
   color?: string;
   fontSize?: number;
+  font?: string;
   align?: FuiAlign;
   opacity?: number;
   parent?: string;
@@ -42,13 +43,20 @@ export interface FuiButtonOpts {
   border?: string;
   borderWidth?: number;
   textColor?: string;
+  /** Per-state text colours. Overrides `textColor` per-state when set. */
+  textColors?: FuiTextColorBlock;
   fontSize?: number;
+  font?: string;
   radius?: number;
   padding?: number;
   opacity?: number;
   disabled?: boolean;
   tooltip?: string;
   icon?: string;
+  /** Project-relative path to a raster image used as the button background. */
+  image?: string;
+  /** How the background image fills the button rect. Default: 'fill'. */
+  imageFit?: 'contain' | 'cover' | 'fill';
   clickAnimation?: 'none' | 'scale' | 'flash';
   transition?: FuiTransition;
   colors?: FuiColorBlock;
@@ -65,6 +73,7 @@ export interface FuiToggleOpts {
   checkColor?: string;
   textColor?: string;
   fontSize?: number;
+  font?: string;
   opacity?: number;
   navigation?: FuiNavigation;
   parent?: string;
@@ -107,8 +116,22 @@ export interface FuiInputFieldOpts {
   textColor?: string;
   placeholderColor?: string;
   fontSize?: number;
+  font?: string;
   opacity?: number;
   navigation?: FuiNavigation;
+  parent?: string;
+}
+
+export interface FuiImageOpts {
+  opacity?: number;
+  /**
+   * How the image fills its rect. Default: `'contain'`.
+   */
+  fit?: 'contain' | 'cover' | 'fill';
+  /** Background/matte colour visible in letterbox areas. */
+  bg?: string;
+  radius?: number;
+  /** Parent node ID. Defaults to the root panel. */
   parent?: string;
 }
 
@@ -210,11 +233,12 @@ export class FuiBuilder {
       id,
       rect: { x, y, w, h },
       text,
-      style: (opts.color || opts.fontSize !== undefined ||
+      style: (opts.color || opts.fontSize !== undefined || opts.font ||
               opts.align || opts.opacity !== undefined)
         ? {
             color: opts.color,
             fontSize: opts.fontSize,
+            fontFamily: opts.font,
             align: opts.align,
             opacity: opts.opacity,
           }
@@ -243,6 +267,8 @@ export class FuiBuilder {
       ...(opts.disabled !== undefined ? { disabled: opts.disabled } : {}),
       ...(opts.tooltip   ? { tooltip: opts.tooltip }     : {}),
       ...(opts.icon      ? { icon:    opts.icon }        : {}),
+      ...(opts.image     ? { image:   opts.image }        : {}),
+      ...(opts.imageFit  ? { imageFit: opts.imageFit }    : {}),
       ...(opts.clickAnimation ? { clickAnimation: opts.clickAnimation } : {}),
       ...(opts.transition ? { transition: opts.transition } : {}),
       ...(opts.colors     ? { colors:     opts.colors }     : {}),
@@ -252,7 +278,9 @@ export class FuiBuilder {
         borderColor: opts.border,
         borderWidth: opts.borderWidth,
         textColor: opts.textColor,
+        textColors: opts.textColors,
         fontSize: opts.fontSize,
+        fontFamily: opts.font,
         radius: opts.radius,
         padding: opts.padding,
         opacity: opts.opacity,
@@ -280,7 +308,7 @@ export class FuiBuilder {
       style: {
         backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
         radius: opts.radius, checkColor: opts.checkColor, textColor: opts.textColor,
-        fontSize: opts.fontSize, opacity: opts.opacity,
+        fontSize: opts.fontSize, fontFamily: opts.font, opacity: opts.opacity,
       },
     };
     this._nodeMap.set(id, node);
@@ -357,8 +385,33 @@ export class FuiBuilder {
       style: {
         backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
         radius: opts.radius, textColor: opts.textColor, placeholderColor: opts.placeholderColor,
-        fontSize: opts.fontSize, opacity: opts.opacity,
+        fontSize: opts.fontSize, fontFamily: opts.font, opacity: opts.opacity,
       },
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add a raster image node (PNG / JPG / WebP / SVG without tinting).
+   * @example
+   *   builder.image('hero_bg', 0, 0, 400, 300, 'Assets/UI/hero.png', { fit: 'cover' })
+   */
+  image(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    src: string,
+    opts: FuiImageOpts = {},
+  ): this {
+    const node: FuiImageNode = {
+      type: 'image',
+      id,
+      rect: { x, y, w, h },
+      src,
+      style: (opts.opacity !== undefined || opts.fit || opts.bg || opts.radius !== undefined)
+        ? { opacity: opts.opacity, fit: opts.fit, backgroundColor: opts.bg, radius: opts.radius }
+        : undefined,
     };
     this._nodeMap.set(id, node);
     this._nodeParent.set(id, opts.parent ?? '__root__');

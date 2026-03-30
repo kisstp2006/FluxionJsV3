@@ -1,4 +1,4 @@
-import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiImageNode, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
 
 const ANIMATABLE_PROPS = new Set<string>(['x', 'y', 'w', 'h', 'opacity', 'fontSize', 'borderWidth']);
 
@@ -83,9 +83,11 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         type: 'button',
         rect,
         text: typeof node?.text === 'string' ? node.text : 'Button',
-        icon: typeof node?.icon === 'string' ? node.icon : undefined,
-        tooltip: typeof node?.tooltip === 'string' ? node.tooltip : undefined,
-        disabled: node?.disabled === true,
+        icon:      typeof node?.icon  === 'string' ? node.icon  : undefined,
+        image:     typeof node?.image  === 'string' ? node.image : undefined,
+        imageFit:  ['contain','cover','fill'].includes(node?.imageFit) ? node.imageFit : undefined,
+        tooltip:   typeof node?.tooltip === 'string' ? node.tooltip : undefined,
+        disabled:  node?.disabled === true,
         clickAnimation: ['none','scale','flash'].includes(node?.clickAnimation) ? node.clickAnimation : undefined,
         transition: TRANSITIONS.includes(node?.transition) ? node.transition : undefined,
         colors: isRecord(node?.colors) ? node.colors : undefined,
@@ -130,6 +132,16 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         direction: node?.direction === 'vertical' ? 'vertical' : 'horizontal',
         style: isRecord(node?.style) ? node.style : undefined,
       };
+    }
+    case 'image': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 200 };
+      const rect = ensureRect(node?.rect, fallback);
+      const img: FuiImageNode = {
+        id, type: 'image', rect,
+        src: typeof node?.src === 'string' ? node.src : undefined,
+        style: isRecord(node?.style) ? node.style : undefined,
+      };
+      return img;
     }
     case 'inputField': {
       const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 36 };

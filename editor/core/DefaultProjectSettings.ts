@@ -47,8 +47,8 @@ const generalSettings: SettingDescriptor[] = [
   {
     key: 'project.defaultScene',
     label: 'Default Scene',
-    description: 'Relative path to the scene loaded on startup.',
-    type: 'string',
+    description: 'Scene loaded on startup.',
+    type: 'scene',
     defaultValue: 'Scenes/Main.fluxscene',
     category: 'General',
     order: 3,

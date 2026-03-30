@@ -12,6 +12,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { TGALoader } from 'three/examples/jsm/loaders/TGALoader.js';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
 import type { FluxMeshData, FluxMeshLoadResult } from './FluxMeshData';
+import { cloneSkinnedScene } from './SkinnedMeshUtils';
 
 /** Unified model result — all formats return { scene: THREE.Group } */
 export interface ModelResult {
@@ -275,7 +276,7 @@ export class AssetManager {
 
       // Load the actual 3D model
       const modelResult = await this.loadModel(modelUrl);
-      const scene = modelResult.scene.clone();
+      const scene = cloneSkinnedScene(modelResult.scene);
       if (data.importScale && data.importScale !== 1) scene.scale.setScalar(data.importScale);
 
       // Resolve defaultMaterial paths relative to .fluxmesh directory

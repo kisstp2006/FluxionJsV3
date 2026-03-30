@@ -11,6 +11,7 @@ import { ConsolePanel } from '../panels/ConsolePanel';
 import { AssetBrowserPanel } from '../panels/AssetBrowserPanel';
 import { ProfilerPanel } from '../panels/ProfilerPanel';
 import { UndoHistoryPanel } from '../panels/UndoHistoryPanel';
+import { EntityTimeline } from '../panels/EntityTimeline';
 
 export const BottomPanel: React.FC = () => {
   const { state, dispatch } = useEditor();
@@ -20,6 +21,7 @@ export const BottomPanel: React.FC = () => {
     assets: <AssetBrowserPanel />,
     profiler: <ProfilerPanel />,
     history: <UndoHistoryPanel />,
+    timeline: <EntityTimeline />,
   };
 
   const TAB_LABELS: Record<BottomTab, string> = {
@@ -27,6 +29,7 @@ export const BottomPanel: React.FC = () => {
     assets: 'Assets',
     profiler: 'Profiler',
     history: 'History',
+    timeline: 'Timeline',
   };
 
   const TABS: TabItem[] = [
@@ -34,6 +37,7 @@ export const BottomPanel: React.FC = () => {
     { label: 'Assets',   icon: Icons.folder },
     { label: 'Profiler', icon: Icons.activity },
     { label: 'History',  icon: Icons.clock },
+    { label: 'Timeline', icon: Icons.activity },
   ];
 
   return (

@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { cloneSkinnedScene } from '../assets/SkinnedMeshUtils';
 import { EntityId } from '../core/ECS';
 import { EngineEvents } from '../core/EventSystem';
 import {
@@ -242,7 +243,7 @@ export class Scene {
       if (modelPath.endsWith('.fluxmesh')) {
         // .fluxmesh — load with multi-material support
         const result = await assets.loadFluxMesh(loadPath!);
-        const scene = result.scene.clone();
+        const scene = cloneSkinnedScene(result.scene);
         scene.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh) {
             child.castShadow = meshComp.castShadow;
@@ -292,7 +293,7 @@ export class Scene {
         // Raw model — legacy flow
         const fileUrl = loadPath!.startsWith('file://') ? loadPath! : `file:///${loadPath!.replace(/\\/g, '/')}`;
         const gltf = await assets.loadModel(fileUrl);
-        const scene = gltf.scene.clone();
+        const scene = cloneSkinnedScene(gltf.scene);
         scene.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh) {
             child.castShadow = meshComp.castShadow;

@@ -108,11 +108,9 @@ function applyAll(sys: EngineSubsystems): void {
   const scriptSys = sys.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
   if (scriptSys) scriptSys.updateTimeout = proj<number>('scripting.runtime.timeout');
 
-  // ── Gizmos (from Editor Settings) ──
-  sys.gizmoService.setTranslationSnap(ed<number>('editor.gizmos.snapTranslation'));
-  sys.gizmoService.setRotationSnap(THREE.MathUtils.degToRad(ed<number>('editor.gizmos.snapRotation')));
-  sys.gizmoService.setScaleSnap(ed<number>('editor.gizmos.snapScale'));
 }
+// Note: snap values (snapTranslation/snapRotation/snapScale) are intentionally
+// NOT applied here — Viewport's useEffect owns snap enable/disable via state.snapEnabled.
 
 /** Apply a single changed editor setting to the engine. */
 function applyEditorSetting(sys: EngineSubsystems, key: string, value: unknown): void {
@@ -155,16 +153,9 @@ function applyEditorSetting(sys: EngineSubsystems, key: string, value: unknown):
       break;
 
     // ── Gizmos ──
+    // snap value cases (snapTranslation/snapRotation/snapScale) are omitted:
+    // Viewport's useEffect re-applies them when state.snapEnabled or state.snapConfig changes.
     case 'editor.gizmos.size':
-      break;
-    case 'editor.gizmos.snapTranslation':
-      sys.gizmoService.setTranslationSnap(value as number);
-      break;
-    case 'editor.gizmos.snapRotation':
-      sys.gizmoService.setRotationSnap(THREE.MathUtils.degToRad(value as number));
-      break;
-    case 'editor.gizmos.snapScale':
-      sys.gizmoService.setScaleSnap(value as number);
       break;
   }
 }

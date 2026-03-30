@@ -7,6 +7,7 @@ export { TextInput } from './inputs/TextInput';
 export { Vector2Input } from './inputs/Vector2Input';
 export { Vector3Input } from './inputs/Vector3Input';
 export { ColorInput } from './inputs/ColorInput';
+export { ColorInputAlpha } from './inputs/ColorInputAlpha';
 export { Slider } from './inputs/Slider';
 export { Checkbox } from './inputs/Checkbox';
 export { Select } from './inputs/Select';

@@ -76,6 +76,11 @@ export const EngineProvider: React.FC<EngineProviderProps> = ({ children, canvas
       setSubsystems(sys);
       onReady?.(sys);
     });
+
+    return () => {
+      initialized.current = false;
+      setSubsystems(null);
+    };
   }, [canvas]);
 
   return (

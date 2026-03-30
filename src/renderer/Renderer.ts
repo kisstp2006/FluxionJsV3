@@ -9,6 +9,7 @@ import { Engine } from '../core/Engine';
 import { projectManager } from '../project/ProjectManager';
 import { ECSManager, EntityId, System, clearDirty, isDirty } from '../core/ECS';
 import { TransformSystem } from '../core/TransformSystem';
+import { PropertyAnimatorSystem } from '../core/PropertyAnimatorSystem';
 import { EngineEvents } from '../core/EventSystem';
 import {
   TransformComponent,
@@ -127,6 +128,7 @@ export class FluxionRenderer {
     engine.ecs.addSystem(new TransformSyncSystem(this));
     engine.ecs.addSystem(new MeshRendererSystem(this));
     engine.ecs.addSystem(new AnimationSystem(this));
+    engine.ecs.addSystem(new PropertyAnimatorSystem());
     engine.ecs.addSystem(new SpriteRendererSystem(this));
     engine.ecs.addSystem(new SpriteReactiveSystem(this));
     engine.ecs.addSystem(new TextRendererSystem(this));

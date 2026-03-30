@@ -19,8 +19,7 @@ export interface ViewportProps {
 
 /** Find the entity with the main camera in the scene. */
 function findMainCamera(engine: NonNullable<ReturnType<typeof useEngine>>): CameraComponent | null {
-  const allEntities = engine.engine.ecs.getAllEntities();
-  for (const eid of allEntities) {
+  for (const eid of engine.engine.ecs.query('Camera')) {
     const cam = engine.engine.ecs.getComponent<CameraComponent>(eid, 'Camera');
     if (cam && cam.isMain && cam.enabled) return cam;
   }
@@ -41,6 +40,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
   const wasDraggingRef = useRef(false);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewRTRef = useRef<THREE.WebGLRenderTarget | null>(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
 
   const isGameView = state.viewportTab === 'Game';
 
@@ -180,7 +180,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     );
 
-    const raycaster = new THREE.Raycaster();
+    const raycaster = raycasterRef.current;
     raycaster.setFromCamera(mouse, engine.editorCamera);
     const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
 
@@ -379,32 +379,6 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     engine.orbitControls.update();
   }, [engine]);
 
-  // Right-click context menu on viewport — only if the mouse didn't move (camera orbit)
-  const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    if (rightDraggedRef.current) return;
-    if (!engine || !canvasRef.current) return;
-
-    // Raycast to find world position for "Add entity at position"
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, engine.editorCamera);
-    const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
-
-    let worldPos = new THREE.Vector3(0, 0, 0);
-    for (const hit of intersects) {
-      if (hit.object.type === 'LineSegments') continue;
-      worldPos = hit.point.clone();
-      break;
-    }
-
-    setVpContextMenu({ pos: { x: e.clientX, y: e.clientY }, worldPos });
-  }, [engine]);
-
   // ── Unified asset drag-and-drop from Asset Browser ──
   const [isAssetDragOver, setIsAssetDragOver] = useState(false);
   const [_dropLabel, setDropLabel] = useState<string | null>(null);
@@ -419,7 +393,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     );
-    const raycaster = new THREE.Raycaster();
+    const raycaster = raycasterRef.current;
     raycaster.setFromCamera(mouse, engine.editorCamera);
     const intersects = raycaster.intersectObjects(engine.renderer.scene.children, true);
 
@@ -438,6 +412,16 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
 
     return result;
   }, [engine]);
+
+  // Right-click context menu on viewport — only if the mouse didn't move (camera orbit)
+  const handleRightClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (rightDraggedRef.current) return;
+    if (!engine || !canvasRef.current) return;
+
+    const hit = raycastFromEvent(e);
+    setVpContextMenu({ pos: { x: e.clientX, y: e.clientY }, worldPos: hit.worldPos });
+  }, [engine, raycastFromEvent]);
 
   const handleAssetDragOver = useCallback((e: React.DragEvent) => {
     if (isGameView) return;

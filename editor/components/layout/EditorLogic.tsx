@@ -14,8 +14,16 @@ import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
 import { ScriptSystem } from '../../../src/scripting/ScriptSystem';
+import { LuaScriptSystem } from '../../../src/scripting/LuaScriptSystem';
 import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
 import { ComponentIconSystem } from '../../core/ComponentIconSystem';
+import { projectManager } from '../../../src/project/ProjectManager';
+import { getFileSystem } from '../../../src/filesystem';
+import { markDirty } from '../../../src/core/ECS';
+import { invalidateScript } from '../../../src/scripting/ScriptCompiler';
+import { applyMaterialsToModel } from '../../../src/assets/FluxMeshData';
+import { MetaRegistry } from '../../../src/meta/MetaRegistry';
+import { ApiEmitter } from '../../../src/meta/ApiEmitter';
 
 // ── Keyboard shortcut handler ──
 export const KeyboardHandler: React.FC = () => {
@@ -299,8 +307,10 @@ export const SimulationSync: React.FC = () => {
       particleSys?.clearAllParticles();
 
       // Reset scripts: clear coroutines + re-arm onStart() for next play session
-      const scriptSys = engine.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
+      const scriptSys    = engine.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
+      const luaScriptSys = engine.engine.ecs.getSystem<LuaScriptSystem>('LuaScriptSystem');
       scriptSys?.onSimulationStop();
+      luaScriptSys?.onSimulationStop();
 
       // Restore scene to pre-play snapshot
       if (sceneSnapshot.current) {
@@ -423,7 +433,6 @@ export const AssetHotReload: React.FC = () => {
 
     const resolveRelPath = async (absPath: string): Promise<string | null> => {
       try {
-        const { projectManager } = await import('../../../src/project/ProjectManager');
         return projectManager.relativePath(absPath);
       } catch { return null; }
     };
@@ -436,10 +445,9 @@ export const AssetHotReload: React.FC = () => {
         } else {
           texAbsPath = `${matDir}/${texRelPath}`;
           try {
-            const { projectManager: pm } = await import('../../../src/project/ProjectManager');
-            const { getFileSystem: getFs } = await import('../../../src/filesystem');
-            const projResolved = pm.resolvePath(texRelPath);
-            if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
+            const projResolved = projectManager.resolvePath(texRelPath);
+            const fs = getFileSystem();
+            if (!(await fs.exists(texAbsPath)) && await fs.exists(projResolved)) texAbsPath = projResolved;
           } catch {}
         }
         const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
@@ -503,8 +511,6 @@ export const AssetHotReload: React.FC = () => {
         let fluxSlots: any[] | null = null;
 
         try {
-          const { projectManager } = await import('../../../src/project/ProjectManager');
-          const { getFileSystem } = await import('../../../src/filesystem');
           const fs = getFileSystem();
           const absFluxmesh = norm(projectManager.resolvePath(mr.modelPath));
           const fluxmeshDir = absFluxmesh.substring(0, absFluxmesh.lastIndexOf('/'));
@@ -527,8 +533,7 @@ export const AssetHotReload: React.FC = () => {
             const oPath = norm(override.materialPath || '');
             let oAbs: string | null = null;
             try {
-              const { projectManager: pm } = await import('../../../src/project/ProjectManager');
-              oAbs = norm(pm.resolvePath(override.materialPath));
+              oAbs = norm(projectManager.resolvePath(override.materialPath));
             } catch {}
             if (oPath === nChanged || oPath === nRel || oAbs === nChanged) slotsToUpdate.push(idx);
           } else {
@@ -541,7 +546,6 @@ export const AssetHotReload: React.FC = () => {
 
         const mat = await createMaterial();
         if (mat) {
-          const { applyMaterialsToModel } = await import('../../../src/assets/FluxMeshData');
           for (const slotIdx of slotsToUpdate) {
             const slot = fluxSlots[slotIdx];
             if (slot) applyMaterialsToModel(mr.mesh, [slot], [mat]);
@@ -672,20 +676,12 @@ export const AssetHotReload: React.FC = () => {
       }
     };
 
-    // ── Model / mesh reload: cache invalidation only ──
+    // ── Model / mesh / audio reload: cache invalidation only ──
     // MeshRendererSystem does NOT re-create meshes when mr.mesh is null,
     // so we must not destroy existing meshes. Just invalidate the cache
     // so the next scene load picks up the changes.
 
-    const reloadModel = async (changedPath: string) => {
-      const { assets } = getSubsystems();
-      if (!assets) return;
-      assets.invalidateCache(changedPath);
-    };
-
-    // ── Audio reload: invalidate cache only ──
-
-    const reloadAudio = async (changedPath: string) => {
+    const reloadCacheOnly = async (changedPath: string) => {
       const { assets } = getSubsystems();
       if (!assets) return;
       assets.invalidateCache(changedPath);
@@ -697,8 +693,6 @@ export const AssetHotReload: React.FC = () => {
       const { ecs } = getSubsystems();
       if (!ecs) return;
       const nChanged = norm(changedPath);
-      const { invalidateScript } = await import('../../../src/scripting/ScriptCompiler');
-      const { projectManager } = await import('../../../src/project/ProjectManager');
       invalidateScript(changedPath);
       const scriptComps = ecs.getComponentsOfType<any>('Script');
       for (const [, comp] of scriptComps) {
@@ -715,8 +709,6 @@ export const AssetHotReload: React.FC = () => {
 
       // Regenerate IDE API files so the changed script's type info is up to date
       try {
-        const { MetaRegistry } = await import('../../../src/meta/MetaRegistry');
-        const { ApiEmitter }   = await import('../../../src/meta/ApiEmitter');
         if (projectManager.projectDir) {
           await MetaRegistry.refreshScriptFile(changedPath);
           await ApiEmitter.emit(projectManager.projectDir);
@@ -731,8 +723,6 @@ export const AssetHotReload: React.FC = () => {
       const { ecs } = getSubsystems();
       if (!ecs) return;
       const nChanged = norm(changedPath);
-      const { markDirty } = await import('../../../src/core/ECS');
-      const { projectManager } = await import('../../../src/project/ProjectManager');
       const fuiComps = ecs.getComponentsOfType<any>('Fui');
       for (const [, comp] of fuiComps) {
         if (!comp.fuiPath) continue;
@@ -765,9 +755,6 @@ export const AssetHotReload: React.FC = () => {
       if (eventType === 'delete') {
         if (assetType === 'script') {
           try {
-            const { MetaRegistry } = await import('../../../src/meta/MetaRegistry');
-            const { ApiEmitter }   = await import('../../../src/meta/ApiEmitter');
-            const { projectManager } = await import('../../../src/project/ProjectManager');
             MetaRegistry.removeScriptFile(path);
             if (projectManager.projectDir) {
               await ApiEmitter.emit(projectManager.projectDir);
@@ -790,10 +777,8 @@ export const AssetHotReload: React.FC = () => {
           break;
         case 'model':
         case 'mesh':
-          await reloadModel(path);
-          break;
         case 'audio':
-          await reloadAudio(path);
+          await reloadCacheOnly(path);
           break;
         case 'fui':
           await reloadFui(path);
@@ -938,12 +923,13 @@ export const ParticleGizmoSync: React.FC = () => {
 // ── Component billboard icon sync ──
 export const ComponentIconSync: React.FC = () => {
   const engine = useEngine();
+  const systemRef = useRef<ComponentIconSystem | null>(null);
 
   useEffect(() => {
     if (!engine) return;
 
     const system = new ComponentIconSystem(engine.renderer.scene);
-    engine.componentIconSystem = system;
+    systemRef.current = system;
 
     const handler = () => {
       system.update(
@@ -958,7 +944,7 @@ export const ComponentIconSync: React.FC = () => {
     return () => {
       engine.engine.events.off('engine:update', handler);
       system.dispose();
-      engine.componentIconSystem = null;
+      systemRef.current = null;
     };
   }, [engine]);
 

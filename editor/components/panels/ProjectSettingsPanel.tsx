@@ -20,6 +20,7 @@ import {
   Slider,
   ColorInput,
   TextInput,
+  AssetInput,
   Tooltip,
   Icons,
 } from '../../ui';
@@ -64,6 +65,15 @@ const SettingInput: React.FC<{
       );
     case 'color':
       return <ColorInput value={value as string} onChange={onChange} />;
+    case 'scene':
+      return (
+        <AssetInput
+          value={value as string || null}
+          assetType="scene"
+          placeholder="Select scene…"
+          onChange={(v) => onChange(v || '')}
+        />
+      );
     case 'string':
     default:
       return <TextInput value={String(value ?? '')} onChange={onChange} />;

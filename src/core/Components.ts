@@ -9,6 +9,7 @@ import { BaseComponent } from './BaseComponent';
 import { component, field } from './ComponentDecorators';
 import type { DeserializationContext } from './SerializationContext';
 import { AnimationRef } from '../scripting/AnimationRef';
+import type { PropertyClip } from './PropertyAnimationTypes';
 
 // ── Transform ────────────────────────────────────────────────────────────────
 
@@ -1062,10 +1063,33 @@ export class AnimationComponent extends BaseComponent {
    */
   clipRef: AnimationRef | null = null;
 
+  // ── Property Animation (keyframe clips for component properties) ──────────
+
+  /** All authored property clips for this entity. Serialized. */
+  propertyClips: PropertyClip[] = [];
+
+  /** ID of the clip that is currently active (runtime + editor). */
+  activePropertyClip: string = '';
+
+  /** Playback cursor for the active property clip (seconds). Runtime only. */
+  propertyTime: number = 0;
+
+  /** Whether the property animator is currently playing. Runtime only. */
+  isPropertyPlaying: boolean = false;
+
+  /** Playback speed multiplier for property clips. */
+  propertySpeed: number = 1;
+
   override serialize(): Record<string, any> {
     const out = super.serialize();
     if (this.clipRef) {
       out.clipRef = { path: this.clipRef.path, clip: this.clipRef.clip };
+    }
+    if (this.propertyClips.length > 0) {
+      out.propertyClips = this.propertyClips;
+    }
+    if (this.activePropertyClip) {
+      out.activePropertyClip = this.activePropertyClip;
     }
     return out;
   }
@@ -1077,6 +1101,12 @@ export class AnimationComponent extends BaseComponent {
         typeof data.clipRef.path === 'string' ? data.clipRef.path : '',
         typeof data.clipRef.clip === 'string' ? data.clipRef.clip : '',
       );
+    }
+    if (Array.isArray(data.propertyClips)) {
+      this.propertyClips = data.propertyClips as PropertyClip[];
+    }
+    if (typeof data.activePropertyClip === 'string') {
+      this.activePropertyClip = data.activePropertyClip;
     }
   }
 }

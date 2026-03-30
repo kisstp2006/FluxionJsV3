@@ -9,7 +9,7 @@ import React from 'react';
 
 // ── Setting Types ──
 
-export type SettingType = 'boolean' | 'number' | 'string' | 'select' | 'slider' | 'color';
+export type SettingType = 'boolean' | 'number' | 'string' | 'select' | 'slider' | 'color' | 'scene';
 
 export interface SettingDescriptor<T = unknown> {
   /** Unique dot-separated key, e.g. "renderer.shadows.enabled" */

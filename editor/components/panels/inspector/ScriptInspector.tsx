@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PropertyRow, NumberInput, Checkbox, AssetInput, Icons } from '../../../ui';
+import { PropertyRow, NumberInput, Checkbox, AssetInput, ColorInput, Icons } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
@@ -16,6 +16,8 @@ import { compileScript } from '../../../../src/scripting/ScriptCompiler';
 import { FuiRef } from '../../../../src/scripting/FuiRef';
 import { MaterialRef } from '../../../../src/scripting/MaterialRef';
 import { TextureRef } from '../../../../src/scripting/TextureRef';
+import { SceneRef } from '../../../../src/scripting/SceneRef';
+import { ColorRef } from '../../../../src/scripting/ColorRef';
 import { ComponentSection } from './ComponentSection';
 import { ComponentInspectorRegistry } from '../../../core/ComponentInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
@@ -34,8 +36,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'console', compiledJs)(
-      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'SceneRef', 'ColorRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, SceneRef, ColorRef, console,
     );
   } catch {
     return null;
@@ -43,7 +45,7 @@ function loadScriptClass(compiledJs: string): any {
   return mod.default;
 }
 
-type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture';
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture' | 'scene' | 'color';
 
 interface ScriptProp {
   key: string;
@@ -99,6 +101,24 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
           type: 'texture',
           default: raw,
           value: { path },
+        });
+      } else if (raw instanceof SceneRef) {
+        const override = overrides[k];
+        const path = typeof override?.path === 'string' ? override.path : raw.path;
+        props.push({
+          key: k,
+          type: 'scene',
+          default: raw,
+          value: { path },
+        });
+      } else if (raw instanceof ColorRef) {
+        const override = overrides[k];
+        const hex = typeof override?.hex === 'string' ? override.hex : raw.hex;
+        props.push({
+          key: k,
+          type: 'color',
+          default: raw,
+          value: { hex },
         });
       } else if (typeof raw === 'number' || typeof raw === 'string' || typeof raw === 'boolean') {
         props.push({
@@ -172,6 +192,14 @@ function parseLuaProperties(source: string, overrides: Record<string, any>): Scr
           } else if (/^TextureRef\s*\(/.test(raw)) {
             const path = typeof override?.path === 'string' ? override.path : '';
             props.push({ key, type: 'texture', default: '', value: { path } });
+          // SceneRef() — scene asset picker
+          } else if (/^SceneRef\s*\(/.test(raw)) {
+            const path = typeof override?.path === 'string' ? override.path : '';
+            props.push({ key, type: 'scene', default: '', value: { path } });
+          // ColorRef() — color picker
+          } else if (/^ColorRef\s*\(/.test(raw)) {
+            const hex = typeof override?.hex === 'string' ? override.hex : '#ffffff';
+            props.push({ key, type: 'color', default: '#ffffff', value: { hex } });
           }
         }
       }
@@ -197,8 +225,8 @@ const EntityRefInput: React.FC<{
 
   // Collect candidate entities filtered by requireComponent
   const candidates: Array<{ id: EntityId; name: string }> = [];
-  for (const id of ecs.getAllEntities()) {
-    if (requireComponent && !ecs.hasComponent(id, requireComponent)) continue;
+  const entitySet = requireComponent ? ecs.query(requireComponent) : ecs.getAllEntities();
+  for (const id of entitySet) {
     candidates.push({ id, name: ecs.getEntityName(id) || `Entity ${id}` });
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));
@@ -465,6 +493,19 @@ const ScriptEntryRow: React.FC<{
                   value={p.value?.path || null}
                   assetType="texture"
                   onChange={(v) => setOverride(p.key, { path: v || '' })}
+                />
+              )}
+              {p.type === 'scene' && (
+                <AssetInput
+                  value={p.value?.path || null}
+                  assetType="scene"
+                  onChange={(v) => setOverride(p.key, { path: v || '' })}
+                />
+              )}
+              {p.type === 'color' && (
+                <ColorInput
+                  value={p.value?.hex || '#ffffff'}
+                  onChange={(v) => setOverride(p.key, { hex: v })}
                 />
               )}
             </PropertyRow>

@@ -438,17 +438,29 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           }}
           onDrop={handleModelDrop}
           style={{
-            border: '1px dashed var(--border)',
-            borderRadius: '4px',
-            padding: '8px',
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-            fontSize: '11px',
-            marginBottom: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            padding: '5px 8px',
+            marginBottom: 4,
+            background: 'var(--bg-input)',
             cursor: 'default',
+            minHeight: 26,
           }}
         >
-          Drop 3D model here
+          <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+              <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+              <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+            </svg>
+          </span>
+          <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+            Drop 3D model here
+          </span>
         </div>
       )}
 
@@ -514,50 +526,111 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
 
       {/* Material slots for .fluxmesh models */}
       {isFluxMesh && fluxMeshSlots && fluxMeshSlots.length > 0 && (
-        <div style={{ marginTop: '4px' }}>
+        <div style={{ marginTop: 6 }}>
           <div
             onClick={() => setSlotsOpen(!slotsOpen)}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: 4,
               cursor: 'pointer',
-              padding: '4px 0',
+              padding: '3px 0',
               color: 'var(--text)',
-              fontSize: '11px',
+              fontSize: 11,
               fontWeight: 600,
               userSelect: 'none',
+              marginBottom: 4,
             }}
           >
             <span style={{ display: 'inline-flex', transform: slotsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', transformOrigin: 'center' }}>{Icons.chevronRight}</span>
             Materials ({fluxMeshSlots.length})
           </div>
           {slotsOpen && (
-            <div style={{ paddingLeft: '8px' }}>
+            <div>
               {fluxMeshSlots.map((slot, idx) => {
                 const currentPath = getSlotMaterialPath(idx);
                 const overridden = isSlotOverridden(idx);
                 return (
-                  <PropertyRow key={idx} label={slot.name}>
-                    <AssetInput
-                      value={currentPath || null}
-                      assetType={['material', 'visual_material']}
-                      placeholder={overridden ? undefined : 'Default'}
-                      onChange={async (v) => {
-                        if (!v) { await handleClearSlot(idx); return; }
-                        const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
-                        const existingIdx = overrides.findIndex(o => o.slotIndex === idx);
-                        if (existingIdx >= 0) overrides[existingIdx] = { slotIndex: idx, materialPath: v };
-                        else overrides.push({ slotIndex: idx, materialPath: v });
-                        setProperty(undoManager, mr, 'materialSlots', overrides);
-                        if (mr.mesh && fluxMeshSlots) {
-                          const mat = await loadMaterialFromPath(v);
-                          if (mat) applyMaterialsToModel(mr.mesh, [fluxMeshSlots[idx]], [mat]);
-                        }
-                        update();
-                      }}
-                    />
-                  </PropertyRow>
+                  <div key={idx} style={{ border: '1px solid var(--border)', borderRadius: 4, marginBottom: 4, overflow: 'hidden' }}>
+                    {/* Slot header */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '3px 6px',
+                      background: 'var(--bg-panel)',
+                      borderBottom: '1px solid var(--border)',
+                    }}>
+                      <span style={{
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        flexShrink: 0,
+                        minWidth: 14,
+                      }}>
+                        {idx}
+                      </span>
+                      <span style={{
+                        flex: 1,
+                        fontSize: 11,
+                        color: 'var(--text-secondary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {slot.name}
+                      </span>
+                      {overridden && (
+                        <>
+                          <span style={{
+                            fontSize: 9,
+                            color: 'var(--accent)',
+                            padding: '1px 4px',
+                            border: '1px solid var(--accent)',
+                            borderRadius: 2,
+                            opacity: 0.7,
+                            flexShrink: 0,
+                          }}>override</span>
+                          <button
+                            onClick={() => handleClearSlot(idx)}
+                            title="Reset to default"
+                            style={{
+                              background: 'none',
+                              border: '1px solid var(--border)',
+                              borderRadius: 3,
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontSize: 10,
+                              padding: '1px 5px',
+                              lineHeight: 1.4,
+                              flexShrink: 0,
+                            }}
+                          >{Icons.close}</button>
+                        </>
+                      )}
+                    </div>
+                    {/* Asset input */}
+                    <div style={{ padding: '6px' }}>
+                      <AssetInput
+                        value={currentPath || null}
+                        assetType={['material', 'visual_material']}
+                        placeholder="Default"
+                        onChange={async (v) => {
+                          if (!v) { await handleClearSlot(idx); return; }
+                          const overrides = mr.materialSlots ? [...mr.materialSlots] : [];
+                          const existingIdx = overrides.findIndex(o => o.slotIndex === idx);
+                          if (existingIdx >= 0) overrides[existingIdx] = { slotIndex: idx, materialPath: v };
+                          else overrides.push({ slotIndex: idx, materialPath: v });
+                          setProperty(undoManager, mr, 'materialSlots', overrides);
+                          if (mr.mesh && fluxMeshSlots) {
+                            const mat = await loadMaterialFromPath(v);
+                            if (mat) applyMaterialsToModel(mr.mesh, [fluxMeshSlots[idx]], [mat]);
+                          }
+                          update();
+                        }}
+                      />
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -567,28 +640,59 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
 
       {/* Material input for primitives */}
       {!isFluxMesh && (
-        <PropertyRow label="Material">
-          <AssetInput
-            value={mr.materialPath || null}
-            assetType={['material', 'visual_material']}
-            placeholder="None (Default)"
-            onChange={async (v) => {
-              if (!v) { handleClearPrimitiveMaterial(); return; }
-              setProperty(undoManager, mr, 'materialPath', v);
-              const mat = await loadMaterialFromPath(v);
-              if (mat) {
-                if (mr.mesh instanceof THREE.Mesh) {
-                  mr.mesh.material = mat;
-                } else if (mr.mesh instanceof THREE.Group) {
-                  mr.mesh.traverse((child: THREE.Object3D) => {
-                    if (child instanceof THREE.Mesh) child.material = mat;
-                  });
-                }
-              }
-              update();
-            }}
-          />
-        </PropertyRow>
+        <div style={{ marginTop: 6 }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 6px',
+              background: 'var(--bg-panel)',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>Material</span>
+              {mr.materialPath && (
+                <button
+                  onClick={handleClearPrimitiveMaterial}
+                  title="Reset to default"
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border)',
+                    borderRadius: 3,
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    padding: '1px 5px',
+                    lineHeight: 1.4,
+                    flexShrink: 0,
+                  }}
+                >{Icons.close}</button>
+              )}
+            </div>
+            <div style={{ padding: '6px' }}>
+              <AssetInput
+                value={mr.materialPath || null}
+                assetType={['material', 'visual_material']}
+                placeholder="None (Default)"
+                onChange={async (v) => {
+                  if (!v) { handleClearPrimitiveMaterial(); return; }
+                  setProperty(undoManager, mr, 'materialPath', v);
+                  const mat = await loadMaterialFromPath(v);
+                  if (mat) {
+                    if (mr.mesh instanceof THREE.Mesh) {
+                      mr.mesh.material = mat;
+                    } else if (mr.mesh instanceof THREE.Group) {
+                      mr.mesh.traverse((child: THREE.Object3D) => {
+                        if (child instanceof THREE.Mesh) child.material = mat;
+                      });
+                    }
+                  }
+                  update();
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </ComponentSection>
   );

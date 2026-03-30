@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiIconNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -28,6 +28,10 @@ export interface FuiCompiledNode {
   // ── Button-only extended properties ──
   /** SVG icon shown left of button text (project-relative path). */
   icon?: string;
+  /** Raster background image path (project-relative). */
+  image?: string;
+  /** How the background image fills the button rect. */
+  imageFit?: 'contain' | 'cover' | 'fill';
   tooltip?: string;
   cursor?: string;
   disabled?: boolean;
@@ -79,8 +83,12 @@ export function preloadFuiImages(
   onLoaded: () => void,
 ): void {
   for (const node of compiled.drawOrder) {
-    // 'icon' type nodes use src; button nodes may also have an icon field
-    const srcKey = node.type === 'icon' ? node.src : (node.type === 'button' ? node.icon : undefined);
+    // Collect all image source keys for this node
+    const srcKeys: (string | undefined)[] = [];
+    if (node.type === 'icon')   srcKeys.push(node.src);
+    if (node.type === 'image')  srcKeys.push(node.src);
+    if (node.type === 'button') { srcKeys.push(node.icon); srcKeys.push(node.image); }
+    for (const srcKey of srcKeys) {
     if (!srcKey) continue;
     const key = srcKey;
     if (_svgCache.has(key)) continue; // already loading or ready
@@ -99,7 +107,8 @@ export function preloadFuiImages(
       _svgCache.set(key, { state: 'error' });
     };
     img.src = url;
-  }
+    } // end srcKeys for-loop
+  } // end drawOrder for-loop
 }
 
 /**
@@ -182,6 +191,11 @@ function resolveFontSize(style: any): number {
   return withDefaultNumber(style?.fontSize, 18);
 }
 
+function resolveFontFamily(style: any): string {
+  const f = style?.fontFamily;
+  return typeof f === 'string' && f.trim().length > 0 ? f.trim() : 'sans-serif';
+}
+
 function resolveAlign(style: any): FuiAlign {
   const a = style?.align as FuiAlign | undefined;
   if (a === 'left' || a === 'right' || a === 'center') return a;
@@ -220,6 +234,7 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       h: rect.h,
     };
 
+    const imgN = node.type === 'image'       ? (node as FuiImageNode)       : null;
     const btn  = node.type === 'button'      ? (node as FuiButtonNode)      : null;
     const tog  = node.type === 'toggle'       ? (node as FuiToggleNode)      : null;
     const sld  = node.type === 'slider'       ? (node as FuiSliderNode)      : null;
@@ -231,10 +246,13 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
       rect: absRect,
       style: (node as any).style,
       text: (node as any).text,
-      src: node.type === 'icon' ? (node as FuiIconNode).src : undefined,
+      src: (node.type === 'icon' || node.type === 'image') ? (node as FuiIconNode | FuiImageNode).src : undefined,
       children: [],
+      ...(imgN ? {} : {}),
       ...(btn ? {
         icon:           btn.icon,
+        image:          btn.image,
+        imageFit:       btn.imageFit,
         tooltip:        btn.tooltip,
         cursor:         btn.cursor,
         disabled:       btn.disabled,
@@ -332,7 +350,7 @@ export function renderCompiledFuiToCanvas(
       ctx.save();
       ctx.globalAlpha = opacity;
       ctx.fillStyle = color;
-      ctx.font = `${fontSize}px sans-serif`;
+      ctx.font = `${fontSize}px ${resolveFontFamily(n.style)}`;
       ctx.textAlign = align;
       ctx.textBaseline = 'middle';
 
@@ -373,7 +391,16 @@ export function renderCompiledFuiToCanvas(
       const borderColor = resolveBorderColor(merged) ?? '#6b8cff';
       const borderWidth = withDefaultNumber(merged.borderWidth, 2) * Math.min(scaleX, scaleY);
       const radius      = withDefaultNumber(merged.radius,      6) * Math.min(scaleX, scaleY);
-      const textColor   = resolveTextColor(merged)   ?? '#ffffff';
+      const tc = merged.textColors as any;
+      const stateTextColor =
+        tc ? (
+          isDisabled ? (tc.disabledColor  ?? undefined) :
+          isActive   ? (tc.pressedColor   ?? undefined) :
+          isSelected ? (tc.selectedColor  ?? undefined) :
+          isHover    ? (tc.highlightedColor ?? undefined) :
+          (tc.normalColor ?? undefined)
+        ) : undefined;
+      const textColor = stateTextColor ?? resolveTextColor(merged) ?? '#ffffff';
       const fontSize    = resolveFontSize(merged) * Math.min(scaleX, scaleY);
       const align       = resolveAlign(merged);
       const padding     = withDefaultNumber(merged.padding, 8) * Math.min(scaleX, scaleY);
@@ -401,6 +428,29 @@ export function renderCompiledFuiToCanvas(
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = borderWidth;
       ctx.stroke();
+
+      // Background image (drawn over solid bg, clipped to button shape)
+      if (n.image) {
+        const imgEntry = _svgCache.get(n.image);
+        if (imgEntry?.state === 'ready') {
+          const fit = n.imageFit ?? 'fill';
+          let dx = x, dy = y, dw = w, dh = h;
+          if (fit === 'contain') {
+            const sc = Math.min(w / (imgEntry.img.naturalWidth || w), h / (imgEntry.img.naturalHeight || h));
+            dw = imgEntry.img.naturalWidth * sc; dh = imgEntry.img.naturalHeight * sc;
+            dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
+          } else if (fit === 'cover') {
+            const sc = Math.max(w / (imgEntry.img.naturalWidth || w), h / (imgEntry.img.naturalHeight || h));
+            dw = imgEntry.img.naturalWidth * sc; dh = imgEntry.img.naturalHeight * sc;
+            dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
+          }
+          ctx.save();
+          drawRoundedRect(ctx, x, y, w, h, radius);
+          ctx.clip();
+          ctx.drawImage(imgEntry.img, dx, dy, dw, dh);
+          ctx.restore();
+        }
+      }
 
       // Icon left of text
       const iconSrc = n.icon;
@@ -436,7 +486,7 @@ export function renderCompiledFuiToCanvas(
 
       // Text
       ctx.fillStyle = textColor;
-      ctx.font = `${fontSize}px sans-serif`;
+      ctx.font = `${fontSize}px ${resolveFontFamily(merged)}`;
       ctx.textAlign = align;
       ctx.textBaseline = 'middle';
 
@@ -486,7 +536,7 @@ export function renderCompiledFuiToCanvas(
       // Label
       if (n.text) {
         ctx.fillStyle = textColor;
-        ctx.font = `${fontSize}px sans-serif`;
+        ctx.font = `${fontSize}px ${resolveFontFamily(n.style as any)}`;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText(n.text, boxX + boxSize + 8 * scaleX, y + h / 2);
@@ -567,7 +617,7 @@ export function renderCompiledFuiToCanvas(
       drawRoundedRect(ctx, x, y, w, h, radius); ctx.fill();
       ctx.strokeStyle = bc; ctx.lineWidth = bw;
       drawRoundedRect(ctx, x, y, w, h, radius); ctx.stroke();
-      ctx.font = `${fontSize}px sans-serif`;
+      ctx.font = `${fontSize}px ${resolveFontFamily(st)}`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       if (display) {
@@ -582,6 +632,54 @@ export function renderCompiledFuiToCanvas(
       ctx.fillStyle = textColor;
       ctx.globalAlpha = opacity * 0.5;
       ctx.fillRect(x + padding + (display ? ctx.measureText(isPassword ? '•'.repeat(display.length) : display).width + 2 : 0), y + (h - fontSize) / 2, 1.5 * scaleX, fontSize);
+      ctx.restore();
+    }
+
+    else if (n.type === 'image') {
+      const st = n.style as any ?? {};
+      const opacity = Math.min(1, Math.max(0, withDefaultNumber(st.opacity, 1)));
+      const fit = st.fit ?? 'contain';
+      const bg: string | undefined = st.backgroundColor;
+      const radius = withDefaultNumber(st.radius, 0) * Math.min(scaleX, scaleY);
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+
+      if (bg) {
+        if (radius > 0) { drawRoundedRect(ctx, x, y, w, h, radius); ctx.fillStyle = bg; ctx.fill(); }
+        else { ctx.fillStyle = bg; ctx.fillRect(x, y, w, h); }
+      }
+
+      if (n.src) {
+        const entry = _svgCache.get(n.src);
+        if (entry?.state === 'ready') {
+          let dx = x, dy = y, dw = w, dh = h;
+          if (fit === 'contain') {
+            const sc = Math.min(w / (entry.img.naturalWidth || w), h / (entry.img.naturalHeight || h));
+            dw = entry.img.naturalWidth * sc; dh = entry.img.naturalHeight * sc;
+            dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
+          } else if (fit === 'cover') {
+            const sc = Math.max(w / (entry.img.naturalWidth || w), h / (entry.img.naturalHeight || h));
+            dw = entry.img.naturalWidth * sc; dh = entry.img.naturalHeight * sc;
+            dx = x + (w - dw) / 2; dy = y + (h - dh) / 2;
+          }
+          if (radius > 0) {
+            ctx.save();
+            drawRoundedRect(ctx, x, y, w, h, radius);
+            ctx.clip();
+            ctx.drawImage(entry.img, dx, dy, dw, dh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(entry.img, dx, dy, dw, dh);
+          }
+        } else if (!entry) {
+          ctx.globalAlpha = opacity * 0.15;
+          ctx.fillStyle = '#888888';
+          if (radius > 0) { drawRoundedRect(ctx, x, y, w, h, radius); ctx.fill(); }
+          else ctx.fillRect(x, y, w, h);
+        }
+      }
+
       ctx.restore();
     }
 

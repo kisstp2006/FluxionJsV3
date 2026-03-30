@@ -6,7 +6,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GizmoService } from './GizmoService';
-import { ComponentIconSystem } from './ComponentIconSystem';
 
 import { Engine } from '../../src/core/Engine';
 import { DebugConsole } from '../../src/core/DebugConsole';
@@ -42,8 +41,6 @@ export interface EngineSubsystems {
   orbitControls: OrbitControls;
   gizmoService: GizmoService;
   selectionOutline: THREE.BoxHelper;
-  /** Billboard icon system — created by ComponentIconSync, null until then. */
-  componentIconSystem: ComponentIconSystem | null;
 }
 
 export type LogFn = (text: string, type: 'info' | 'warn' | 'error' | 'system') => void;
@@ -189,6 +186,5 @@ export async function initEditorEngine(
     orbitControls,
     gizmoService,
     selectionOutline,
-    componentIconSystem: null,
   };
 }

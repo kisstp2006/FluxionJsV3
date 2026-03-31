@@ -42,7 +42,10 @@ function createWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, '../editor/index.html'));
 
-  mainWindow.webContents.openDevTools();
+  // Only open DevTools in development mode
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.on('closed', () => {
     // Close child windows when the main editor window closes

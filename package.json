@@ -2,7 +2,19 @@
   "name": "fluxionjs-v2",
   "version": "2.0.0",
   "description": "High-performance 2D/3D TypeScript game engine with Electron editor — inspired by Nuake, LumixEngine & s&box",
+  "license": "MIT",
+  "author": "",
   "main": "dist/electron/main.js",
+  "keywords": [
+    "game-engine",
+    "typescript",
+    "three.js",
+    "electron",
+    "ecs",
+    "webgpu",
+    "pbr",
+    "physics"
+  ],
   "scripts": {
     "build": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env production",
     "build:watch": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --watch",
@@ -14,23 +26,10 @@
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac"
   },
-  "keywords": [
-    "game-engine",
-    "typescript",
-    "three.js",
-    "electron",
-    "ecs",
-    "webgpu",
-    "pbr",
-    "physics"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.1",
-    "electron": "^41.0.3",
     "lucide-react": "^1.6.0",
     "monaco-editor": "^0.55.1",
     "react": "^19.2.4",
@@ -51,6 +50,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.170.0",
     "concurrently": "^9.0.0",
+    "electron": "^41.0.3",
     "electron-builder": "^25.0.0",
     "wait-on": "^8.0.0"
   }

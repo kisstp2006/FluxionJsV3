@@ -24,11 +24,12 @@ files:
 
 win:
   target:
-    - target: nsis
+    - target: portable
       arch:
         - x64
   # Place a 256x256 icon.ico inside the Data/ folder.
   # icon: "Data/icon.ico"
+  sign: false
 
 linux:
   target:

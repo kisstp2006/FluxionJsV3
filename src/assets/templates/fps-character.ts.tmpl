@@ -9,6 +9,8 @@ export default class $CLS extends FluxionBehaviour {
   maxPitch = 85;
   /** Height offset from the character pivot to the camera eye. */
   headHeight = 1.6;
+  /** Maximum mouse delta per frame to prevent camera jumps. */
+  maxMouseDelta = 100.0;
 
   // ── Private state ────────────────────────────────────────────
   _yaw   = 0;
@@ -55,8 +57,12 @@ export default class $CLS extends FluxionBehaviour {
     if (!this.Input.isPointerLocked()) return;
 
     // ── Mouse look ──────────────────────────────────────────────
-    this._yaw   -= this.Input.mouseDelta.x * this.sensitivity;
-    this._pitch -= this.Input.mouseDelta.y * this.sensitivity;
+    // Clamp mouse delta to prevent camera jumps from large delta values
+    const clampedDeltaX = Mathf.clamp(this.Input.mouseDelta.x, -this.maxMouseDelta, this.maxMouseDelta);
+    const clampedDeltaY = Mathf.clamp(this.Input.mouseDelta.y, -this.maxMouseDelta, this.maxMouseDelta);
+    
+    this._yaw   -= clampedDeltaX * this.sensitivity;
+    this._pitch -= clampedDeltaY * this.sensitivity;
     this._pitch  = Mathf.clamp(this._pitch, -this.maxPitch, this.maxPitch);
 
     const charTf = this.transform;
@@ -84,7 +90,7 @@ export default class $CLS extends FluxionBehaviour {
     const camTf  = this.getComponentOf(this.camera.entity, 'Transform');
     if (charTf && camTf) {
       // Check if camera is a child of the character
-      const isChildCamera = this._ecs.getParent(this.camera.entity) === this.entity;
+      const isChildCamera = this._ecs && this._ecs.getParent && this._ecs.getParent(this.camera.entity) === this.entity;
       if (isChildCamera) {
         // Child camera: use local positioning
         camTf.position.set(0, this.headHeight, 0);

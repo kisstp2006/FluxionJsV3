@@ -10,6 +10,8 @@ sensitivity = 0.15
 maxPitch    = 85.0
 --- Height offset from the character pivot to the camera eye.
 headHeight  = 1.6
+--- Maximum mouse delta per frame to prevent camera jumps.
+maxMouseDelta = 100.0
 
 -- ── Private state ────────────────────────────────────────────
 local _yaw   = 0
@@ -56,9 +58,13 @@ function update(dt)
     if not self.Input.isPointerLocked() then return end
 
     -- ── Mouse look ───────────────────────────────────────────
+    -- Clamp mouse delta to prevent camera jumps from large delta values
     local md = self.Input.mouseDelta
-    _yaw   = _yaw   - md.x * sensitivity
-    _pitch = _pitch - md.y * sensitivity
+    local clampedDeltaX = Mathf.clamp(md.x, -maxMouseDelta, maxMouseDelta)
+    local clampedDeltaY = Mathf.clamp(md.y, -maxMouseDelta, maxMouseDelta)
+    
+    _yaw   = _yaw   - clampedDeltaX * sensitivity
+    _pitch = _pitch - clampedDeltaY * sensitivity
     _pitch = Mathf.clamp(_pitch, -maxPitch, maxPitch)
 
     -- Yaw applied to the character body (horizontal rotation)
@@ -94,11 +100,19 @@ function fixedUpdate(dt)
     if charTf and camera.entity ~= nil then
         local camTf = self.getComponentOf(camera.entity, "Transform")
         if camTf then
-            camTf.position.set(
-                charTf.position.x,
-                charTf.position.y + headHeight,
-                charTf.position.z
-            )
+            -- Check if camera is a child of the character
+            local isChildCamera = self._ecs and self._ecs.getParent and self._ecs.getParent(camera.entity) == self.entity
+            if isChildCamera then
+                -- Child camera: use local positioning
+                camTf.position.set(0, headHeight, 0)
+            else
+                -- Inspector-assigned camera: use world positioning
+                camTf.position.set(
+                    charTf.position.x,
+                    charTf.position.y + headHeight,
+                    charTf.position.z
+                )
+            end
         end
     end
 end

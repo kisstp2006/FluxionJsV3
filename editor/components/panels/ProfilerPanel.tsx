@@ -6,6 +6,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useEditor, useEngine } from '../../core/EditorContext';
+import { usePanelActive } from '../../core/PanelLayoutContext';
 
 const frameTimeSamples: number[] = [];
 const MAX_SAMPLES = 200;
@@ -13,6 +14,7 @@ const MAX_SAMPLES = 200;
 export const ProfilerPanel: React.FC = () => {
   const { state } = useEditor();
   const engine = useEngine();
+  const isActive = usePanelActive('profiler');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
 
@@ -77,9 +79,13 @@ export const ProfilerPanel: React.FC = () => {
   }, [engine]);
 
   useEffect(() => {
+    if (!isActive) {
+      cancelAnimationFrame(animationRef.current);
+      return;
+    }
     animationRef.current = requestAnimationFrame(drawGraph);
     return () => cancelAnimationFrame(animationRef.current);
-  }, [drawGraph]);
+  }, [drawGraph, isActive]);
 
   const stats = [
     { label: 'Frame Time', value: `${state.frameTime.toFixed(1)}ms`, color: 'var(--accent)' },

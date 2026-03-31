@@ -116,46 +116,67 @@ export const PanelContainer: React.FC<PanelContainerProps> = ({ zone, onDetachRe
         onDrop={handleDrop}
         style={{
           display: 'flex',
+          alignItems: 'stretch',
           flexShrink: 0,
           background: dragOver ? 'var(--bg-hover)' : 'var(--bg-secondary)',
           borderBottom: `1px solid ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
           transition: 'background 120ms ease, border-color 120ms ease',
-          overflowX: 'auto',
         }}
       >
-        {panelIds.map((id) => {
-          const reg = PanelRegistry.get(id);
-          if (!reg) return null;
-          const isActive = id === activeId;
+        {/* Scrollable tabs section */}
+        <div style={{ display: 'flex', overflowX: 'auto', flex: 1, minWidth: 0 }}>
+          {panelIds.map((id) => {
+            const reg = PanelRegistry.get(id);
+            if (!reg) return null;
+            const isActive = id === activeId;
+            return (
+              <div
+                key={id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, id)}
+                onDragEnd={handleDragEnd}
+                onClick={() => setActiveTab(zone, id)}
+                onContextMenu={(e) => handleTabContextMenu(e, id)}
+                title={`${reg.title} — right-click for options`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 14px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  background: isActive ? 'rgba(13,17,23,0.8)' : 'transparent',
+                  borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                  userSelect: 'none',
+                  flexShrink: 0,
+                  transition: 'all 100ms ease',
+                }}
+              >
+                {reg.icon && <span style={{ opacity: 0.75, display: 'flex', alignItems: 'center' }}>{reg.icon}</span>}
+                {reg.title}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Active panel's context actions (right side) */}
+        {(() => {
+          const activeReg = PanelRegistry.get(activeId);
+          if (!activeReg?.tabActions) return null;
+          const TabActions = activeReg.tabActions;
           return (
-            <div
-              key={id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, id)}
-              onDragEnd={handleDragEnd}
-              onClick={() => setActiveTab(zone, id)}
-              onContextMenu={(e) => handleTabContextMenu(e, id)}
-              title={`${reg.title} — right-click for options`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '6px 14px',
-                cursor: 'pointer',
-                fontSize: 12,
-                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: isActive ? 'rgba(13,17,23,0.8)' : 'transparent',
-                borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
-                userSelect: 'none',
-                flexShrink: 0,
-                transition: 'all 100ms ease',
-              }}
-            >
-              {reg.icon && <span style={{ opacity: 0.75, display: 'flex', alignItems: 'center' }}>{reg.icon}</span>}
-              {reg.title}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 6px',
+              flexShrink: 0,
+              borderLeft: '1px solid var(--border)',
+            }}>
+              <TabActions />
             </div>
           );
-        })}
+        })()}
       </div>
 
       {/* Panel bodies — all mounted, only active shown */}

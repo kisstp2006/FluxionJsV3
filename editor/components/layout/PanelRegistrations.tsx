@@ -10,7 +10,7 @@ import { Icons } from '../../ui/Icons';
 // Panel components — imported lazily at module level so they are
 // already bundled; React.lazy is not needed since the main bundle
 // already includes all of them.
-import { HierarchyPanel }    from '../panels/HierarchyPanel';
+import { HierarchyPanel, HierarchyTabActions } from '../panels/HierarchyPanel';
 import { InspectorPanel }    from '../panels/InspectorPanel';
 import { ConsolePanel }      from '../panels/ConsolePanel';
 import { AssetBrowserPanel } from '../panels/AssetBrowserPanel';
@@ -28,6 +28,7 @@ export function registerBuiltInPanels(): void {
     defaultZone: 'left',
     allowedZones: ['left', 'right', 'bottom'],
     canDetach: false,
+    tabActions: HierarchyTabActions,
   });
 
   PanelRegistry.register({

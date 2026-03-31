@@ -27,6 +27,13 @@ export interface PanelRegistration {
    * `editor.panels.useNativeWindows` setting.
    */
   canDetach?: boolean;
+  /**
+   * Optional React component rendered on the right side of the tab bar
+   * while this panel is the active tab. Use for context-sensitive action
+   * buttons (e.g. + Add Entity, Clear Console). The component receives no
+   * props but has full access to React context (useEditor, useEngine, etc.).
+   */
+  tabActions?: React.ComponentType;
 }
 
 class PanelRegistryClass {

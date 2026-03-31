@@ -327,3 +327,22 @@ export function usePanelLayout(): PanelLayoutContextValue {
   if (!ctx) throw new Error('usePanelLayout must be used within PanelLayoutProvider');
   return ctx;
 }
+
+/**
+ * Returns true when the given panelId is the currently active (visible) tab in
+ * its zone. Panels that are detached or floating are considered inactive.
+ * Use this to pause expensive work (RAF loops, polling) when the panel is hidden.
+ */
+export function usePanelActive(panelId: string): boolean {
+  const ctx = useContext(PanelLayoutCtx);
+  if (!ctx) return true; // outside provider (e.g. standalone panel window) → always active
+  const { layout } = ctx;
+  // Must be in a zone and be that zone's active tab
+  for (const zone of (['left', 'right', 'bottom'] as const)) {
+    if (layout.zones[zone].includes(panelId)) {
+      return layout.activeTab[zone] === panelId;
+    }
+  }
+  // Panel is floating or detached — treat as active (it has its own window)
+  return true;
+}

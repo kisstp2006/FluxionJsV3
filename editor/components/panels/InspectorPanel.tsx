@@ -6,7 +6,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  PanelHeader, Section, PropertyRow,
+  Section, PropertyRow,
   TextInput,
 } from '../../ui';
 import { AddComponentPopup } from './inspector/AddComponentPopup';
@@ -174,7 +174,6 @@ export const InspectorPanel: React.FC = () => {
         flexDirection: 'column',
         background: 'var(--bg-panel)',
       }}>
-        <PanelHeader title="Inspector" />
         <div key={path} style={{ flex: 1, overflowY: 'auto' }}>
           <Inspector assetPath={path} assetType={type} />
         </div>
@@ -192,7 +191,6 @@ export const InspectorPanel: React.FC = () => {
         flexDirection: 'column',
         background: 'var(--bg-panel)',
       }}>
-        <PanelHeader title="Inspector" />
         <div style={{
           padding: '32px 16px',
           textAlign: 'center',
@@ -240,7 +238,6 @@ export const InspectorPanel: React.FC = () => {
       flexDirection: 'column',
       background: 'var(--bg-panel)',
     }}>
-      <PanelHeader title="Inspector" />
       <div key={`${entity}-${componentCount}-${revision}`} style={{ flex: 1, overflowY: 'auto' }}>
         {/* Entity identity */}
         <Section title="Entity" defaultOpen actions={entityActions}>

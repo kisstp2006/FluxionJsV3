@@ -41,6 +41,9 @@ interface FluxionAPI {
   dispatchEditorAction?(action: unknown): void;
   /** Panel window: get which panelId this window is for. */
   getPanelWindowId?(): Promise<string>;
+  /** Main window: subscribe to panel OS window close events. */
+  onPanelWindowClosed?(callback: (panelId: string) => void): void;
+  offPanelWindowClosed?(): void;
   // ── Cross-window IPC relay ───────────────────────────────────
   notifyMaterialChanged?(filePath: string): void;
   onMaterialChangedRelay?(callback: (changedPath: string) => void): void;

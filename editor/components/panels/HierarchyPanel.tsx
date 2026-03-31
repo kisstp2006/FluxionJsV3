@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { PanelHeader, SearchInput, Button, Icons, ContextMenu } from '../../ui';
+import { SearchInput, Button, Icons, ContextMenu } from '../../ui';
 import { AddEntityPopup } from './hierarchy/AddEntityPopup';
 import { useEditor, useEngine } from '../../core/EditorContext';
 import { EntityId } from '../../../src/core/ECS';
@@ -399,22 +399,6 @@ export const HierarchyPanel: React.FC = () => {
       flexDirection: 'column',
       background: 'var(--bg-panel)',
     }}>
-      <PanelHeader
-        title="Hierarchy"
-        actions={
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setAddMenu({ x: rect.left, y: rect.bottom + 4 });
-            }}
-            title="Add Entity"
-          >
-            {Icons.plus}
-          </Button>
-        }
-      />
       <SearchInput
         value={state.hierarchyFilter}
         onChange={(v) => dispatch({ type: 'SET_HIERARCHY_FILTER', filter: v })}
@@ -461,7 +445,7 @@ export const HierarchyPanel: React.FC = () => {
         ))}
       </div>
 
-      {/* Add Entity Popup */}
+      {/* Add Entity Popup — triggered by HierarchyTabActions OR inline keyboard shortcut */}
       {addMenu && (
         <AddEntityPopup
           position={addMenu}
@@ -541,5 +525,83 @@ export const HierarchyPanel: React.FC = () => {
         />
       )}
     </div>
+  );
+};
+
+// ── Tab Actions (rendered in PanelContainer tab bar) ──────────────────────────
+/**
+ * Standalone "+ Add Entity" button for the Hierarchy panel's tab bar.
+ * Has its own state + entity creation logic so it works independently of
+ * HierarchyPanel's component tree.
+ */
+export const HierarchyTabActions: React.FC = () => {
+  const { dispatch, log } = useEditor();
+  const engine = useEngine();
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleAddEntity = useCallback((_category: string, type: string) => {
+    if (!engine) return;
+    const scene = engine.scene;
+    const materials = engine.materials;
+    const ecs = engine.engine.ecs;
+
+    const createFn = (): EntityId => {
+      switch (type) {
+        case 'empty': return scene.createEmpty('Empty Entity');
+        case 'cube': case 'sphere': case 'cylinder': case 'cone': case 'plane': case 'capsule': case 'torus':
+          return scene.createPrimitive(type.charAt(0).toUpperCase() + type.slice(1), type as any);
+        case 'directional': return scene.createLight('Directional Light', 'directional', 0xffffff, 1);
+        case 'point':       return scene.createLight('Point Light', 'point', 0xffffff, 1);
+        case 'spot':        return scene.createLight('Spot Light', 'spot', 0xffffff, 1);
+        case 'ambient':     return scene.createLight('Ambient Light', 'ambient', 0xffffff, 0.5);
+        case 'camera':      return scene.createCamera('Camera');
+        case 'particle': {
+          const e = scene.createEmpty('Particle System');
+          const pe = ComponentRegistry.create('ParticleEmitter');
+          if (pe) { (pe as any).maxParticles = 200; (pe as any).emissionRate = 30; ecs.addComponent(e, pe); }
+          return e;
+        }
+        case 'text3d':  return scene.createText('3D Text');
+        case 'sprite':  return scene.createSprite('Sprite');
+        case 'physics_box': {
+          const mat = materials.createPBR({ name: 'physics_box', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
+          return scene.createPhysicsBox('Physics Box', new THREE.Vector3(1, 1, 1), mat, 'dynamic');
+        }
+        case 'physics_sphere': {
+          const mat = materials.createPBR({ name: 'physics_sphere', albedo: 0x888888, roughness: 0.6, metalness: 0.1 });
+          return scene.createPhysicsSphere('Physics Sphere', 0.5, mat, 'dynamic');
+        }
+        default: return scene.createEmpty('Entity');
+      }
+    };
+
+    undoManager.execute(new CreateEntityCommand(createFn, ecs, (entity) => {
+      log(`Created: ${ecs.getEntityName(entity)}`, 'info');
+      dispatch({ type: 'SELECT_ENTITY', entity });
+      dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
+    }));
+  }, [engine, log, dispatch]);
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e: React.MouseEvent<HTMLElement>) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setAddMenu({ x: rect.left, y: rect.bottom + 4 });
+        }}
+        title="Add Entity"
+      >
+        {Icons.plus}
+      </Button>
+      {addMenu && (
+        <AddEntityPopup
+          position={addMenu}
+          onClose={() => setAddMenu(null)}
+          onAdd={handleAddEntity}
+        />
+      )}
+    </>
   );
 };

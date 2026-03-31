@@ -224,5 +224,30 @@ module.exports = (env = {}) => {
     ],
   };
 
-  return [electronMain, electronPreload, editorRenderer, vmeWindow, fuiWindow, scriptWindow];
+  // Detached Panel Window (separate OS window per panel)
+  const panelWindow = {
+    name: 'panel',
+    mode,
+    devtool,
+    cache,
+    optimization,
+    entry: './editor/panel-window.tsx',
+    target: 'web',
+    output: {
+      path: path.resolve(__dirname, 'dist/editor'),
+      filename: 'panel-window.bundle.js',
+      globalObject: 'self',
+    },
+    module: { rules: commonRules },
+    resolve,
+    plugins: [
+      new HtmlWebpackPlugin({
+        template: './editor/panel-window.html',
+        filename: 'panel-window.html',
+      }),
+      new webpack.DefinePlugin({ 'global': 'globalThis' }),
+    ],
+  };
+
+  return [electronMain, electronPreload, editorRenderer, vmeWindow, fuiWindow, scriptWindow, panelWindow];
 };

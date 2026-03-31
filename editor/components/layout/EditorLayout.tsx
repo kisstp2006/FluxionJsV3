@@ -37,7 +37,7 @@ import { SettingsRegistry } from '../../core/SettingsRegistry';
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
   const { state, dispatch, log } = useEditor();
-  const { layout, setPanelSize, floatPanel, detachPanel } = usePanelLayout();
+  const { layout, setPanelSize, floatPanel, detachPanel, reattachPanel } = usePanelLayout();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasReady, setCanvasReady] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
@@ -57,6 +57,14 @@ export const EditorLayout: React.FC = () => {
       floatPanel(id);
     }
   }, [detachPanel, floatPanel]);
+
+  // When a detached panel OS window is closed, reattach the panel to its default zone
+  React.useEffect(() => {
+    const api = window.fluxionAPI as any;
+    if (!api?.onPanelWindowClosed) return;
+    api.onPanelWindowClosed((panelId: string) => reattachPanel(panelId));
+    return () => { api.offPanelWindowClosed?.(); };
+  }, [reattachPanel]);
 
   // Listen for open-visual-material-editor events — open in separate OS window
   React.useEffect(() => {

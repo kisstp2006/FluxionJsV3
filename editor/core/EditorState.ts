@@ -108,7 +108,8 @@ export type EditorAction =
   | { type: 'SET_SCENE_PATH'; path: string | null }
   | { type: 'SET_SCENE_DIRTY'; dirty: boolean }
   | { type: 'SET_DEBUG_GROUP'; group: keyof DebugGroups; value: boolean }
-  | { type: 'LOAD_DEBUG_GROUPS'; groups: DebugGroups };
+  | { type: 'LOAD_DEBUG_GROUPS'; groups: DebugGroups }
+  | { type: 'LOAD_SNAPSHOT'; snapshot: EditorState };
 
 // ── Initial State ──
 export const initialEditorState: EditorState = {
@@ -210,6 +211,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, debugGroups: { ...state.debugGroups, [action.group]: action.value } };
     case 'LOAD_DEBUG_GROUPS':
       return { ...state, debugGroups: action.groups };
+    case 'LOAD_SNAPSHOT':
+      return { ...state, ...action.snapshot };
     default:
       return state;
   }

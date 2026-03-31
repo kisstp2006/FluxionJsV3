@@ -24,7 +24,7 @@ interface EditorContextValue {
   log: (text: string, type?: ConsoleEntry['type']) => void;
 }
 
-const EditorCtx = createContext<EditorContextValue | null>(null);
+export const EditorCtx = createContext<EditorContextValue | null>(null);
 
 export const EditorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(editorReducer, initialEditorState);

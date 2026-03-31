@@ -174,4 +174,11 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   /** Panel window: resolve which panelId this window was opened for. */
   getPanelWindowId: (): Promise<string> =>
     ipcRenderer.invoke('panel:getWindowId'),
+  /** Main window: called when a detached panel OS window is closed by the user. */
+  onPanelWindowClosed: (callback: (panelId: string) => void) => {
+    ipcRenderer.on('panel:window-closed', (_, panelId) => callback(panelId));
+  },
+  offPanelWindowClosed: () => {
+    ipcRenderer.removeAllListeners('panel:window-closed');
+  },
 });

@@ -145,4 +145,33 @@ contextBridge.exposeInMainWorld('fluxionAPI', {
   /** Get the engine root directory (app.getAppPath()). */
   getEngineRoot: (): Promise<string> =>
     ipcRenderer.invoke('app:getEngineRoot'),
+
+  // ── Panel detach (separate OS window) ────────────────────────
+  /** Open a registered panel in a detached OS window. */
+  detachPanel: (panelId: string) => ipcRenderer.invoke('panel:detach', panelId),
+  /** Close a detached panel window and reattach the panel. */
+  closePanelWindow: (panelId: string) => ipcRenderer.invoke('panel:close', panelId),
+  /** Send EditorState snapshot to a specific panel window. */
+  sendPanelState: (panelId: string, state: unknown) =>
+    ipcRenderer.send('panel:state-push', panelId, state),
+  /** Listen for EditorState snapshots (called in panel windows). */
+  onPanelState: (callback: (state: unknown) => void) => {
+    ipcRenderer.on('panel:state', (_, state) => callback(state));
+  },
+  offPanelState: () => {
+    ipcRenderer.removeAllListeners('panel:state');
+  },
+  /** Dispatch an EditorAction from a panel window back to the main window. */
+  dispatchEditorAction: (action: unknown) =>
+    ipcRenderer.send('panel:action', action),
+  /** Listen for EditorActions forwarded from panel windows (called in main window). */
+  onPanelAction: (callback: (panelId: string, action: unknown) => void) => {
+    ipcRenderer.on('panel:action-relay', (_, panelId, action) => callback(panelId, action));
+  },
+  offPanelAction: () => {
+    ipcRenderer.removeAllListeners('panel:action-relay');
+  },
+  /** Panel window: resolve which panelId this window was opened for. */
+  getPanelWindowId: (): Promise<string> =>
+    ipcRenderer.invoke('panel:getWindowId'),
 });

@@ -9,7 +9,6 @@ import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 // ── Types ──
 export type EditorTool = 'select' | 'move' | 'rotate' | 'scale';
 export type TransformSpace = 'local' | 'world';
-export type BottomTab = 'console' | 'assets' | 'profiler' | 'history' | 'timeline' | 'build';
 
 export interface ConsoleEntry {
   text: string;
@@ -63,15 +62,11 @@ export interface EditorState {
   isPaused: boolean;
   snapEnabled: boolean;
   snapConfig: SnapConfig;
-  bottomTab: BottomTab;
   viewportTab: 'Scene' | 'Game';
   viewportShading: ViewportShadingMode;
   showGrid: boolean;
   debugGroups: DebugGroups;
   consoleEntries: ConsoleEntry[];
-  leftPanelWidth: number;
-  rightPanelWidth: number;
-  bottomPanelHeight: number;
   hierarchyFilter: string;
   clipboard: EntityId | null;
   fps: number;
@@ -103,13 +98,9 @@ export type EditorAction =
   | { type: 'SET_VIEWPORT_SHADING'; mode: ViewportShadingMode }
   | { type: 'TOGGLE_GRID' }
   | { type: 'SET_CLIPBOARD'; entity: EntityId | null }
-  | { type: 'SET_BOTTOM_TAB'; tab: BottomTab }
   | { type: 'SET_VIEWPORT_TAB'; tab: 'Scene' | 'Game' }
   | { type: 'LOG'; text: string; logType: ConsoleEntry['type'] }
   | { type: 'CLEAR_CONSOLE' }
-  | { type: 'SET_LEFT_WIDTH'; width: number }
-  | { type: 'SET_RIGHT_WIDTH'; width: number }
-  | { type: 'SET_BOTTOM_HEIGHT'; height: number }
   | { type: 'SET_HIERARCHY_FILTER'; filter: string }
   | { type: 'UPDATE_STATS'; stats: EditorStats }
   | { type: 'LOAD_PROJECT'; path: string; name: string }
@@ -133,7 +124,6 @@ export const initialEditorState: EditorState = {
     rotationSnap: Math.PI / 12,
     scaleSnap: 0.25,
   },
-  bottomTab: 'console',
   viewportTab: 'Scene',
   viewportShading: 'lit',
   showGrid: true,
@@ -146,9 +136,6 @@ export const initialEditorState: EditorState = {
     drawInPlayMode: true,
   },
   consoleEntries: [],
-  leftPanelWidth: 280,
-  rightPanelWidth: 320,
-  bottomPanelHeight: 200,
   hierarchyFilter: '',
   clipboard: null,
   fps: 0,
@@ -193,8 +180,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, showGrid: !state.showGrid };
     case 'SET_CLIPBOARD':
       return { ...state, clipboard: action.entity };
-    case 'SET_BOTTOM_TAB':
-      return { ...state, bottomTab: action.tab };
     case 'SET_VIEWPORT_TAB':
       return { ...state, viewportTab: action.tab };
     case 'LOG':
@@ -208,12 +193,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     case 'CLEAR_CONSOLE':
       return { ...state, consoleEntries: [] };
-    case 'SET_LEFT_WIDTH':
-      return { ...state, leftPanelWidth: Math.max(200, Math.min(500, action.width)) };
-    case 'SET_RIGHT_WIDTH':
-      return { ...state, rightPanelWidth: Math.max(200, Math.min(500, action.width)) };
-    case 'SET_BOTTOM_HEIGHT':
-      return { ...state, bottomPanelHeight: Math.max(100, Math.min(500, action.height)) };
     case 'SET_HIERARCHY_FILTER':
       return { ...state, hierarchyFilter: action.filter };
     case 'UPDATE_STATS':

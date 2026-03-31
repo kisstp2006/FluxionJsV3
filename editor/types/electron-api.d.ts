@@ -25,6 +25,22 @@ interface FluxionAPI {
   openVisualMaterialEditor?(path: string): void;
   openFuiEditor?(path: string): void;
   openScriptEditor?(path: string): void;
+  /** Open a registered editor panel in a detached OS window. */
+  detachPanel?(panelId: string): void;
+  /** Close a previously detached panel window and reattach the panel. */
+  closePanelWindow?(panelId: string): void;
+  /** Push EditorState snapshot to a detached panel window. */
+  sendPanelState?(panelId: string, state: unknown): void;
+  /** Called in the main window when a detached panel dispatches an action. */
+  onPanelAction?(callback: (panelId: string, action: unknown) => void): void;
+  offPanelAction?(): void;
+  /** Called in a panel window to receive EditorState updates. */
+  onPanelState?(callback: (state: unknown) => void): void;
+  offPanelState?(): void;
+  /** Dispatch an editor action from a panel window back to the main window. */
+  dispatchEditorAction?(action: unknown): void;
+  /** Panel window: get which panelId this window is for. */
+  getPanelWindowId?(): Promise<string>;
   // ── Cross-window IPC relay ───────────────────────────────────
   notifyMaterialChanged?(filePath: string): void;
   onMaterialChangedRelay?(callback: (changedPath: string) => void): void;

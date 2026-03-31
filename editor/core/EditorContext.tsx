@@ -14,7 +14,7 @@ import { EngineSubsystems, initEditorEngine } from './EditorEngine';
 export type { EditorState, EditorAction, ConsoleEntry } from './EditorState';
 export type { EngineSubsystems } from './EditorEngine';
 export {
-  EditorTool, TransformSpace, BottomTab, ViewportShadingMode, SnapConfig,
+  EditorTool, TransformSpace, ViewportShadingMode, SnapConfig,
 } from './EditorState';
 
 // ── Editor State Context ──

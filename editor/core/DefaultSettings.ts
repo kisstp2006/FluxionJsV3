@@ -14,6 +14,7 @@ SettingsRegistry.registerCategory('Editor/Viewport', { label: 'Viewport', icon: 
 SettingsRegistry.registerCategory('Editor/Gizmos', { label: 'Gizmos', icon: Icons.move, order: 22 });
 SettingsRegistry.registerCategory('Editor/ViewCube', { label: 'ViewCube', icon: Icons.cube, order: 23 });
 SettingsRegistry.registerCategory('Editor/PlayMode', { label: 'Play Mode', icon: Icons.play, order: 24 });
+SettingsRegistry.registerCategory('Editor/Panels', { label: 'Panels', icon: Icons.prefab, order: 25 });
 SettingsRegistry.registerCategory('Audio', { label: 'Audio', icon: Icons.audio, order: 40 });
 
 // ── Editor Settings ──
@@ -256,6 +257,20 @@ const audioSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── Panel Settings ──
+
+const panelSettings: SettingDescriptor[] = [
+  {
+    key: 'editor.panels.useNativeWindows',
+    label: 'Use Native Windows for Detached Panels',
+    description: 'When enabled, detaching a panel opens it as a native OS window. When disabled, it opens as a floating in-app window instead.',
+    type: 'boolean',
+    defaultValue: true,
+    category: 'Editor/Panels',
+    order: 1,
+  },
+];
+
 // ── Play Mode Settings ──
 
 const playModeSettings: SettingDescriptor[] = [
@@ -274,6 +289,7 @@ const playModeSettings: SettingDescriptor[] = [
 
 export function registerDefaultSettings(): void {
   SettingsRegistry.registerMany(editorSettings);
+  SettingsRegistry.registerMany(panelSettings);
   SettingsRegistry.registerMany(playModeSettings);
   SettingsRegistry.registerMany(viewCubeSettings);
   SettingsRegistry.registerMany(audioSettings);

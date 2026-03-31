@@ -1,68 +1,10 @@
 // ============================================================
-// FluxionJS V2 — Bottom Panel Container
-// Tabbed panel: Console / Assets / Profiler
+// FluxionJS V3 — BottomPanel (deprecated)
+// Superseded by <PanelContainer zone="bottom"> in EditorLayout.
+// This file is kept as a no-op stub so no imports break.
 // ============================================================
 
 import React from 'react';
-import { TabBar, Icons } from '../../ui';
-import type { TabItem } from '../../ui/layout/TabBar';
-import { useEditor, BottomTab } from '../../core/EditorContext';
-import { ConsolePanel } from '../panels/ConsolePanel';
-import { AssetBrowserPanel } from '../panels/AssetBrowserPanel';
-import { ProfilerPanel } from '../panels/ProfilerPanel';
-import { UndoHistoryPanel } from '../panels/UndoHistoryPanel';
-import { EntityTimeline } from '../panels/EntityTimeline';
-import { BuildPanel } from '../panels/BuildPanel';
 
-export const BottomPanel: React.FC = () => {
-  const { state, dispatch } = useEditor();
-
-  const panels: Record<BottomTab, React.ReactNode> = {
-    console: <ConsolePanel />,
-    assets: <AssetBrowserPanel />,
-    profiler: <ProfilerPanel />,
-    history: <UndoHistoryPanel />,
-    timeline: <EntityTimeline />,
-    build: <BuildPanel />,
-  };
-
-  const TAB_LABELS: Record<BottomTab, string> = {
-    console: 'Console',
-    assets: 'Assets',
-    profiler: 'Profiler',
-    history: 'History',
-    timeline: 'Timeline',
-    build: 'Build',
-  };
-
-  const TABS: TabItem[] = [
-    { label: 'Console',  icon: Icons.terminal },
-    { label: 'Assets',   icon: Icons.folder },
-    { label: 'Profiler', icon: Icons.activity },
-    { label: 'History',  icon: Icons.clock },
-    { label: 'Timeline', icon: Icons.activity },
-    { label: 'Build',    icon: Icons.download },
-  ];
-
-  return (
-    <div style={{
-      height: '100%',
-      background: 'var(--bg-panel)',
-      borderTop: '1px solid var(--border)',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      <TabBar
-        tabs={TABS}
-        activeTab={TAB_LABELS[state.bottomTab]}
-        onTabChange={(tab) => dispatch({
-          type: 'SET_BOTTOM_TAB',
-          tab: tab.toLowerCase() as BottomTab,
-        })}
-      />
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {panels[state.bottomTab]}
-      </div>
-    </div>
-  );
-};
+/** @deprecated Use <PanelContainer zone="bottom"> instead. */
+export const BottomPanel: React.FC = () => null;

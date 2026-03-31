@@ -13,6 +13,9 @@ let vmeWindow: BrowserWindow | null = null;
 let fuiWindow: BrowserWindow | null = null;
 let scriptWindow: BrowserWindow | null = null;
 
+/** Maps panelId → detached panel BrowserWindow */
+const panelWindows = new Map<string, BrowserWindow>();
+
 // Persisted script editor window bounds (restored on next open)
 let scriptWindowBounds = { width: 1000, height: 700, x: undefined as number | undefined, y: undefined as number | undefined };
 // Cached scripting settings for the script window (updated by main renderer)
@@ -545,4 +548,88 @@ ipcMain.handle('npm:cancel', async (_, jobId: string) => {
     npmJobs.delete(jobId);
   }
   return true;
+});
+
+// ── Detached Panel Windows ──
+
+ipcMain.handle('panel:detach', async (_, panelId: string) => {
+  // If a window for this panel already exists, focus it
+  const existing = panelWindows.get(panelId);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return;
+  }
+
+  const win = new BrowserWindow({
+    width: 600,
+    height: 400,
+    minWidth: 300,
+    minHeight: 200,
+    title: `Panel — ${panelId}`,
+    backgroundColor: '#0d1117',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    icon: path.join(__dirname, '../../Data/icon.png'),
+  });
+
+  win.setMenuBarVisibility(false);
+  panelWindows.set(panelId, win);
+
+  win.loadFile(path.join(__dirname, '../editor/panel-window.html'), {
+    query: { panelId },
+  });
+
+  win.on('closed', () => {
+    panelWindows.delete(panelId);
+    // Notify the main window so it can reattach the panel
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('panel:window-closed', panelId);
+    }
+  });
+});
+
+ipcMain.handle('panel:close', async (_, panelId: string) => {
+  const win = panelWindows.get(panelId);
+  if (win && !win.isDestroyed()) {
+    win.close();
+  }
+  panelWindows.delete(panelId);
+  return true;
+});
+
+/** Main window pushes EditorState to a specific panel window */
+ipcMain.on('panel:state-push', (_, panelId: string, state: unknown) => {
+  const win = panelWindows.get(panelId);
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('panel:state', state);
+  }
+});
+
+/** Panel window dispatches an action back to the main window */
+ipcMain.on('panel:action', (event, action: unknown) => {
+  // Find the panelId for this sender
+  let panelId: string | undefined;
+  for (const [id, win] of panelWindows) {
+    if (!win.isDestroyed() && win.webContents === event.sender) {
+      panelId = id;
+      break;
+    }
+  }
+  if (panelId && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('panel:action-relay', panelId, action);
+  }
+});
+
+/** Panel window asks for its own panelId */
+ipcMain.handle('panel:getWindowId', (event) => {
+  for (const [id, win] of panelWindows) {
+    if (!win.isDestroyed() && win.webContents === event.sender) {
+      return id;
+    }
+  }
+  return null;
 });

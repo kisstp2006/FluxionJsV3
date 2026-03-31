@@ -7,15 +7,15 @@ import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { SplitPane } from '../../ui';
 import { Titlebar } from './Titlebar';
 import { Toolbar } from './Toolbar';
-import { BottomPanel } from './BottomPanel';
-import { HierarchyPanel } from '../panels/HierarchyPanel';
-import { InspectorPanel } from '../panels/InspectorPanel';
 import { Viewport } from '../panels/Viewport';
 import { ProjectManagerPanel } from '../panels/ProjectManagerPanel';
 import { SettingsPanel } from '../panels/SettingsPanel';
 import { ProjectSettingsPanel } from '../panels/ProjectSettingsPanel';
+import { PanelContainer } from './PanelContainer';
+import { FloatingPanelWindow } from './FloatingPanelWindow';
 import { KeyboardHandler, StatsUpdater, TransformSync, SimulationSync, GridSync, GizmoSync, CameraGizmoSync, AssetHotReload, ColliderGizmoSync, LightGizmoSync, AudioGizmoSync, ParticleGizmoSync, ComponentIconSync } from './EditorLogic';
 import { useEditor, EngineProvider } from '../../core/EditorContext';
+import { usePanelLayout } from '../../core/PanelLayoutContext';
 import { EngineSubsystems } from '../../core/EditorEngine';
 import { loadProjectScene, saveScene as saveSceneService } from '../../core/SceneService';
 import { projectManager } from '../../../src/project/ProjectManager';
@@ -32,10 +32,12 @@ import { pathJoin } from '../../../src/filesystem/FileSystem';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
 import { DebugGroups } from '../../core/EditorState';
 import { TimelineContextProvider } from '../../core/TimelineContext';
+import { SettingsRegistry } from '../../core/SettingsRegistry';
 
 // ── Editor Layout ──
 export const EditorLayout: React.FC = () => {
   const { state, dispatch, log } = useEditor();
+  const { layout, setPanelSize, floatPanel, detachPanel } = usePanelLayout();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasReady, setCanvasReady] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
@@ -43,6 +45,18 @@ export const EditorLayout: React.FC = () => {
   const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
   const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
   const engineRef = useRef<EngineSubsystems | null>(null);
+
+  // ── Panel detach handler ──
+  // Checks editor.panels.useNativeWindows: true → OS window, false → in-app float
+  const handleDetachRequest = useCallback((id: string) => {
+    const useNativeWindows = SettingsRegistry.get<boolean>('editor.panels.useNativeWindows') ?? true;
+    if (useNativeWindows && window.fluxionAPI?.detachPanel) {
+      detachPanel(id);
+      window.fluxionAPI.detachPanel(id);
+    } else {
+      floatPanel(id);
+    }
+  }, [detachPanel, floatPanel]);
 
   // Listen for open-visual-material-editor events — open in separate OS window
   React.useEffect(() => {
@@ -301,6 +315,64 @@ export const EditorLayout: React.FC = () => {
     );
   }
 
+  // ── Adaptive layout helpers ──
+  const hasLeft   = layout.zones.left.length   > 0;
+  const hasRight  = layout.zones.right.length  > 0;
+  const hasBottom = layout.zones.bottom.length > 0;
+
+  // Center + optional right pane
+  const viewportAndRight = hasRight ? (
+    <SplitPane
+      direction="horizontal"
+      primaryPosition="end"
+      size={layout.panelSizes.right}
+      minSize={200}
+      maxSize={500}
+      onSizeChange={(w: number) => setPanelSize('right', w)}
+    >
+      {/* Viewport */}
+      <Viewport onCanvasReady={(canvas: HTMLCanvasElement) => {
+        if (!canvasRef.current) {
+          canvasRef.current = canvas;
+          setCanvasReady(true);
+        }
+      }} />
+
+      {/* Right panel zone */}
+      <div style={{ borderLeft: '1px solid var(--border)', height: '100%', overflow: 'hidden' }}>
+        <PanelContainer zone="right" onDetachRequest={handleDetachRequest} />
+      </div>
+    </SplitPane>
+  ) : (
+    <Viewport onCanvasReady={(canvas: HTMLCanvasElement) => {
+      if (!canvasRef.current) {
+        canvasRef.current = canvas;
+        setCanvasReady(true);
+      }
+    }} />
+  );
+
+  // Top row: optional left + (viewport + optional right)
+  const topRow = hasLeft ? (
+    <SplitPane
+      direction="horizontal"
+      primaryPosition="start"
+      size={layout.panelSizes.left}
+      minSize={200}
+      maxSize={500}
+      onSizeChange={(w: number) => setPanelSize('left', w)}
+    >
+      {/* Left panel zone */}
+      <div style={{ borderRight: '1px solid var(--border)', height: '100%', overflow: 'hidden' }}>
+        <PanelContainer zone="left" onDetachRequest={handleDetachRequest} />
+      </div>
+
+      {viewportAndRight}
+    </SplitPane>
+  ) : (
+    viewportAndRight
+  );
+
   return (
     <TimelineContextProvider>
     <EngineProvider
@@ -329,68 +401,33 @@ export const EditorLayout: React.FC = () => {
         {/* Toolbar */}
         <Toolbar />
 
-        {/* Main resizable area: nested SplitPanes */}
-        <SplitPane
-          direction="vertical"
-          primaryPosition="end"
-          size={state.bottomPanelHeight}
-          minSize={100}
-          maxSize={500}
-          onSizeChange={(h) => dispatch({ type: 'SET_BOTTOM_HEIGHT', height: h })}
-        >
-          {/* Top row: Hierarchy | Viewport | Inspector */}
-          <SplitPane
-            direction="horizontal"
-            primaryPosition="start"
-            size={state.leftPanelWidth}
-            minSize={200}
-            maxSize={500}
-            onSizeChange={(w) => dispatch({ type: 'SET_LEFT_WIDTH', width: w })}
-          >
-            {/* Left Panel: Hierarchy */}
-            <div style={{
-              borderRight: '1px solid var(--border)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              height: '100%',
-            }}>
-              <HierarchyPanel />
-            </div>
-
-            {/* Center + Right */}
+        {/* Main resizable area — adaptive based on populated zones */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {hasBottom ? (
             <SplitPane
-              direction="horizontal"
+              direction="vertical"
               primaryPosition="end"
-              size={state.rightPanelWidth}
-              minSize={200}
+              size={layout.panelSizes.bottom}
+              minSize={100}
               maxSize={500}
-              onSizeChange={(w) => dispatch({ type: 'SET_RIGHT_WIDTH', width: w })}
+              onSizeChange={(h: number) => setPanelSize('bottom', h)}
             >
-              {/* Center: Viewport */}
-              <Viewport onCanvasReady={(canvas) => {
-                if (!canvasRef.current) {
-                  canvasRef.current = canvas;
-                  setCanvasReady(true);
-                }
-              }} />
+              {topRow}
 
-              {/* Right Panel: Inspector */}
-              <div style={{
-                borderLeft: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                height: '100%',
-              }}>
-                <InspectorPanel />
+              {/* Bottom panel zone */}
+              <div style={{ borderTop: '1px solid var(--border)', height: '100%', overflow: 'hidden' }}>
+                <PanelContainer zone="bottom" onDetachRequest={handleDetachRequest} />
               </div>
             </SplitPane>
-          </SplitPane>
+          ) : (
+            topRow
+          )}
+        </div>
 
-          {/* Bottom Panel: Console / Assets / Profiler */}
-          <BottomPanel />
-        </SplitPane>
+        {/* In-app floating panel windows */}
+        {layout.floatingPanels.map((entry) => (
+          <FloatingPanelWindow key={entry.id} entry={entry} />
+        ))}
       </div>
 
       {/* Scene loading progress popup */}

@@ -6,10 +6,12 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
 import { EditorProvider } from './core/EditorContext';
+import { PanelLayoutProvider } from './core/PanelLayoutContext';
 import { EditorLayout } from './components/layout/EditorLayout';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { registerDefaultSettings } from './core/DefaultSettings';
 import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
+import { registerBuiltInPanels } from './components/layout/PanelRegistrations';
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.
@@ -17,10 +19,15 @@ const electronFs = new ElectronFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(electronFs);
 registerDefaultSettings();
 registerDefaultProjectSettings();
+// Register panels BEFORE PanelLayoutProvider mounts so the default layout
+// is built from the full registry on first render.
+registerBuiltInPanels();
 
 const App: React.FC = () => (
   <EditorProvider>
-    <EditorLayout />
+    <PanelLayoutProvider>
+      <EditorLayout />
+    </PanelLayoutProvider>
   </EditorProvider>
 );
 

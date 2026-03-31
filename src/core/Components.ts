@@ -697,6 +697,8 @@ export class ScriptComponent extends BaseComponent {
    * Each in-flight _loadScript call holds a copy of its token; if the token in
    * the map changes (or the entry is deleted) the old call is stale and aborts. */
   _loading: Map<string, symbol> = new Map();
+  /** Runtime: failed script paths with timestamp for retry cooldown — NOT serialized */
+  _failed: Map<string, number> = new Map();
 
   override serialize(): Record<string, any> {
     return {

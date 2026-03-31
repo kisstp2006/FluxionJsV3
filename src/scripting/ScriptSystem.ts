@@ -71,6 +71,66 @@ const Mathf = {
   min:   Math.min,  max:   Math.max,
 };
 
+// ── Error Tracker ─────────────────────────────────────────────
+
+class ErrorTracker {
+  private errors = new Map<string, { timestamp: number; count: number }>();
+  private readonly cooldownMs = 5000; // 5 seconds default cooldown
+
+  get cooldownDuration(): number {
+    return this.cooldownMs;
+  }
+
+  shouldLogError(signature: string, cooldownMs?: number): boolean {
+    const now = performance.now();
+    const cooldown = cooldownMs ?? this.cooldownMs;
+    const existing = this.errors.get(signature);
+
+    if (!existing) {
+      this.errors.set(signature, { timestamp: now, count: 1 });
+      return true; // First occurrence, should log
+    }
+
+    if (now - existing.timestamp > cooldown) {
+      // Cooldown expired, reset and log again
+      this.errors.set(signature, { timestamp: now, count: 1 });
+      return true;
+    }
+
+    // Still in cooldown, increment count but don't log
+    existing.count++;
+    return false;
+  }
+
+  clearErrors(path: string): void {
+    const keysToDelete: string[] = [];
+    for (const signature of this.errors.keys()) {
+      if (signature.startsWith(path)) {
+        keysToDelete.push(signature);
+      }
+    }
+    for (const key of keysToDelete) {
+      this.errors.delete(key);
+    }
+  }
+
+  generateSignature(path: string, errorType: string, error: any): string {
+    const message = error?.message?.toString() ?? error?.toString() ?? 'unknown';
+    const hash = this.simpleHash(message);
+    return `${path}:${errorType}:${hash}`;
+  }
+
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+}
+
 // ── Script loader ─────────────────────────────────────────────
 
 function loadScriptClass(
@@ -150,6 +210,7 @@ export class ScriptSystem implements System {
   private input:    InputManager;
   private renderer: FluxionRenderer | null;
   private audio:    AudioSystem | null;
+  private errorTracker = new ErrorTracker();
 
   constructor(
     engine:   Engine,
@@ -181,11 +242,27 @@ export class ScriptSystem implements System {
         if (entry.path.endsWith('.lua')) continue; // handled by LuaScriptSystem
 
         if (!comp._instances.has(entry.path)) {
+          // Check if script is in failed cooldown state
+          const failedTime = comp._failed.get(entry.path);
+          if (failedTime) {
+            const cooldownMs = this.errorTracker.cooldownDuration;
+            if (performance.now() - failedTime < cooldownMs) {
+              continue; // Still in cooldown, skip loading
+            } else {
+              // Cooldown expired, clear failed state and retry
+              comp._failed.delete(entry.path);
+              this.errorTracker.clearErrors(entry.path);
+            }
+          }
+
           if (!comp._loading.has(entry.path)) {
             const tok = Symbol();
             comp._loading.set(entry.path, tok);
             this._loadScript(entity, comp, entry, ecs, tok).catch((err) => {
-              DebugConsole.LogError(`[ScriptSystem] Failed to load "${entry.path}": ${err}`);
+              const signature = this.errorTracker.generateSignature(entry.path, 'load', err);
+              if (this.errorTracker.shouldLogError(signature)) {
+                DebugConsole.LogError(`[ScriptSystem] Failed to load "${entry.path}": ${err}`);
+              }
               if (comp._loading.get(entry.path) === tok) comp._loading.delete(entry.path);
             });
           }
@@ -203,12 +280,18 @@ export class ScriptSystem implements System {
           try {
             const result = inst.start?.();
             if (result instanceof Promise) {
-              result.catch((err: unknown) =>
-                DebugConsole.LogError(`[ScriptSystem] start() async error in "${entry.path}": ${err}`),
-              );
+              result.catch((err: unknown) => {
+                const signature = this.errorTracker.generateSignature(entry.path, 'start', err);
+                if (this.errorTracker.shouldLogError(signature)) {
+                  DebugConsole.LogError(`[ScriptSystem] start() async error in "${entry.path}": ${err}`);
+                }
+              });
             }
           } catch (err) {
-            DebugConsole.LogError(`[ScriptSystem] start() error in "${entry.path}": ${err}`);
+            const signature = this.errorTracker.generateSignature(entry.path, 'start', err);
+            if (this.errorTracker.shouldLogError(signature)) {
+              DebugConsole.LogError(`[ScriptSystem] start() error in "${entry.path}": ${err}`);
+            }
           }
         }
 
@@ -227,7 +310,10 @@ export class ScriptSystem implements System {
           }
           this._tickCoroutines(inst, dt, nowSec);
         } catch (err) {
-          DebugConsole.LogError(`[ScriptSystem] update() error in "${entry.path}": ${err}`);
+          const signature = this.errorTracker.generateSignature(entry.path, 'update', err);
+          if (this.errorTracker.shouldLogError(signature)) {
+            DebugConsole.LogError(`[ScriptSystem] update() error in "${entry.path}": ${err}`);
+          }
         }
       }
     }
@@ -246,7 +332,10 @@ export class ScriptSystem implements System {
           inst.fixedUpdate?.(dt);
           this._tickCoroutines(inst, dt, nowSec);
         } catch (err) {
-          DebugConsole.LogError(`[ScriptSystem] fixedUpdate() error in "${entry.path}": ${err}`);
+          const signature = this.errorTracker.generateSignature(entry.path, 'fixedUpdate', err);
+          if (this.errorTracker.shouldLogError(signature)) {
+            DebugConsole.LogError(`[ScriptSystem] fixedUpdate() error in "${entry.path}": ${err}`);
+          }
         }
       }
     }
@@ -263,7 +352,10 @@ export class ScriptSystem implements System {
         try {
           inst.lateUpdate?.(dt);
         } catch (err) {
-          DebugConsole.LogError(`[ScriptSystem] lateUpdate() error in "${entry.path}": ${err}`);
+          const signature = this.errorTracker.generateSignature(entry.path, 'lateUpdate', err);
+          if (this.errorTracker.shouldLogError(signature)) {
+            DebugConsole.LogError(`[ScriptSystem] lateUpdate() error in "${entry.path}": ${err}`);
+          }
         }
       }
     }
@@ -330,22 +422,34 @@ export class ScriptSystem implements System {
       try {
         compiled = compileScript(source, absPath);
       } catch (err) {
-        DebugConsole.LogError(`[ScriptSystem] Compile error in "${entry.path}": ${err}`);
+        const signature = this.errorTracker.generateSignature(entry.path, 'compile', err);
+        if (this.errorTracker.shouldLogError(signature)) {
+          DebugConsole.LogError(`[ScriptSystem] Compile error in "${entry.path}": ${err}`);
+        }
         comp._loading.delete(entry.path);
+        // Add to failed state with cooldown
+        comp._failed.set(entry.path, performance.now());
         return;
       }
 
       try {
         ScriptClass = loadScriptClass(compiled, FluxionBehaviour);
       } catch (err) {
-        DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
+        const signature = this.errorTracker.generateSignature(entry.path, 'runtime', err);
+        if (this.errorTracker.shouldLogError(signature)) {
+          DebugConsole.LogError(`[ScriptSystem] Runtime load error in "${entry.path}": ${err}`);
+        }
         comp._loading.delete(entry.path);
+        // Add to failed state with cooldown
+        comp._failed.set(entry.path, performance.now());
         return;
       }
 
       if (!ScriptClass) {
         DebugConsole.LogWarning(`[ScriptSystem] "${entry.path}" has no default export.`);
         comp._loading.delete(entry.path);
+        // Add to failed state with cooldown
+        comp._failed.set(entry.path, performance.now());
         return;
       }
     }
@@ -394,6 +498,9 @@ export class ScriptSystem implements System {
     if (comp._loading.get(entry.path) !== token) return;
     comp._instances.set(entry.path, instance);
     comp._loading.delete(entry.path);
+    // Clear any previous error history for this script
+    this.errorTracker.clearErrors(entry.path);
+    comp._failed.delete(entry.path);
   }
 
   /** Called when play mode stops — clears coroutines, runs cleanup listeners. */
@@ -422,7 +529,10 @@ export class ScriptSystem implements System {
       try {
         result = state.gen.next();
       } catch (err) {
-        DebugConsole.LogError(`[ScriptSystem] Coroutine error: ${err}`);
+        const signature = this.errorTracker.generateSignature('coroutine', 'runtime', err);
+        if (this.errorTracker.shouldLogError(signature)) {
+          DebugConsole.LogError(`[ScriptSystem] Coroutine error: ${err}`);
+        }
         inst._coroutines.delete(id);
         continue;
       }
@@ -442,7 +552,10 @@ export class ScriptSystem implements System {
   private _destroyAll(comp: ScriptComponent): void {
     for (const [path, inst] of comp._instances) {
       try { inst?.onDestroy?.(); } catch (err) {
-        DebugConsole.LogError(`[ScriptSystem] onDestroy() error in "${path}": ${err}`);
+        const signature = this.errorTracker.generateSignature(path, 'onDestroy', err);
+        if (this.errorTracker.shouldLogError(signature)) {
+          DebugConsole.LogError(`[ScriptSystem] onDestroy() error in "${path}": ${err}`);
+        }
       }
       if (Array.isArray(inst?._cleanupFns)) {
         for (const fn of inst._cleanupFns) { try { fn(); } catch {} }
@@ -451,5 +564,6 @@ export class ScriptSystem implements System {
     }
     comp._instances.clear();
     comp._loading.clear();
+    comp._failed.clear(); // Clear failed state on destroy
   }
 }

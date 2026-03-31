@@ -241,7 +241,9 @@ export class MetaRegistry {
         classes = fp.endsWith('.lua')
           ? ScriptScanner.scanLuaSource(source, fp)
           : ScriptScanner.scanSource(source, fp);
-      } catch {
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : err?.toString?.() ?? 'unknown';
+        DebugConsole.LogError(`[MetaRegistry] Script scanning error in "${fp}": ${errorMessage}`);
         classes = [];
       }
 

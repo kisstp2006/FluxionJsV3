@@ -77,7 +77,15 @@ export default class $CLS extends FluxionBehaviour {
     const charTf = this.transform;
     const camTf  = this.getComponentOf(this.camera.entity, 'Transform');
     if (charTf && camTf) {
-      camTf.position.set(charTf.position.x, charTf.position.y + this.headHeight, charTf.position.z);
+      // Check if camera is a child of the character
+      const isChildCamera = this._ecs.getParent(this.camera.entity) === this.entity;
+      if (isChildCamera) {
+        // Child camera: use local positioning
+        camTf.position.set(0, this.headHeight, 0);
+      } else {
+        // Inspector-assigned camera: use world positioning
+        camTf.position.set(charTf.position.x, charTf.position.y + this.headHeight, charTf.position.z);
+      }
     }
   }
 

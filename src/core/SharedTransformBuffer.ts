@@ -31,7 +31,7 @@ export class SharedTransformBuffer {
     const base = slot * SharedTransformBuffer.FLOATS_PER_SLOT;
     const p = t.worldPosition;
     const q = t.worldRotation;
-    const s = t.scale;
+    const s = t.worldScale;
     this.view[base]     = p.x;
     this.view[base + 1] = p.y;
     this.view[base + 2] = p.z;

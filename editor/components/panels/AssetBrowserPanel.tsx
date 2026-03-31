@@ -1284,7 +1284,14 @@ export const AssetBrowserPanel: React.FC<{
                       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
                       onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
                     >
-                      <span style={{ fontSize: 22, lineHeight: 1 }}>{tpl.icon}</span>
+                      <span style={{
+                        width: 28, height: 28, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'var(--bg-panel)', borderRadius: 6,
+                        border: '1px solid var(--border)',
+                      }}>
+                        {resolveIcon(tpl.icon)}
+                      </span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{tpl.name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tpl.description}</div>

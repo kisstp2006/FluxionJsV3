@@ -12,6 +12,7 @@ import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { registerDefaultSettings } from './core/DefaultSettings';
 import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
 import { registerBuiltInPanels } from './components/layout/PanelRegistrations';
+import { registerBuiltInMenus } from './components/layout/MenuRegistrations';
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.
@@ -22,6 +23,8 @@ registerDefaultProjectSettings();
 // Register panels BEFORE PanelLayoutProvider mounts so the default layout
 // is built from the full registry on first render.
 registerBuiltInPanels();
+// Register menu items BEFORE React renders so Titlebar reads a populated registry.
+registerBuiltInMenus();
 
 const App: React.FC = () => (
   <EditorProvider>

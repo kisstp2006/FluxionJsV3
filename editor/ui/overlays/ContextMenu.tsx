@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react';
 
 export interface ContextMenuItem {
   label: string;
@@ -7,17 +7,135 @@ export interface ContextMenuItem {
   onClick: () => void;
   separator?: boolean;
   disabled?: boolean;
+  /** Nested items — renders a ► arrow; hover opens sub-menu instead of calling onClick. */
+  children?: ContextMenuItem[];
 }
 
 interface ContextMenuProps {
   items: ContextMenuItem[];
   position: { x: number; y: number };
   onClose: () => void;
+  /** Internal: used by sub-menu instances to skip the global mousedown listener. */
+  _isSubmenu?: boolean;
 }
 
 const MARGIN = 4;
+const SUBMENU_DELAY_MS = 150;
 
-export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) => {
+// ── Clamp a rectangle to stay within the viewport ────────────
+function clampPos(x: number, y: number, w: number, h: number): { x: number; y: number } {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (x + w > vw - MARGIN) x = vw - w - MARGIN;
+  if (y + h > vh - MARGIN) y = vh - h - MARGIN;
+  if (x < MARGIN) x = MARGIN;
+  if (y < MARGIN) y = MARGIN;
+  return { x, y };
+}
+
+// ── Single row with optional sub-menu ────────────────────────
+const MenuRow: React.FC<{
+  item: ContextMenuItem;
+  onClose: () => void;
+}> = ({ item, onClose }) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [subPos, setSubPos] = useState<{ x: number; y: number } | null>(null);
+
+  const hasChildren = (item.children?.length ?? 0) > 0;
+
+  const openSub = useCallback(() => {
+    if (!rowRef.current || !hasChildren) return;
+    const rect = rowRef.current.getBoundingClientRect();
+    // Try right side first; if it would overflow clamp will fix it
+    setSubPos({ x: rect.right, y: rect.top });
+  }, [hasChildren]);
+
+  const handleMouseEnter = () => {
+    if (hasChildren) {
+      timerRef.current = setTimeout(openSub, SUBMENU_DELAY_MS);
+    }
+  };
+
+  const handleMouseLeave = (e: React.MouseEvent) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (!hasChildren) return;
+    // The submenu is a DOM child of rowRef (even though position:fixed), so
+    // relatedTarget will be inside rowRef when the cursor slides into the submenu.
+    const related = e.relatedTarget as Node | null;
+    if (rowRef.current && related && rowRef.current.contains(related)) return;
+    // Cursor left both the row and the submenu — close it.
+    setSubPos(null);
+  };
+
+  const handleClick = () => {
+    if (item.disabled || hasChildren) return;
+    item.onClick();
+    onClose();
+  };
+
+  return (
+    <div
+      ref={rowRef}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '6px 12px',
+        cursor: item.disabled ? 'default' : 'pointer',
+        color: item.disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+        fontSize: '12px',
+        userSelect: 'none',
+        position: 'relative',
+        background: subPos ? 'var(--bg-hover)' : 'transparent',
+        transition: 'background 100ms ease',
+      }}
+      onMouseOver={(e) => {
+        if (!item.disabled) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
+      }}
+      onMouseOut={(e) => {
+        if (!subPos) (e.currentTarget as HTMLElement).style.background = 'transparent';
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+        {item.icon && <span style={{ marginRight: '8px', opacity: 0.7, display: 'inline-flex' }}>{item.icon}</span>}
+        {item.label}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {item.shortcut && !hasChildren && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+            {item.shortcut}
+          </span>
+        )}
+        {hasChildren && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '10px', lineHeight: 1 }}>▶</span>
+        )}
+      </span>
+
+      {/* Sub-menu portal */}
+      {subPos && hasChildren && (
+        <ContextMenu
+          items={item.children!}
+          position={subPos}
+          onClose={() => {
+            setSubPos(null);
+            onClose();
+          }}
+          _isSubmenu
+        />
+      )}
+    </div>
+  );
+};
+
+// ── Main ContextMenu ──────────────────────────────────────────
+export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose, _isSubmenu }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState<{ x: number; y: number } | null>(null);
 
@@ -26,18 +144,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let x = position.x;
-    let y = position.y;
-    if (x + rect.width > vw - MARGIN) x = vw - rect.width - MARGIN;
-    if (y + rect.height > vh - MARGIN) y = vh - rect.height - MARGIN;
-    if (x < MARGIN) x = MARGIN;
-    if (y < MARGIN) y = MARGIN;
-    setAdjusted({ x, y });
+    setAdjusted(clampPos(position.x, position.y, rect.width, rect.height));
   }, [position]);
 
+  // Close on outside click — only for root menus (submenus cascade close via onClose prop)
   useEffect(() => {
+    if (_isSubmenu) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         onClose();
@@ -45,7 +157,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+  }, [onClose, _isSubmenu]);
 
   const pos = adjusted ?? position;
 
@@ -70,45 +182,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
         item.separator ? (
           <div key={i} style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
         ) : (
-          <div
-            key={i}
-            onClick={() => {
-              if (!item.disabled) {
-                item.onClick();
-                onClose();
-              }
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '6px 12px',
-              cursor: item.disabled ? 'default' : 'pointer',
-              color: item.disabled ? 'var(--text-muted)' : 'var(--text-primary)',
-              fontSize: '12px',
-              transition: 'background 150ms ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!item.disabled) (e.target as HTMLElement).style.background = 'var(--bg-hover)';
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.background = 'transparent';
-            }}
-          >
-            <span>
-              {item.icon && <span style={{ marginRight: '8px', opacity: 0.7 }}>{item.icon}</span>}
-              {item.label}
-            </span>
-            {item.shortcut && (
-              <span style={{
-                color: 'var(--text-muted)',
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono)',
-              }}>
-                {item.shortcut}
-              </span>
-            )}
-          </div>
+          <MenuRow key={i} item={item} onClose={onClose} />
         )
       )}
     </div>

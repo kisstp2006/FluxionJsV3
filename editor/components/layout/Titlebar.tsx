@@ -1,13 +1,19 @@
 // ============================================================
-// FluxionJS V2 — Titlebar Component
-// Frameless window titlebar with menu (s&box-inspired)
+// FluxionJS V3 — Titlebar Component
+// Frameless window titlebar with registry-driven menus.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ContextMenu, Icons } from '../../ui';
 import { useEditor, useEngine } from '../../core/EditorContext';
-import { undoManager, DuplicateEntityCommand, DeleteEntityCommand } from '../../core/UndoService';
-import { initialEditorState } from '../../core/EditorState';
+import { undoManager } from '../../core/UndoService';
+import { MenuRegistry } from '../../core/MenuRegistry';
+import { usePanelLayout } from '../../core/PanelLayoutContext';
+
+// Default panel sizes (used by View > Reset Layout)
+const DEFAULT_LEFT   = 260;
+const DEFAULT_RIGHT  = 300;
+const DEFAULT_BOTTOM = 220;
 
 export const Titlebar: React.FC<{
   onSaveScene?: () => void;
@@ -19,14 +25,13 @@ export const Titlebar: React.FC<{
 }> = ({ onSaveScene, onCloseProject, onNewScene, onOpenScene, onOpenSettings, onOpenProjectSettings }) => {
   const { state, dispatch, log } = useEditor();
   const engine = useEngine();
+  const { setPanelSize } = usePanelLayout();
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [, forceUpdate] = useState(0);
 
-  // Re-render when undo stack changes so buttons reflect canUndo/canRedo
-  useEffect(() => {
-    return undoManager.subscribe(() => forceUpdate(n => n + 1));
-  }, []);
+  // Re-render when undo stack changes so Undo/Redo labels and disabled states update
+  useEffect(() => undoManager.subscribe(() => forceUpdate(n => n + 1)), []);
 
   const handleUndo = useCallback(() => {
     const cmd = undoManager.undo();
@@ -38,109 +43,42 @@ export const Titlebar: React.FC<{
     if (cmd) log(`Redo: ${cmd.label}`, 'info');
   }, [log]);
 
+  const resetPanelLayout = useCallback(() => {
+    setPanelSize('left',   DEFAULT_LEFT);
+    setPanelSize('right',  DEFAULT_RIGHT);
+    setPanelSize('bottom', DEFAULT_BOTTOM);
+  }, [setPanelSize]);
+
+  // Build the full MenuContext — re-built on every render so dynamic
+  // labels / disabled states pick up the latest state.
+  const menuCtx = useMemo(() => ({
+    state, dispatch, log, engine,
+    onNewScene, onOpenScene, onSaveScene, onCloseProject,
+    onOpenSettings, onOpenProjectSettings,
+    resetPanelLayout,
+  }), [
+    state, dispatch, log, engine,
+    onNewScene, onOpenScene, onSaveScene, onCloseProject,
+    onOpenSettings, onOpenProjectSettings,
+    resetPanelLayout,
+  ]);
+
   const openMenu = (menuName: string, e: React.MouseEvent) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setMenuPos({ x: rect.left, y: rect.bottom });
     setMenuOpen(menuName);
   };
 
-  const fileMenuItems = [
-    {
-      label: 'New Scene', icon: Icons.file, shortcut: 'Ctrl+N',
-      onClick: () => onNewScene?.(),
-    },
-    {
-      label: 'Open Scene...', icon: Icons.folderOpen, shortcut: 'Ctrl+O',
-      onClick: () => onOpenScene?.(),
-    },
-    {
-      label: 'Save Scene', icon: Icons.save, shortcut: 'Ctrl+S',
-      onClick: () => onSaveScene?.(),
-    },
-    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    {
-      label: 'Close Project', icon: Icons.folder, shortcut: '',
-      onClick: () => onCloseProject?.(),
-    },
-    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    {
-      label: 'Exit', icon: Icons.close, shortcut: 'Alt+F4',
-      onClick: () => window.fluxionAPI?.close(),
-    },
-  ];
-
+  const menuNames = MenuRegistry.getMenuNames();
   const canUndo = undoManager.canUndo();
   const canRedo = undoManager.canRedo();
 
-  const editMenuItems = [
-    {
-      label: `Undo${undoManager.undoLabel ? ` ${undoManager.undoLabel}` : ''}`,
-      icon: Icons.undo, shortcut: 'Ctrl+Z',
-      onClick: handleUndo,
-      disabled: !canUndo,
-    },
-    {
-      label: `Redo${undoManager.redoLabel ? ` ${undoManager.redoLabel}` : ''}`,
-      icon: Icons.redo, shortcut: 'Ctrl+Y',
-      onClick: handleRedo,
-      disabled: !canRedo,
-    },
-    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    {
-      label: 'Duplicate', icon: Icons.copy, shortcut: 'Ctrl+D',
-      disabled: state.selectedEntity === null,
-      onClick: () => {
-        if (!engine || state.selectedEntity === null) return;
-        const ecs = engine.engine.ecs;
-        undoManager.execute(new DuplicateEntityCommand(
-          () => engine.scene.cloneEntity(state.selectedEntity!),
-          ecs,
-          (clone) => {
-            log(`Duplicated: ${ecs.getEntityName(clone)}`, 'info');
-            dispatch({ type: 'SELECT_ENTITY', entity: clone });
-            dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-          },
-        ));
-      },
-    },
-    {
-      label: 'Delete', icon: Icons.trash, shortcut: 'Del',
-      disabled: state.selectedEntity === null,
-      onClick: () => {
-        if (!engine || state.selectedEntity === null) return;
-        const target = state.selectedEntity;
-        const name = engine.engine.ecs.getEntityName(target);
-        undoManager.execute(new DeleteEntityCommand(
-          target, engine.engine.ecs, engine.engine,
-          (newId) => {
-            dispatch({ type: 'SELECT_ENTITY', entity: newId });
-            dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-          },
-        ));
-        dispatch({ type: 'SELECT_ENTITY', entity: null });
-        dispatch({ type: 'SET_SCENE_DIRTY', dirty: true });
-        log(`Deleted entity: ${name}`, 'warn');
-      },
-    },
-  ];
-
-  const viewMenuItems = [
-    { label: 'Toggle Grid', icon: Icons.grid, onClick: () => dispatch({ type: 'TOGGLE_GRID' }) },
-    { label: 'Toggle Wireframe', icon: Icons.eye, onClick: () => dispatch({ type: 'SET_VIEWPORT_SHADING', mode: state.viewportShading === 'wireframe' ? 'lit' : 'wireframe' }) },
-    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    { label: 'Settings', icon: Icons.settings, onClick: () => onOpenSettings?.() },
-    { label: 'Project Settings', icon: Icons.clipboard, onClick: () => onOpenProjectSettings?.() },
-    { label: '', icon: undefined, shortcut: '', onClick: () => {}, separator: true },
-    {
-      label: 'Reset Layout', icon: Icons.refresh,
-      onClick: () => {
-        dispatch({ type: 'SET_LEFT_WIDTH', width: initialEditorState.leftPanelWidth });
-        dispatch({ type: 'SET_RIGHT_WIDTH', width: initialEditorState.rightPanelWidth });
-        dispatch({ type: 'SET_BOTTOM_HEIGHT', height: initialEditorState.bottomPanelHeight });
-        log('Layout reset', 'info');
-      },
-    },
-  ];
+  // Menu icon mapping (fallback to no icon for custom menus)
+  const menuIcons: Record<string, React.ReactNode> = {
+    File: Icons.folder,
+    Edit: Icons.pencil,
+    View: Icons.eye,
+  };
 
   return (
     <div style={{
@@ -186,19 +124,16 @@ export const Titlebar: React.FC<{
           // @ts-ignore
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}>
-          {[
-            { label: 'File', icon: Icons.folder,   items: fileMenuItems },
-            { label: 'Edit', icon: Icons.pencil,   items: editMenuItems },
-            { label: 'View', icon: Icons.eye,      items: viewMenuItems },
-          ].map(({ label, icon, items: _items }) => (
+          {/* Dynamic menu buttons from MenuRegistry */}
+          {menuNames.map((name) => (
             <button
-              key={label}
-              onClick={(e) => openMenu(label, e)}
+              key={name}
+              onClick={(e) => openMenu(name, e)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                background: menuOpen === label ? 'var(--bg-hover)' : 'none',
+                background: menuOpen === name ? 'var(--bg-hover)' : 'none',
                 border: 'none',
                 color: 'var(--text-secondary)',
                 padding: '4px 10px',
@@ -208,7 +143,7 @@ export const Titlebar: React.FC<{
                 transition: 'all 150ms ease',
               }}
             >
-              {icon}{label}
+              {menuIcons[name]}{name}
             </button>
           ))}
 
@@ -287,12 +222,12 @@ export const Titlebar: React.FC<{
               transition: 'all 150ms ease',
             }}
             onMouseEnter={(e) => {
-              (e.target as HTMLElement).style.background = hoverBg;
-              (e.target as HTMLElement).style.color = 'var(--text-primary)';
+              (e.currentTarget as HTMLElement).style.background = hoverBg;
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
             }}
             onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.background = 'none';
-              (e.target as HTMLElement).style.color = 'var(--text-secondary)';
+              (e.currentTarget as HTMLElement).style.background = 'none';
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
             }}
           >
             {icon}
@@ -300,14 +235,10 @@ export const Titlebar: React.FC<{
         ))}
       </div>
 
-      {/* Context Menu */}
+      {/* Active context menu — resolved from registry at open time */}
       {menuOpen && (
         <ContextMenu
-          items={
-            menuOpen === 'File' ? fileMenuItems :
-            menuOpen === 'Edit' ? editMenuItems :
-            viewMenuItems
-          }
+          items={MenuRegistry.resolveItems(menuOpen, menuCtx)}
           position={menuPos}
           onClose={() => setMenuOpen(null)}
         />

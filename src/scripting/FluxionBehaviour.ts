@@ -542,6 +542,18 @@ export class FluxionBehaviour {
       setBorder(nodeId: string, enabled: boolean): void {
         getRT()?.setNodeBorder?.(tgt, nodeId, enabled);
       },
+      setGlowEnabled(nodeId: string, enabled: boolean): void {
+        getRT()?.setNodeGlowEnabled?.(tgt, nodeId, enabled);
+      },
+      setGlowColor(nodeId: string, color: string): void {
+        getRT()?.setNodeGlowColor?.(tgt, nodeId, color);
+      },
+      setGlowStrength(nodeId: string, strength: number): void {
+        getRT()?.setNodeGlowStrength?.(tgt, nodeId, strength);
+      },
+      setImage(nodeId: string, src: string): void {
+        getRT()?.setNodeImage?.(tgt, nodeId, src);
+      },
       show(): void  { const c = getComp(); if (c) c.enabled = true; },
       hide(): void  { const c = getComp(); if (c) c.enabled = false; },
       setVisible(v: boolean): void { const c = getComp(); if (c) c.enabled = v; },

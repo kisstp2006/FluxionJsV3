@@ -1,4 +1,4 @@
-import type { FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiFont, FuiImageNode, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
+import type { FuiAnchor, FuiAnimation, FuiAnimationTrack, FuiAnimatableProperty, FuiDocument, FuiFont, FuiImageNode, FuiKeyframe, FuiNode, FuiNodeType, FuiPanelNode, FuiRect } from './FuiTypes';
 
 const ANIMATABLE_PROPS = new Set<string>(['x', 'y', 'w', 'h', 'opacity', 'fontSize', 'borderWidth']);
 
@@ -35,6 +35,20 @@ function isRecord(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null;
 }
 
+const VALID_ANCHORS = new Set<FuiAnchor>(['topLeft','top','topRight','left','center','right','bottomLeft','bottom','bottomRight']);
+
+function parseAnchor(v: any): FuiAnchor | undefined {
+  return VALID_ANCHORS.has(v) ? v as FuiAnchor : undefined;
+}
+
+function parsePivot(v: any): { x: number; y: number } | undefined {
+  if (!isRecord(v)) return undefined;
+  const x = typeof v.x === 'number' ? Math.max(0, Math.min(1, v.x)) : undefined;
+  const y = typeof v.y === 'number' ? Math.max(0, Math.min(1, v.y)) : undefined;
+  if (x === undefined || y === undefined) return undefined;
+  return { x, y };
+}
+
 function ensureRect(rect: any, fallback: FuiRect): FuiRect {
   if (!rect || typeof rect !== 'object') return { ...fallback };
   const x = typeof rect.x === 'number' ? rect.x : fallback.x;
@@ -58,6 +72,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         id,
         type: 'panel',
         rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         children,
         style: isRecord(node?.style) ? node.style : undefined,
       };
@@ -69,6 +85,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         id,
         type: 'label',
         rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         text: typeof node?.text === 'string' ? node.text : 'Label',
         style: isRecord(node?.style) ? node.style : undefined,
       };
@@ -82,6 +100,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         id,
         type: 'button',
         rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         text: typeof node?.text === 'string' ? node.text : 'Button',
         icon:      typeof node?.icon  === 'string' ? node.icon  : undefined,
         image:     typeof node?.image  === 'string' ? node.image : undefined,
@@ -103,6 +123,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
       const rect = ensureRect(node?.rect, fallback);
       return {
         id, type: 'toggle', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         text: typeof node?.text === 'string' ? node.text : 'Toggle',
         value: node?.value === true,
         navigation: ['none','automatic','horizontal','vertical','explicit'].includes(node?.navigation) ? node.navigation : undefined,
@@ -114,6 +136,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
       const rect = ensureRect(node?.rect, fallback);
       return {
         id, type: 'slider', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         value: typeof node?.value === 'number' ? node.value : 0,
         min: typeof node?.min === 'number' ? node.min : 0,
         max: typeof node?.max === 'number' ? node.max : 1,
@@ -128,6 +152,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
       const rect = ensureRect(node?.rect, fallback);
       return {
         id, type: 'progressBar', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         value: typeof node?.value === 'number' ? Math.max(0, Math.min(1, node.value)) : 0,
         direction: node?.direction === 'vertical' ? 'vertical' : 'horizontal',
         style: isRecord(node?.style) ? node.style : undefined,
@@ -138,10 +164,23 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
       const rect = ensureRect(node?.rect, fallback);
       const img: FuiImageNode = {
         id, type: 'image', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         src: typeof node?.src === 'string' ? node.src : undefined,
         style: isRecord(node?.style) ? node.style : undefined,
       };
       return img;
+    }
+    case 'textArea': {
+      const fallback: FuiRect = { x: 0, y: 0, w: 300, h: 120 };
+      const rect = ensureRect(node?.rect, fallback);
+      return {
+        id, type: 'textArea', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
+        text: typeof node?.text === 'string' ? node.text : '',
+        style: isRecord(node?.style) ? node.style : undefined,
+      };
     }
     case 'inputField': {
       const fallback: FuiRect = { x: 0, y: 0, w: 200, h: 36 };
@@ -149,6 +188,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
       const CT = ['standard','integer','decimal','password'];
       return {
         id, type: 'inputField', rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         text: typeof node?.text === 'string' ? node.text : '',
         placeholder: typeof node?.placeholder === 'string' ? node.placeholder : 'Enter text...',
         contentType: CT.includes(node?.contentType) ? node.contentType : 'standard',
@@ -166,6 +207,8 @@ function parseNode(node: any, idx: number, canvasW: number, canvasH: number): Fu
         id,
         type: 'panel',
         rect,
+        anchor: parseAnchor(node?.anchor),
+        pivot: parsePivot(node?.pivot),
         children,
         style: isRecord(node?.style) ? node.style : undefined,
       };

@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, ColorInputAlpha, Select, Slider, Icons, FontInput } from '../../ui';
+import { PanelHeader, Section, PropertyRow, TextInput, NumberInput, ColorInput, ColorInputAlpha, Select, Slider, Icons, FontInput, ImageInput } from '../../ui';
 import { getFileSystem } from '../../../src/filesystem';
 import type { FuiDocument, FuiFont, FuiNode, FuiMode, FuiPanelNode, FuiRect, FuiAnimation, FuiAnimationTrack, FuiKeyframe, FuiAnimatableProperty, FuiAnchor, FuiScaleMode } from '../../../src/ui/FuiTypes';
 import { parseFuiJson } from '../../../src/ui/FuiParser';
@@ -18,7 +18,7 @@ import { applyAnimation } from '../../../src/ui/FuiAnimator';
 // ═══════════════════════════════════════════
 
 type SelectedNode = { node: FuiNode; path: number[] } | null;
-type AddNodeType = 'panel' | 'label' | 'button' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
+type AddNodeType = 'panel' | 'label' | 'button' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField' | 'textArea';
 type AlignType = 'left' | 'center-h' | 'right' | 'top' | 'center-v' | 'bottom';
 
 const ANCHOR_GRID: FuiAnchor[][] = [
@@ -31,6 +31,19 @@ const ANCHOR_ICONS: Record<FuiAnchor, string> = {
   left: '←', center: '·', right: '→',
   bottomLeft: '↙', bottom: '↓', bottomRight: '↘',
 };
+
+type PivotPreset = { x: number; y: number };
+const PIVOT_GRID: PivotPreset[][] = [
+  [{ x: 0, y: 0 },   { x: 0.5, y: 0 },   { x: 1, y: 0 }],
+  [{ x: 0, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 1, y: 0.5 }],
+  [{ x: 0, y: 1 },   { x: 0.5, y: 1 },   { x: 1, y: 1 }],
+];
+const PIVOT_ICONS = [
+  ['↖','↑','↗'],
+  ['←','·','→'],
+  ['↙','↓','↘'],
+];
+const _pivotEq = (a: PivotPreset, b: PivotPreset) => a.x === b.x && a.y === b.y;
 
 const ANIMATABLE_PROP_OPTIONS: { value: FuiAnimatableProperty; label: string }[] = [
   { value: 'x', label: 'X' }, { value: 'y', label: 'Y' },
@@ -118,6 +131,8 @@ function makeNode(type: AddNodeType): FuiNode {
     return { id, type: 'panel', rect: { x: 0, y: 0, w: 200, h: 150 }, style: {}, children: [] } as FuiPanelNode;
   if (type === 'label')
     return { id, type: 'label', rect: { x: 10, y: 10, w: 160, h: 30 }, text: 'Label', style: {} } as any;
+  if (type === 'textArea')
+    return { id, type: 'textArea', rect: { x: 10, y: 10, w: 200, h: 80 }, text: 'Multiline\nText', style: {} } as any;
   if (type === 'toggle')
     return { id, type: 'toggle', rect: { x: 10, y: 10, w: 160, h: 28 }, text: 'Toggle', value: false, style: {} } as any;
   if (type === 'slider')
@@ -166,6 +181,15 @@ function getParentSize(doc: FuiDocument, path: number[]): { w: number; h: number
   const parentPath = path.slice(0, -1);
   const parent = parentPath.length === 0 ? doc.root : getNodeAtPath(doc.root, parentPath);
   return { w: parent?.rect?.w ?? doc.canvas.width, h: parent?.rect?.h ?? doc.canvas.height };
+}
+
+function anchorOffset(anchor: FuiAnchor, parentW: number, parentH: number): { ax: number; ay: number } {
+  let ax = 0, ay = 0;
+  if (anchor === 'top'    || anchor === 'center' || anchor === 'bottom')    ax = parentW / 2;
+  else if (anchor === 'topRight' || anchor === 'right' || anchor === 'bottomRight') ax = parentW;
+  if (anchor === 'left'  || anchor === 'center' || anchor === 'right')     ay = parentH / 2;
+  else if (anchor === 'bottomLeft' || anchor === 'bottom' || anchor === 'bottomRight') ay = parentH;
+  return { ax, ay };
 }
 
 function alignNode(doc: FuiDocument, path: number[], alignment: AlignType): FuiDocument {
@@ -250,6 +274,8 @@ function hitTestNodeByDocCoords(doc: FuiDocument, docX: number, docY: number): {
 // InteractiveCanvas
 // ═══════════════════════════════════════════
 
+type Guideline = { orientation: 'h' | 'v'; pos: number };
+
 const InteractiveCanvas: React.FC<{
   doc: FuiDocument;
   scale: number;
@@ -257,11 +283,14 @@ const InteractiveCanvas: React.FC<{
   gridEnabled: boolean;
   snapEnabled: boolean;
   snapSize: number;
+  elementSnapEnabled: boolean;
+  elementSnapDistance: number;
+  guidelines: Guideline[];
   fontsVersion: number;
   statusRef: React.RefObject<HTMLSpanElement | null>;
   onSelectPath: (path: number[] | null) => void;
   onCommit: (path: number[], newRelRect: FuiRect) => void;
-}> = ({ doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, fontsVersion, statusRef, onSelectPath, onCommit }) => {
+}> = ({ doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, elementSnapEnabled, elementSnapDistance, guidelines, fontsVersion, statusRef, onSelectPath, onCommit }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<DragState | null>(null);
 
@@ -272,12 +301,18 @@ const InteractiveCanvas: React.FC<{
   const gridEnabledRef = useRef(gridEnabled);
   const snapEnabledRef = useRef(snapEnabled);
   const snapSizeRef = useRef(snapSize);
+  const elementSnapEnabledRef = useRef(elementSnapEnabled);
+  const elementSnapDistanceRef = useRef(elementSnapDistance);
+  const guidelinesRef = useRef(guidelines);
   docRef.current = doc;
   scaleRef.current = scale;
   selectedPathRef.current = selectedPath;
   gridEnabledRef.current = gridEnabled;
   snapEnabledRef.current = snapEnabled;
   snapSizeRef.current = snapSize;
+  elementSnapEnabledRef.current = elementSnapEnabled;
+  elementSnapDistanceRef.current = elementSnapDistance;
+  guidelinesRef.current = guidelines;
 
   const [cursor, setCursor] = useState('default');
   const cursorRef = useRef('default');
@@ -311,6 +346,26 @@ const InteractiveCanvas: React.FC<{
       ctx.restore();
     }
 
+    // ── Guidelines ──
+    const gls = guidelinesRef.current;
+    if (gls.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,200,255,0.7)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      for (const gl of gls) {
+        if (gl.orientation === 'v') {
+          const px = gl.pos * sc;
+          ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, ch); ctx.stroke();
+        } else {
+          const py = gl.pos * sc;
+          ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(cw, py); ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     const compiled = compileFui(d);
     if (selPath !== null) {
       const selNode = getNodeAtPath(d.root, selPath);
@@ -336,7 +391,7 @@ const InteractiveCanvas: React.FC<{
     }
   }, []); // stable — uses only refs
 
-  useEffect(() => { drawCanvas(); }, [doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, fontsVersion, drawCanvas]);
+  useEffect(() => { drawCanvas(); }, [doc, scale, selectedPath, gridEnabled, snapEnabled, snapSize, elementSnapEnabled, elementSnapDistance, guidelines, fontsVersion, drawCanvas]);
 
   // ── Mouse down ──
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -408,6 +463,35 @@ const InteractiveCanvas: React.FC<{
         let nx = drag.startRelRect.x + rawDx;
         let ny = drag.startRelRect.y + rawDy;
         if (snapEnabledRef.current) { nx = snapVal(nx, snapSizeRef.current); ny = snapVal(ny, snapSizeRef.current); }
+        // Element-to-element snap
+        if (elementSnapEnabledRef.current) {
+          const threshold = elementSnapDistanceRef.current;
+          const compiled = compileFui(d);
+          const dragNode = getNodeAtPath(d.root, drag.path);
+          const dragW = drag.startRelRect.w, dragH = drag.startRelRect.h;
+          // Collect snap candidates from all other compiled nodes
+          let bestDx = Infinity, bestDy = Infinity;
+          for (const cn of compiled.drawOrder) {
+            if (dragNode && cn.id === dragNode.id) continue;
+            const r = cn.rect;
+            // X-axis snap edges: left, center, right of other node vs left, center, right of drag node
+            const otherXs = [r.x, r.x + r.w / 2, r.x + r.w];
+            const dragXs  = [nx,   nx + dragW / 2, nx + dragW];
+            for (const ox of otherXs) for (let di = 0; di < dragXs.length; di++) {
+              const delta = ox - dragXs[di];
+              if (Math.abs(delta) < threshold && Math.abs(delta) < Math.abs(bestDx)) bestDx = delta;
+            }
+            // Y-axis snap edges: top, center, bottom
+            const otherYs = [r.y, r.y + r.h / 2, r.y + r.h];
+            const dragYs  = [ny,   ny + dragH / 2, ny + dragH];
+            for (const oy of otherYs) for (let di = 0; di < dragYs.length; di++) {
+              const delta = oy - dragYs[di];
+              if (Math.abs(delta) < threshold && Math.abs(delta) < Math.abs(bestDy)) bestDy = delta;
+            }
+          }
+          if (Math.abs(bestDx) < threshold) nx += bestDx;
+          if (Math.abs(bestDy) < threshold) ny += bestDy;
+        }
         nr = { ...drag.startRelRect, x: nx, y: ny };
       } else {
         nr = applyResizeDrag(drag.startRelRect, drag.handle, rawDx, rawDy);
@@ -500,6 +584,7 @@ const InteractiveCanvas: React.FC<{
 const NODE_ICONS: Record<string, React.ReactElement> = {
   panel:       Icons.layout,
   label:       Icons.typeText,
+  textArea:    Icons.typeText,
   button:      Icons.plane,
   image:       Icons.image,
   toggle:      Icons.toggleLeft,
@@ -541,7 +626,9 @@ const NodeProperties: React.FC<{
   fonts?: FuiFont[];
   /** Called when the user picks a font file not yet in the document's fonts list. */
   onAddFont?: (font: FuiFont) => void;
-}> = ({ node, onChange, animActive, onInsertKeyframe, fonts = [], onAddFont }) => {
+  /** Parent element size — used to keep visual position when changing anchor. */
+  parentSize?: { w: number; h: number };
+}> = ({ node, onChange, animActive, onInsertKeyframe, fonts = [], onAddFont, parentSize }) => {
   const fontOptions = [
     { value: '', label: '(default)' },
     ...fonts.map((f) => ({ value: f.family, label: f.family })),
@@ -591,7 +678,17 @@ const NodeProperties: React.FC<{
           {ANCHOR_GRID.flat().map((a) => (
             <button
               key={a}
-              onClick={() => onChange((n) => { n.anchor = a; })}
+              onClick={() => onChange((n) => {
+                const pw = parentSize?.w ?? 0;
+                const ph = parentSize?.h ?? 0;
+                const oldA: FuiAnchor = n.anchor ?? 'topLeft';
+                const { ax: oldAx, ay: oldAy } = anchorOffset(oldA, pw, ph);
+                const { ax: newAx, ay: newAy } = anchorOffset(a, pw, ph);
+                n.rect = n.rect ?? { x: 0, y: 0, w: 100, h: 40 };
+                n.rect.x = (n.rect.x ?? 0) + oldAx - newAx;
+                n.rect.y = (n.rect.y ?? 0) + oldAy - newAy;
+                n.anchor = a;
+              })}
               title={a}
               style={{
                 padding: '2px 0', fontSize: 11, border: '1px solid var(--border)', borderRadius: 2,
@@ -601,6 +698,65 @@ const NodeProperties: React.FC<{
               }}
             >{ANCHOR_ICONS[a]}</button>
           ))}
+        </div>
+      </PropertyRow>
+      <PropertyRow label="Pivot">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+            {PIVOT_GRID.flatMap((row, ri) => row.map((preset, ci) => {
+              const currentPivot: PivotPreset = { x: (node as any).pivot?.x ?? 0, y: (node as any).pivot?.y ?? 0 };
+              const active = _pivotEq(currentPivot, preset);
+              return (
+                <button
+                  key={`${ri}-${ci}`}
+                  title={`Pivot (${preset.x}, ${preset.y})`}
+                  onClick={() => onChange((n) => {
+                    const rect = n.rect ?? { x: 0, y: 0, w: 100, h: 40 };
+                    const oldPx = (n as any).pivot?.x ?? 0;
+                    const oldPy = (n as any).pivot?.y ?? 0;
+                    n.rect = rect;
+                    n.rect.x = (n.rect.x ?? 0) + (preset.x - oldPx) * rect.w;
+                    n.rect.y = (n.rect.y ?? 0) + (preset.y - oldPy) * rect.h;
+                    (n as any).pivot = { x: preset.x, y: preset.y };
+                  })}
+                  style={{
+                    padding: '2px 0', fontSize: 11, border: '1px solid var(--border)', borderRadius: 2,
+                    cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                    background: active ? 'var(--accent)' : 'var(--bg-hover)',
+                    color: active ? '#fff' : 'var(--text-muted)',
+                  }}
+                >{PIVOT_ICONS[ri][ci]}</button>
+              );
+            }))}
+          </div>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 12 }}>X</span>
+            <NumberInput
+              value={Math.round(((node as any).pivot?.x ?? 0) * 100) / 100}
+              step={0.01} min={0} max={1}
+              onChange={(v) => onChange((n) => {
+                const rect = n.rect ?? { x: 0, y: 0, w: 100, h: 40 };
+                const oldPx = (n as any).pivot?.x ?? 0;
+                const clamped = Math.max(0, Math.min(1, v));
+                n.rect = rect;
+                n.rect.x = (n.rect.x ?? 0) + (clamped - oldPx) * rect.w;
+                (n as any).pivot = { x: clamped, y: (n as any).pivot?.y ?? 0 };
+              })}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 12 }}>Y</span>
+            <NumberInput
+              value={Math.round(((node as any).pivot?.y ?? 0) * 100) / 100}
+              step={0.01} min={0} max={1}
+              onChange={(v) => onChange((n) => {
+                const rect = n.rect ?? { x: 0, y: 0, w: 100, h: 40 };
+                const oldPy = (n as any).pivot?.y ?? 0;
+                const clamped = Math.max(0, Math.min(1, v));
+                n.rect = rect;
+                n.rect.y = (n.rect.y ?? 0) + (clamped - oldPy) * rect.h;
+                (n as any).pivot = { x: (n as any).pivot?.x ?? 0, y: clamped };
+              })}
+            />
+          </div>
         </div>
       </PropertyRow>
       <PropertyRow label="X">
@@ -633,6 +789,46 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Align">
           <Select value={(node as any).style?.align ?? 'left'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
         </PropertyRow>
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Glow</div>
+        <PropertyRow label="Glow">
+          <input type="checkbox" checked={(node as any).style?.glowEnabled === true} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.glowEnabled = e.target.checked; })} />
+        </PropertyRow>
+        {(node as any).style?.glowEnabled && (<>
+          <PropertyRow label="Glow Color"><ColorInput value={(node as any).style?.glowColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowColor = v; })} /></PropertyRow>
+          <PropertyRow label="Glow Str.">
+            <NumberInput value={(node as any).style?.glowStrength ?? 10} step={1} min={1} max={40} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowStrength = Math.max(1, Math.min(40, v)); })} />
+          </PropertyRow>
+        </>)}
+      </>)}
+
+      {node.type === 'textArea' && (<>
+        <PropertyRow label="Text"><TextInput value={(node as any).text ?? ''} onChange={(v) => onChange((n) => { n.text = v; })} /></PropertyRow>
+        <PropertyRow label="Font Size">
+          {withKey(<NumberInput value={(node as any).style?.fontSize ?? 14} step={1} min={6} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fontSize = v; })} />, 'fontSize')}
+        </PropertyRow>
+        <PropertyRow label="Color"><ColorInput value={(node as any).style?.color ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.color = v; })} /></PropertyRow>
+        <PropertyRow label="Font"><FontPicker value={(node as any).style?.fontFamily} /></PropertyRow>
+        <PropertyRow label="Align">
+          <Select value={(node as any).style?.align ?? 'left'} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.align = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Line Height">
+          <NumberInput value={(node as any).style?.lineHeight ?? 1.4} step={0.05} min={0.8} max={4} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.lineHeight = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Wrap Mode">
+          <Select value={(node as any).style?.wrapMode ?? 'word'} options={[{ value: 'word', label: 'Word' }, { value: 'char', label: 'Char' }, { value: 'none', label: 'None' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.wrapMode = v; })} />
+        </PropertyRow>
+        <PropertyRow label="Pad H"><NumberInput value={(node as any).style?.paddingH ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.paddingH = v; })} /></PropertyRow>
+        <PropertyRow label="Pad V"><NumberInput value={(node as any).style?.paddingV ?? 4} step={1} min={0} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.paddingV = v; })} /></PropertyRow>
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Glow</div>
+        <PropertyRow label="Glow">
+          <input type="checkbox" checked={(node as any).style?.glowEnabled === true} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.glowEnabled = e.target.checked; })} />
+        </PropertyRow>
+        {(node as any).style?.glowEnabled && (<>
+          <PropertyRow label="Glow Color"><ColorInput value={(node as any).style?.glowColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowColor = v; })} /></PropertyRow>
+          <PropertyRow label="Glow Str.">
+            <NumberInput value={(node as any).style?.glowStrength ?? 10} step={1} min={1} max={40} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowStrength = Math.max(1, Math.min(40, v)); })} />
+          </PropertyRow>
+        </>)}
       </>)}
 
       {node.type === 'button' && (<>
@@ -687,10 +883,23 @@ const NodeProperties: React.FC<{
         </PropertyRow>
         {/* ── Image background ── */}
         <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Image</div>
-        <PropertyRow label="Source"><TextInput value={(node as any).image ?? ''} placeholder="Assets/UI/btn.png" onChange={(v) => onChange((n) => { n.image = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Source">
+          <ImageInput value={(node as any).image ?? ''} placeholder="Button image…" onChange={(v) => onChange((n) => { n.image = v || undefined; })} />
+        </PropertyRow>
         <PropertyRow label="Fit">
           <Select value={(node as any).imageFit ?? 'fill'} options={[{ value: 'fill', label: 'Fill' }, { value: 'contain', label: 'Contain' }, { value: 'cover', label: 'Cover' }]} onChange={(v) => onChange((n) => { n.imageFit = v; })} />
         </PropertyRow>
+        {/* ── Glow ── */}
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Glow</div>
+        <PropertyRow label="Glow">
+          <input type="checkbox" checked={(node as any).style?.glowEnabled === true} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.glowEnabled = e.target.checked; })} />
+        </PropertyRow>
+        {(node as any).style?.glowEnabled && (<>
+          <PropertyRow label="Glow Color"><ColorInput value={(node as any).style?.glowColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowColor = v; })} /></PropertyRow>
+          <PropertyRow label="Glow Str.">
+            <NumberInput value={(node as any).style?.glowStrength ?? 10} step={1} min={1} max={40} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowStrength = Math.max(1, Math.min(40, v)); })} />
+          </PropertyRow>
+        </>)}
       </>)}
 
       {node.type === 'toggle' && (<>
@@ -710,6 +919,16 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Navigation">
           <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
         </PropertyRow>
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Glow</div>
+        <PropertyRow label="Glow">
+          <input type="checkbox" checked={(node as any).style?.glowEnabled === true} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.glowEnabled = e.target.checked; })} />
+        </PropertyRow>
+        {(node as any).style?.glowEnabled && (<>
+          <PropertyRow label="Glow Color"><ColorInput value={(node as any).style?.glowColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowColor = v; })} /></PropertyRow>
+          <PropertyRow label="Glow Str.">
+            <NumberInput value={(node as any).style?.glowStrength ?? 10} step={1} min={1} max={40} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowStrength = Math.max(1, Math.min(40, v)); })} />
+          </PropertyRow>
+        </>)}
       </>)}
 
       {node.type === 'slider' && (<>
@@ -763,10 +982,22 @@ const NodeProperties: React.FC<{
         <PropertyRow label="Navigation">
           <Select value={(node as any).navigation ?? 'automatic'} options={[{ value: 'automatic', label: 'Automatic' }, { value: 'none', label: 'None' }, { value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]} onChange={(v) => onChange((n) => { n.navigation = v; })} />
         </PropertyRow>
+        <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: 4, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Glow</div>
+        <PropertyRow label="Glow">
+          <input type="checkbox" checked={(node as any).style?.glowEnabled === true} onChange={(e) => onChange((n) => { n.style = n.style ?? {}; n.style.glowEnabled = e.target.checked; })} />
+        </PropertyRow>
+        {(node as any).style?.glowEnabled && (<>
+          <PropertyRow label="Glow Color"><ColorInput value={(node as any).style?.glowColor ?? '#ffffff'} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowColor = v; })} /></PropertyRow>
+          <PropertyRow label="Glow Str.">
+            <NumberInput value={(node as any).style?.glowStrength ?? 10} step={1} min={1} max={40} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.glowStrength = Math.max(1, Math.min(40, v)); })} />
+          </PropertyRow>
+        </>)}
       </>)}
 
       {node.type === 'image' && (<>
-        <PropertyRow label="Source"><TextInput value={(node as any).src ?? ''} placeholder="Assets/UI/image.png" onChange={(v) => onChange((n) => { n.src = v || undefined; })} /></PropertyRow>
+        <PropertyRow label="Source">
+          <ImageInput value={(node as any).src ?? ''} placeholder="Image source…" onChange={(v) => onChange((n) => { n.src = v || undefined; })} />
+        </PropertyRow>
         <PropertyRow label="Fit">
           <Select value={(node as any).style?.fit ?? 'contain'} options={[{ value: 'contain', label: 'Contain' }, { value: 'cover', label: 'Cover' }, { value: 'fill', label: 'Fill' }]} onChange={(v) => onChange((n) => { n.style = n.style ?? {}; n.style.fit = v; })} />
         </PropertyRow>
@@ -821,6 +1052,11 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
   const [gridEnabled, setGridEnabled] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapSize, setSnapSize] = useState(10);
+  const [elementSnapEnabled, setElementSnapEnabled] = useState(false);
+  const [elementSnapDistance, setElementSnapDistance] = useState(8);
+  const [rulerEnabled, setRulerEnabled] = useState(false);
+  const [guidelines, setGuidelines] = useState<Guideline[]>([]);
+  const rulerSize = 18;
 
   // ── Refs ──
   const historyRef = useRef<FuiDocument[]>([]);
@@ -1461,7 +1697,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%', marginBottom: 2 }}>
               Add {canAddChild ? 'child to selected' : '(select a panel)'}
             </span>
-            {(['panel', 'label', 'button', 'image', 'toggle', 'slider', 'progressBar', 'inputField'] as AddNodeType[]).map((t) => (
+            {(['panel', 'label', 'textArea', 'button', 'image', 'toggle', 'slider', 'progressBar', 'inputField'] as AddNodeType[]).map((t) => (
               <button key={t} onClick={() => canAddChild && handleAddNode(t)} style={toolBtn(canAddChild)} title={`Add ${t}`}>
                 {NODE_ICONS[t]} {t}
               </button>
@@ -1511,8 +1747,14 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
             <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
             {/* Grid / Snap */}
             <button onClick={() => setGridEnabled((v) => !v)} style={{ ...toolBtn(true), background: gridEnabled ? 'var(--accent)' : 'var(--bg-hover)', color: gridEnabled ? '#fff' : 'var(--text-secondary)' }} title="Toggle grid">⊞ Grid</button>
-            <button onClick={() => setSnapEnabled((v) => !v)} style={{ ...toolBtn(true), background: snapEnabled ? 'var(--accent)' : 'var(--bg-hover)', color: snapEnabled ? '#fff' : 'var(--text-secondary)' }} title="Toggle snap">⊡ Snap</button>
+            <button onClick={() => setSnapEnabled((v) => !v)} style={{ ...toolBtn(true), background: snapEnabled ? 'var(--accent)' : 'var(--bg-hover)', color: snapEnabled ? '#fff' : 'var(--text-secondary)' }} title="Toggle grid snap">⊡ Snap</button>
             <NumberInput value={snapSize} step={1} min={1} max={100} onChange={(v) => setSnapSize(Math.max(1, v))} style={{ width: 44 }} />
+            <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+            <button onClick={() => setElementSnapEnabled((v) => !v)} style={{ ...toolBtn(true), background: elementSnapEnabled ? 'var(--accent)' : 'var(--bg-hover)', color: elementSnapEnabled ? '#fff' : 'var(--text-secondary)' }} title="Snap to other elements">⊕ Elem</button>
+            <NumberInput value={elementSnapDistance} step={1} min={1} max={40} onChange={(v) => setElementSnapDistance(Math.max(1, v))} style={{ width: 40 }} />
+            <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+            <button onClick={() => setRulerEnabled((v) => !v)} style={{ ...toolBtn(true), background: rulerEnabled ? 'var(--accent)' : 'var(--bg-hover)', color: rulerEnabled ? '#fff' : 'var(--text-secondary)' }} title="Toggle rulers">⊢ Ruler</button>
+            <button onClick={() => setGuidelines([])} style={toolBtn(guidelines.length > 0)} title="Clear all guidelines" disabled={guidelines.length === 0}>✕ Guides</button>
           </div>
           {/* Toolbar row 2: align */}
           <div style={{ padding: '4px 10px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1535,14 +1777,107 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
           <div
             ref={viewportRef}
             style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#0d1117' }}
-            onPointerDown={handleViewportPointerDown}
+            onPointerDown={(e) => {
+              // Ruler drag: create guideline
+              if (rulerEnabled) {
+                const vr = viewportRef.current?.getBoundingClientRect();
+                if (!vr) { handleViewportPointerDown(e); return; }
+                const rx = e.clientX - vr.left, ry = e.clientY - vr.top;
+                if (rx < rulerSize && ry >= rulerSize) {
+                  // Drag from vertical ruler -> vertical guideline
+                  const onMove = (ev: PointerEvent) => {
+                    const pos = (ev.clientX - vr.left - panX) / zoom;
+                    setGuidelines((prev) => {
+                      const next = prev.filter((g) => g.orientation !== 'v' || Math.abs(g.pos - pos) > 1);
+                      return [...next.slice(-19), { orientation: 'v', pos }];
+                    });
+                  };
+                  const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                  e.preventDefault();
+                  return;
+                }
+                if (ry < rulerSize && rx >= rulerSize) {
+                  // Drag from horizontal ruler -> horizontal guideline
+                  const onMove = (ev: PointerEvent) => {
+                    const pos = (ev.clientY - vr.top - panY) / zoom;
+                    setGuidelines((prev) => {
+                      const next = prev.filter((g) => g.orientation !== 'h' || Math.abs(g.pos - pos) > 1);
+                      return [...next.slice(-19), { orientation: 'h', pos }];
+                    });
+                  };
+                  const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                  e.preventDefault();
+                  return;
+                }
+              }
+              handleViewportPointerDown(e);
+            }}
             onPointerMove={handleViewportPointerMove}
             onPointerUp={handleViewportPointerUp}
           >
+            {/* Rulers */}
+            {rulerEnabled && (
+              <>
+                {/* Corner square */}
+                <div style={{ position: 'absolute', left: 0, top: 0, width: rulerSize, height: rulerSize, background: '#1c1c2e', zIndex: 10, borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }} />
+                {/* Horizontal ruler */}
+                <canvas
+                  style={{ position: 'absolute', left: rulerSize, top: 0, height: rulerSize, zIndex: 9, pointerEvents: 'none' }}
+                  ref={(c) => {
+                    if (!c) return;
+                    const vp = viewportRef.current;
+                    c.width = vp ? vp.clientWidth - rulerSize : 600;
+                    c.height = rulerSize;
+                    const cx = c.getContext('2d'); if (!cx) return;
+                    cx.clearRect(0, 0, c.width, c.height);
+                    cx.fillStyle = '#1c1c2e'; cx.fillRect(0, 0, c.width, c.height);
+                    cx.fillStyle = 'var(--text-muted, #888)'; cx.font = '9px monospace'; cx.textBaseline = 'top';
+                    const step = zoom > 1.5 ? 10 : zoom > 0.5 ? 20 : 50;
+                    const startDoc = Math.floor(-panX / zoom / step) * step;
+                    for (let d = startDoc; d < startDoc + c.width / zoom + step * 2; d += step) {
+                      const px = d * zoom + panX;
+                      cx.fillRect(px, rulerSize - 5, 1, 5);
+                      if (d % (step * 2) === 0) cx.fillText(String(d), px + 2, 1);
+                    }
+                    cx.strokeStyle = 'var(--border, #333)'; cx.lineWidth = 1;
+                    cx.beginPath(); cx.moveTo(0, rulerSize - 1); cx.lineTo(c.width, rulerSize - 1); cx.stroke();
+                  }}
+                />
+                {/* Vertical ruler */}
+                <canvas
+                  style={{ position: 'absolute', left: 0, top: rulerSize, width: rulerSize, zIndex: 9, pointerEvents: 'none' }}
+                  ref={(c) => {
+                    if (!c) return;
+                    const vp = viewportRef.current;
+                    c.width = rulerSize;
+                    c.height = vp ? vp.clientHeight - rulerSize : 400;
+                    const cx = c.getContext('2d'); if (!cx) return;
+                    cx.clearRect(0, 0, c.width, c.height);
+                    cx.fillStyle = '#1c1c2e'; cx.fillRect(0, 0, c.width, c.height);
+                    cx.fillStyle = 'var(--text-muted, #888)'; cx.font = '9px monospace'; cx.textBaseline = 'middle';
+                    cx.save(); cx.translate(rulerSize - 2, 0); cx.rotate(-Math.PI / 2);
+                    const step = zoom > 1.5 ? 10 : zoom > 0.5 ? 20 : 50;
+                    const startDoc = Math.floor(-panY / zoom / step) * step;
+                    for (let d = startDoc; d < startDoc + c.height / zoom + step * 2; d += step) {
+                      const py = d * zoom + panY;
+                      cx.fillRect(-py, 0, 1, 5);
+                      if (d % (step * 2) === 0) cx.fillText(String(d), -py - 2, -6);
+                    }
+                    cx.restore();
+                    cx.strokeStyle = 'var(--border, #333)'; cx.lineWidth = 1;
+                    cx.beginPath(); cx.moveTo(rulerSize - 1, 0); cx.lineTo(rulerSize - 1, c.height); cx.stroke();
+                  }}
+                />
+              </>
+            )}
             {error ? (
               <div style={{ padding: 12, color: '#ef5350', fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'pre-wrap', position: 'absolute', top: 0, left: 0 }}>{error}</div>
             ) : (
-              <div style={{ position: 'absolute', left: panX, top: panY }}>
+              <div style={{ position: 'absolute', left: panX + (rulerEnabled ? rulerSize : 0), top: panY + (rulerEnabled ? rulerSize : 0) }}>
                 <InteractiveCanvas
                   doc={previewDoc}
                   scale={zoom}
@@ -1550,6 +1885,9 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                   gridEnabled={gridEnabled}
                   snapEnabled={snapEnabled}
                   snapSize={snapSize}
+                  elementSnapEnabled={elementSnapEnabled}
+                  elementSnapDistance={elementSnapDistance}
+                  guidelines={guidelines}
                   fontsVersion={fontsVersion}
                   statusRef={statusDomRef}
                   onSelectPath={handleSelectPath}
@@ -1647,6 +1985,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
                 onInsertKeyframe={(prop) => handleInsertKeyframe(selected.node.id, prop)}
                 fonts={doc?.fonts ?? []}
                 onAddFont={(font) => updateDocProp((d) => ({ ...d, fonts: [...(d.fonts ?? []), font] }))}
+                parentSize={doc ? getParentSize(doc, selected.path) : undefined}
               />
             )}
           </Section>

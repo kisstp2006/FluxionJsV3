@@ -1,4 +1,4 @@
-import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiFont, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiToggleNode } from './FuiTypes';
+import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiFont, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiTextAreaNode, FuiToggleNode } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
 
 export interface FuiStyleResolved {
@@ -272,9 +272,11 @@ export function compileFui(doc: FuiDocument): FuiCompiled {
   ): FuiCompiledNode => {
     const rect = node.rect ?? { x: 0, y: 0, w: doc.canvas.width, h: doc.canvas.height };
     const { ax, ay } = _anchorOffset((node as any).anchor, parentSize.w, parentSize.h);
+    const pivotX = ((node as any).pivot?.x ?? 0) * rect.w;
+    const pivotY = ((node as any).pivot?.y ?? 0) * rect.h;
     const absRect: FuiRect = {
-      x: parentAbs.x + ax + rect.x,
-      y: parentAbs.y + ay + rect.y,
+      x: parentAbs.x + ax + rect.x - pivotX,
+      y: parentAbs.y + ay + rect.y - pivotY,
       w: rect.w,
       h: rect.h,
     };
@@ -391,9 +393,16 @@ export function renderCompiledFuiToCanvas(
       const color = resolveTextColor(n.style) ?? '#ffffff';
       const fontSize = resolveFontSize(n.style) * Math.min(scaleX, scaleY);
       const align = resolveAlign(n.style);
+      const glowEnabled  = (n.style as any)?.glowEnabled === true;
+      const glowColor    = (n.style as any)?.glowColor ?? color;
+      const glowStrength = Math.max(1, Math.min(40, withDefaultNumber((n.style as any)?.glowStrength, 10))) * Math.min(scaleX, scaleY);
 
       ctx.save();
       ctx.globalAlpha = opacity;
+      if (glowEnabled) {
+        ctx.shadowBlur  = glowStrength;
+        ctx.shadowColor = glowColor;
+      }
       ctx.fillStyle = color;
       ctx.font = `${fontSize}px ${resolveFontFamily(n.style)}`;
       ctx.textAlign = align;
@@ -405,6 +414,73 @@ export function renderCompiledFuiToCanvas(
         x + w / 2;
       const ty = y + h / 2;
       ctx.fillText(text, tx, ty);
+      ctx.restore();
+    } else if (n.type === 'textArea') {
+      const text = n.text ?? '';
+      const color = resolveTextColor(n.style) ?? '#ffffff';
+      const fontSize = resolveFontSize(n.style) * Math.min(scaleX, scaleY);
+      const align = resolveAlign(n.style);
+      const lineHeightMult = withDefaultNumber((n.style as any)?.lineHeight, 1.4);
+      const wrapMode: string = (n.style as any)?.wrapMode ?? 'word';
+      const paddingH = withDefaultNumber((n.style as any)?.paddingH, 4) * scaleX;
+      const paddingV = withDefaultNumber((n.style as any)?.paddingV, 4) * scaleY;
+      const glowEnabled  = (n.style as any)?.glowEnabled === true;
+      const glowColor    = (n.style as any)?.glowColor ?? color;
+      const glowStrength = Math.max(1, Math.min(40, withDefaultNumber((n.style as any)?.glowStrength, 10))) * Math.min(scaleX, scaleY);
+      const lineHeight   = fontSize * lineHeightMult;
+      const maxW = w - paddingH * 2;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      if (glowEnabled) { ctx.shadowBlur = glowStrength; ctx.shadowColor = glowColor; }
+      ctx.fillStyle = color;
+      ctx.font = `${fontSize}px ${resolveFontFamily(n.style)}`;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'alphabetic';
+
+      // Word-wrap helper
+      const wrapLines = (src: string): string[] => {
+        if (wrapMode === 'none') return src.split('\n');
+        const result: string[] = [];
+        for (const paragraph of src.split('\n')) {
+          if (paragraph === '') { result.push(''); continue; }
+          if (wrapMode === 'char') {
+            let line = '';
+            for (const ch of paragraph) {
+              if (ctx.measureText(line + ch).width > maxW && line) { result.push(line); line = ch; }
+              else line += ch;
+            }
+            if (line) result.push(line);
+          } else {
+            const words = paragraph.split(' ');
+            let line = '';
+            for (const word of words) {
+              const test = line ? line + ' ' + word : word;
+              if (ctx.measureText(test).width > maxW && line) { result.push(line); line = word; }
+              else line = test;
+            }
+            if (line) result.push(line);
+          }
+        }
+        return result;
+      };
+
+      const lines = wrapLines(text);
+      const totalH = lines.length * lineHeight;
+      let startY = y + paddingV + fontSize * 0.8; // baseline offset
+      // Vertically center the block
+      if (totalH < h - paddingV * 2) startY = y + (h - totalH) / 2 + fontSize * 0.8;
+
+      const tx =
+        align === 'left'  ? x + paddingH :
+        align === 'right' ? x + w - paddingH :
+        x + w / 2;
+
+      for (let li = 0; li < lines.length; li++) {
+        const ly = startY + li * lineHeight;
+        if (ly > y + h + lineHeight) break; // clipped
+        ctx.fillText(lines[li], tx, ly);
+      }
       ctx.restore();
     } else if (n.type === 'button') {
       const st = opts?.nodeStates?.get(n.id);
@@ -532,6 +608,10 @@ export function renderCompiledFuiToCanvas(
       }
 
       // Text
+      const btnGlowEnabled  = merged.glowEnabled === true;
+      const btnGlowColor    = merged.glowColor ?? textColor;
+      const btnGlowStrength = Math.max(1, Math.min(40, withDefaultNumber(merged.glowStrength, 10))) * Math.min(scaleX, scaleY);
+      if (btnGlowEnabled) { ctx.shadowBlur = btnGlowStrength; ctx.shadowColor = btnGlowColor; }
       ctx.fillStyle = textColor;
       ctx.font = `${fontSize}px ${resolveFontFamily(merged)}`;
       ctx.textAlign = align;
@@ -582,6 +662,10 @@ export function renderCompiledFuiToCanvas(
       }
       // Label
       if (n.text) {
+        const togGlowEnabled  = (n.style as any)?.glowEnabled === true;
+        const togGlowColor    = (n.style as any)?.glowColor ?? textColor;
+        const togGlowStrength = Math.max(1, Math.min(40, withDefaultNumber((n.style as any)?.glowStrength, 10))) * Math.min(scaleX, scaleY);
+        if (togGlowEnabled) { ctx.shadowBlur = togGlowStrength; ctx.shadowColor = togGlowColor; }
         ctx.fillStyle = textColor;
         ctx.font = `${fontSize}px ${resolveFontFamily(n.style as any)}`;
         ctx.textAlign = 'left';
@@ -667,7 +751,11 @@ export function renderCompiledFuiToCanvas(
       ctx.font = `${fontSize}px ${resolveFontFamily(st)}`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
+      const inpGlowEnabled  = (st as any)?.glowEnabled === true;
+      const inpGlowColor    = (st as any)?.glowColor ?? textColor;
+      const inpGlowStrength = Math.max(1, Math.min(40, withDefaultNumber((st as any)?.glowStrength, 10))) * Math.min(scaleX, scaleY);
       if (display) {
+        if (inpGlowEnabled) { ctx.shadowBlur = inpGlowStrength; ctx.shadowColor = inpGlowColor; }
         ctx.fillStyle = textColor;
         const shown = isPassword ? '•'.repeat(display.length) : display;
         ctx.fillText(shown, x + padding, y + h / 2);

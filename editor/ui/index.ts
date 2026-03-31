@@ -16,6 +16,8 @@ export { PathInput } from './inputs/PathInput';
 export type { PathInputProps, PathFilter } from './inputs/PathInput';
 export { FontInput } from './inputs/FontInput';
 export type { FontInputProps, FontValue } from './inputs/FontInput';
+export { ImageInput } from './inputs/ImageInput';
+export type { ImageInputProps, ImageValue } from './inputs/ImageInput';
 
 // Layout
 export { Button } from './layout/Button';

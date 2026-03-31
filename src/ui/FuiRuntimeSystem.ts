@@ -727,6 +727,66 @@ export class FuiRuntimeSystem implements System {
     else this.renderWorld(entry.world, comp, ns);
   }
 
+  /**
+   * Toggle glow on any text-bearing node (label, textArea, button, toggle, inputField) and immediately re-render.
+   * Called from scripts via `this.ui.setGlowEnabled(nodeId, enabled)`.
+   */
+  setNodeGlowEnabled(entity: EntityId, nodeId: string, enabled: boolean): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    if (!node.style) (node as any).style = {};
+    (node.style as any).glowEnabled = enabled;
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeStyleProp(comp._inlineDoc as FuiDocument, nodeId, 'glowEnabled', enabled);
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this._renderScreenFrame(entity, entry.screen, comp, ns, this._activeTooltips.get(entity) ?? undefined);
+    else this.renderWorld(entry.world, comp, ns);
+  }
+
+  /**
+   * Set glow color on any text-bearing node (label, textArea, button, toggle, inputField) and immediately re-render.
+   * Called from scripts via `this.ui.setGlowColor(nodeId, color)`.
+   */
+  setNodeGlowColor(entity: EntityId, nodeId: string, color: string): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    if (!node.style) (node as any).style = {};
+    (node.style as any).glowColor = color;
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeStyleProp(comp._inlineDoc as FuiDocument, nodeId, 'glowColor', color);
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this._renderScreenFrame(entity, entry.screen, comp, ns, this._activeTooltips.get(entity) ?? undefined);
+    else this.renderWorld(entry.world, comp, ns);
+  }
+
+  /**
+   * Set glow strength (blur radius) on any text-bearing node (label, textArea, button, toggle, inputField) and immediately re-render.
+   * Called from scripts via `this.ui.setGlowStrength(nodeId, strength)`.
+   */
+  setNodeGlowStrength(entity: EntityId, nodeId: string, strength: number): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    if (!node.style) (node as any).style = {};
+    (node.style as any).glowStrength = strength;
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeStyleProp(comp._inlineDoc as FuiDocument, nodeId, 'glowStrength', strength);
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this._renderScreenFrame(entity, entry.screen, comp, ns, this._activeTooltips.get(entity) ?? undefined);
+    else this.renderWorld(entry.world, comp, ns);
+  }
+
   /** Handle mousedown on any interactable node. */
   private _handleInteractablePress(
     entity: EntityId,
@@ -814,6 +874,56 @@ export class FuiRuntimeSystem implements System {
       return false;
     };
     walk(doc.root);
+  }
+
+  /** Patch any top-level property on a node inside the inline/source document. */
+  private _patchDocNodeProp(doc: FuiDocument, nodeId: string, key: string, value: unknown): void {
+    const walk = (node: FuiNode): boolean => {
+      if (node.id === nodeId) {
+        (node as any)[key] = value;
+        return true;
+      }
+      if (node.type === 'panel') {
+        for (const child of (node as FuiPanelNode).children ?? []) {
+          if (walk(child)) return true;
+        }
+      }
+      return false;
+    };
+    walk(doc.root);
+  }
+
+  /**
+   * Change the image source of an image or button node and immediately re-render.
+   * For image nodes sets `src`; for button nodes sets `image`.
+   * Called from scripts via `this.ui.setImage(nodeId, path)`.
+   */
+  setNodeImage(entity: EntityId, nodeId: string, src: string): void {
+    const entry = this.entries.get(entity);
+    if (!entry) return;
+    const compiled = entry.mode === 'screen' ? entry.screen.compiled : entry.world.compiled;
+    const node = compiled.nodeById.get(nodeId);
+    if (!node) return;
+    const prop = node.type === 'button' ? 'image' : 'src';
+    (node as any)[prop] = src || undefined;
+    const comp = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+    if (!comp) return;
+    if (comp._inlineDoc) this._patchDocNodeProp(comp._inlineDoc as FuiDocument, nodeId, prop, src || undefined);
+    // Preload the new image before re-rendering
+    if (src) {
+      preloadFuiImages(compiled, (s) => resolveFuiPath(s), () => {
+        const ns2 = this.interactStates.get(entity)?.nodeStates;
+        const comp2 = this.engine.ecs.getComponent<FuiComponent>(entity, 'Fui');
+        if (!comp2) return;
+        const entry2 = this.entries.get(entity);
+        if (!entry2) return;
+        if (entry2.mode === 'screen') this._renderScreenFrame(entity, entry2.screen, comp2, ns2, this._activeTooltips.get(entity) ?? undefined);
+        else this.renderWorld(entry2.world, comp2, ns2);
+      });
+    }
+    const ns = this.interactStates.get(entity)?.nodeStates;
+    if (entry.mode === 'screen') this._renderScreenFrame(entity, entry.screen, comp, ns, this._activeTooltips.get(entity) ?? undefined);
+    else this.renderWorld(entry.world, comp, ns);
   }
 }
 

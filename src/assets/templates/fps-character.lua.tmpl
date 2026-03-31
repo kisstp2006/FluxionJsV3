@@ -1,26 +1,37 @@
 -- $CLS
+
+-- ── Inspector properties ─────────────────────────────────────
+--- Drag a Camera entity here in the Inspector.
+camera     = EntityRef("Camera")
+
+--- Mouse look sensitivity (degrees per pixel).
 sensitivity = 0.15
+--- Maximum look-up / look-down angle in degrees.
 maxPitch    = 85.0
+--- Height offset from the character pivot to the camera eye.
 headHeight  = 1.6
 
-local _yaw          = 0
-local _pitch        = 0
-local _cameraEntity = nil
+-- ── Private state ────────────────────────────────────────────
+local _yaw   = 0
+local _pitch = 0
 
 function start()
     local tf = self.transform
     if tf then _yaw = tf.rotation.y * Mathf.Rad2Deg end
 
-    -- Auto-detect camera child entity (first child with a Camera component)
-    _cameraEntity = self.findChildWithComponent("Camera")
-    if _cameraEntity then
-        self.log("FPS: camera child auto-detected (entity " .. tostring(_cameraEntity) .. ")")
-    else
-        self.log("FPS: no Camera child found — add a child entity with a Camera component")
+    -- Auto-detect camera child if no EntityRef was assigned in the Inspector
+    if camera.entity == nil then
+        local camChild = self.findChildWithComponent("Camera")
+        if camChild ~= nil then
+            camera.entity = camChild
+            self.log("FPS: camera child auto-detected (entity " .. tostring(camChild) .. ")")
+        else
+            self.log("FPS: no Camera child found — drag a Camera entity into the \"camera\" slot, or add a Camera component to a child entity.")
+        end
     end
 
     self.Input.lockPointer()
-    self.log("FPS Character ready — click viewport to capture mouse")
+    self.log("FPS Character ready — click viewport to capture mouse, Escape to release.")
 end
 
 function update(dt)
@@ -28,15 +39,17 @@ function update(dt)
         self.Input.lockPointer()
     end
 
+    -- ── Controls overlay ─────────────────────────────────────
     if not self.Input.isPointerLocked() then
         self.Debug.drawText(Vec2(8, 8), "Left-click to capture mouse", "#94a3b8", 12)
-        return
+    else
+        self.Debug.drawText(Vec2(8, 8),  "WASD — move   Space — jump", "#94a3b8", 12)
+        self.Debug.drawText(Vec2(8, 22), "Shift — sprint   Ctrl/C — crouch   Esc — release", "#94a3b8", 12)
     end
 
-    self.Debug.drawText(Vec2(8, 8),  "WASD — move   Space — jump",              "#94a3b8", 12)
-    self.Debug.drawText(Vec2(8, 22), "Shift — sprint   Ctrl/C — crouch   Esc — release", "#94a3b8", 12)
+    if not self.Input.isPointerLocked() then return end
 
-    -- Mouse look
+    -- ── Mouse look ───────────────────────────────────────────
     local md = self.Input.mouseDelta
     _yaw   = _yaw   - md.x * sensitivity
     _pitch = _pitch - md.y * sensitivity
@@ -49,14 +62,14 @@ function update(dt)
     end
 
     -- Pitch applied to the camera child (vertical rotation)
-    if _cameraEntity then
-        local camTf = self.getComponentOf(_cameraEntity, "Transform")
+    if camera.entity ~= nil then
+        local camTf = self.getComponentOf(camera.entity, "Transform")
         if camTf then
             camTf.rotation.set(_pitch * Mathf.Deg2Rad, 0, 0, "YXZ")
         end
     end
 
-    -- Sprint / crouch
+    -- ── Sprint / crouch ──────────────────────────────────────
     local sprint = self.Input.isKeyDown("ShiftLeft") or self.Input.isKeyDown("ShiftRight")
     self.Physics.setRunning(sprint)
     local crouch = self.Input.isKeyDown("ControlLeft") or self.Input.isKeyDown("KeyC")
@@ -68,14 +81,12 @@ function fixedUpdate(dt)
     local v = self.Input.getAxis("KeyS", "KeyW")
     self.Physics.move(h, -v)
 
-    if self.Input.isKeyPressed("Space") then
-        self.Physics.jump()
-    end
+    if self.Input.isKeyPressed("Space") then self.Physics.jump() end
 
     -- Keep camera positioned at head height above character pivot
     local charTf = self.transform
-    if charTf and _cameraEntity then
-        local camTf = self.getComponentOf(_cameraEntity, "Transform")
+    if charTf and camera.entity ~= nil then
+        local camTf = self.getComponentOf(camera.entity, "Transform")
         if camTf then
             camTf.position.set(
                 charTf.position.x,
@@ -87,7 +98,5 @@ function fixedUpdate(dt)
 end
 
 function onDestroy()
-    if self.Input.isPointerLocked() then
-        self.Input.unlockPointer()
-    end
+    if self.Input.isPointerLocked() then self.Input.unlockPointer() end
 end

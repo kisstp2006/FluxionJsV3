@@ -9,7 +9,7 @@ export type FuiAnchor =
 /** How the UI canvas scales relative to the actual screen in screen-space mode. */
 export type FuiScaleMode = 'constantPixelSize' | 'scaleWithScreenSize';
 
-export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField';
+export type FuiNodeType = 'panel' | 'label' | 'button' | 'icon' | 'image' | 'toggle' | 'slider' | 'progressBar' | 'inputField' | 'textArea';
 
 /** How a button visually responds to interaction. */
 export type FuiTransition = 'none' | 'colorTint';
@@ -54,6 +54,13 @@ export interface FuiBaseNode {
   rect?: FuiRect;
   /** Anchor point in parent space that rect.x/y is measured from. Default: 'topLeft'. */
   anchor?: FuiAnchor;
+  /**
+   * Normalized pivot point within the element's own rect (0–1).
+   * Determines which point of the element rect.x/y refers to.
+   * Default: { x: 0, y: 0 } = top-left corner.
+   * { x: 0.5, y: 0.5 } = center,  { x: 1, y: 1 } = bottom-right.
+   */
+  pivot?: { x: number; y: number };
 }
 
 export interface FuiPanelNode extends FuiBaseNode {
@@ -77,6 +84,37 @@ export interface FuiLabelNode extends FuiBaseNode {
     fontFamily?: string;
     align?: FuiAlign;
     opacity?: number; // 0–1
+    /** Enable text glow effect. */
+    glowEnabled?: boolean;
+    /** Glow color as hex string, e.g. '#00ffff'. Defaults to the text color. */
+    glowColor?: string;
+    /** Glow blur radius in pixels (1–40). Default: 10. */
+    glowStrength?: number;
+  };
+}
+
+export interface FuiTextAreaNode extends FuiBaseNode {
+  type: 'textArea';
+  text?: string;
+  style?: {
+    color?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    align?: FuiAlign;
+    opacity?: number; // 0–1
+    lineHeight?: number; // multiplier, default 1.4
+    /** Word-wrap mode. 'word' = wrap at word boundaries, 'char' = wrap at chars. Default: 'word'. */
+    wrapMode?: 'word' | 'char' | 'none';
+    /** Enable text glow effect. */
+    glowEnabled?: boolean;
+    /** Glow color as hex string. Defaults to the text color. */
+    glowColor?: string;
+    /** Glow blur radius in pixels (1–40). Default: 10. */
+    glowStrength?: number;
+    /** Vertical padding inside the element. Default: 4. */
+    paddingV?: number;
+    /** Horizontal padding inside the element. Default: 4. */
+    paddingH?: number;
   };
 }
 
@@ -100,6 +138,12 @@ export interface FuiButtonStyle {
   iconSize?: number;
   /** Gap between icon and text in pixels (default: 6) */
   iconGap?: number;
+  /** Enable text glow effect on the button label. */
+  glowEnabled?: boolean;
+  /** Glow colour (hex). Defaults to the text colour. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
 }
 
 export interface FuiButtonNode extends FuiBaseNode {
@@ -193,6 +237,12 @@ export interface FuiToggleNode extends FuiBaseNode {
     fontSize?: number;
     fontFamily?: string;
     opacity?: number;
+    /** Enable text glow effect on the toggle label. */
+    glowEnabled?: boolean;
+    /** Glow colour (hex). Defaults to the text colour. */
+    glowColor?: string;
+    /** Glow blur radius in pixels (1–40). Default: 10. */
+    glowStrength?: number;
   };
 }
 
@@ -244,10 +294,16 @@ export interface FuiInputFieldNode extends FuiBaseNode {
     fontSize?: number;
     fontFamily?: string;
     opacity?: number;
+    /** Enable text glow effect on the input text. */
+    glowEnabled?: boolean;
+    /** Glow colour (hex). Defaults to the text colour. */
+    glowColor?: string;
+    /** Glow blur radius in pixels (1–40). Default: 10. */
+    glowStrength?: number;
   };
 }
 
-export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiImageNode | FuiIconNode | FuiToggleNode | FuiSliderNode | FuiProgressBarNode | FuiInputFieldNode;
+export type FuiNode = FuiPanelNode | FuiLabelNode | FuiButtonNode | FuiImageNode | FuiIconNode | FuiToggleNode | FuiSliderNode | FuiProgressBarNode | FuiInputFieldNode | FuiTextAreaNode;
 
 // ── Animation ──
 

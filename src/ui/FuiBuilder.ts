@@ -12,8 +12,8 @@
 // ============================================================
 
 import type {
-  FuiDocument, FuiFont, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode, FuiImageNode,
-  FuiToggleNode, FuiSliderNode, FuiProgressBarNode, FuiInputFieldNode,
+  FuiAnchor, FuiDocument, FuiFont, FuiMode, FuiNode, FuiPanelNode, FuiLabelNode, FuiButtonNode, FuiIconNode, FuiImageNode,
+  FuiToggleNode, FuiSliderNode, FuiProgressBarNode, FuiInputFieldNode, FuiTextAreaNode,
   FuiAnimation, FuiAnimatableProperty, FuiAlign, FuiTransition, FuiNavigation, FuiColorBlock, FuiTextColorBlock,
 } from './FuiTypes';
 
@@ -25,6 +25,10 @@ export interface FuiPanelOpts {
   borderWidth?: number;
   radius?: number;
   opacity?: number;
+  /** Anchor point in parent space. Default: 'topLeft'. */
+  anchor?: FuiAnchor;
+  /** Normalized pivot (0–1). Default: { x: 0, y: 0 }. */
+  pivot?: { x: number; y: number };
   /** Parent node ID. Defaults to the root panel. */
   parent?: string;
 }
@@ -35,6 +39,39 @@ export interface FuiLabelOpts {
   font?: string;
   align?: FuiAlign;
   opacity?: number;
+  /** Enable text glow. */
+  glowEnabled?: boolean;
+  /** Glow color (hex). Defaults to text color. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
+  parent?: string;
+}
+
+export interface FuiTextAreaOpts {
+  color?: string;
+  fontSize?: number;
+  font?: string;
+  align?: FuiAlign;
+  opacity?: number;
+  /** Line height multiplier. Default: 1.4. */
+  lineHeight?: number;
+  /** Word-wrap mode. Default: 'word'. */
+  wrapMode?: 'word' | 'char' | 'none';
+  /** Enable text glow. */
+  glowEnabled?: boolean;
+  /** Glow color (hex). Defaults to text color. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
+  /** Vertical padding. Default: 4. */
+  paddingV?: number;
+  /** Horizontal padding. Default: 4. */
+  paddingH?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -61,6 +98,14 @@ export interface FuiButtonOpts {
   transition?: FuiTransition;
   colors?: FuiColorBlock;
   navigation?: FuiNavigation;
+  /** Enable text glow on the button label. */
+  glowEnabled?: boolean;
+  /** Glow colour (hex). Defaults to text colour. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -76,6 +121,14 @@ export interface FuiToggleOpts {
   font?: string;
   opacity?: number;
   navigation?: FuiNavigation;
+  /** Enable text glow on the toggle label. */
+  glowEnabled?: boolean;
+  /** Glow colour (hex). Defaults to text colour. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -92,6 +145,8 @@ export interface FuiSliderOpts {
   trackHeight?: number;
   opacity?: number;
   navigation?: FuiNavigation;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -102,6 +157,8 @@ export interface FuiProgressBarOpts {
   fillColor?: string;
   radius?: number;
   opacity?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -119,6 +176,14 @@ export interface FuiInputFieldOpts {
   font?: string;
   opacity?: number;
   navigation?: FuiNavigation;
+  /** Enable text glow on the input text. */
+  glowEnabled?: boolean;
+  /** Glow colour (hex). Defaults to text colour. */
+  glowColor?: string;
+  /** Glow blur radius in pixels (1–40). Default: 10. */
+  glowStrength?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   parent?: string;
 }
 
@@ -131,6 +196,8 @@ export interface FuiImageOpts {
   /** Background/matte colour visible in letterbox areas. */
   bg?: string;
   radius?: number;
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   /** Parent node ID. Defaults to the root panel. */
   parent?: string;
 }
@@ -149,6 +216,8 @@ export interface FuiIconOpts {
    * - `'fill'`    — stretch to exact rect size.
    */
   fit?: 'contain' | 'cover' | 'fill';
+  anchor?: FuiAnchor;
+  pivot?: { x: number; y: number };
   /** Parent node ID. Defaults to the root panel. */
   parent?: string;
 }
@@ -202,6 +271,8 @@ export class FuiBuilder {
       type: 'panel',
       id,
       rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       children: [],
       style: (opts.bg || opts.border || opts.borderWidth !== undefined ||
               opts.radius !== undefined || opts.opacity !== undefined)
@@ -229,21 +300,63 @@ export class FuiBuilder {
     text: string,
     opts: FuiLabelOpts = {},
   ): this {
+    const hasStyle = opts.color || opts.fontSize !== undefined || opts.font ||
+      opts.align || opts.opacity !== undefined || opts.glowEnabled !== undefined ||
+      opts.glowColor || opts.glowStrength !== undefined;
     const node: FuiLabelNode = {
       type: 'label',
       id,
       rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       text,
-      style: (opts.color || opts.fontSize !== undefined || opts.font ||
-              opts.align || opts.opacity !== undefined)
-        ? {
-            color: opts.color,
-            fontSize: opts.fontSize,
-            fontFamily: opts.font,
-            align: opts.align,
-            opacity: opts.opacity,
-          }
-        : undefined,
+      style: hasStyle ? {
+        color: opts.color,
+        fontSize: opts.fontSize,
+        fontFamily: opts.font,
+        align: opts.align,
+        opacity: opts.opacity,
+        glowEnabled: opts.glowEnabled,
+        glowColor: opts.glowColor,
+        glowStrength: opts.glowStrength,
+      } : undefined,
+    };
+    this._nodeMap.set(id, node);
+    this._nodeParent.set(id, opts.parent ?? '__root__');
+    return this;
+  }
+
+  /**
+   * Add a multiline text area node.
+   * @example builder.textArea('desc', 10, 40, 300, 120, 'Hello\nWorld', { fontSize: 14, wrapMode: 'word' })
+   */
+  textArea(
+    id: string,
+    x: number, y: number, w: number, h: number,
+    text: string,
+    opts: FuiTextAreaOpts = {},
+  ): this {
+    const node: FuiTextAreaNode = {
+      type: 'textArea',
+      id,
+      rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
+      text,
+      style: {
+        color: opts.color,
+        fontSize: opts.fontSize,
+        fontFamily: opts.font,
+        align: opts.align,
+        opacity: opts.opacity,
+        lineHeight: opts.lineHeight,
+        wrapMode: opts.wrapMode,
+        glowEnabled: opts.glowEnabled,
+        glowColor: opts.glowColor,
+        glowStrength: opts.glowStrength,
+        paddingV: opts.paddingV,
+        paddingH: opts.paddingH,
+      },
     };
     this._nodeMap.set(id, node);
     this._nodeParent.set(id, opts.parent ?? '__root__');
@@ -264,8 +377,11 @@ export class FuiBuilder {
       type: 'button',
       id,
       rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       text,
       ...(opts.disabled !== undefined ? { disabled: opts.disabled } : {}),
+      // glow applied via style below
       ...(opts.tooltip   ? { tooltip: opts.tooltip }     : {}),
       ...(opts.icon      ? { icon:    opts.icon }        : {}),
       ...(opts.image     ? { image:   opts.image }        : {}),
@@ -285,6 +401,9 @@ export class FuiBuilder {
         radius: opts.radius,
         padding: opts.padding,
         opacity: opts.opacity,
+        glowEnabled: opts.glowEnabled,
+        glowColor: opts.glowColor,
+        glowStrength: opts.glowStrength,
       },
     };
     this._nodeMap.set(id, node);
@@ -303,13 +422,17 @@ export class FuiBuilder {
     opts: FuiToggleOpts = {},
   ): this {
     const node: FuiToggleNode = {
-      type: 'toggle', id, rect: { x, y, w, h }, text,
+      type: 'toggle', id, rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
+      text,
       value: opts.value ?? false,
       ...(opts.navigation ? { navigation: opts.navigation } : {}),
       style: {
         backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
         radius: opts.radius, checkColor: opts.checkColor, textColor: opts.textColor,
         fontSize: opts.fontSize, fontFamily: opts.font, opacity: opts.opacity,
+        glowEnabled: opts.glowEnabled, glowColor: opts.glowColor, glowStrength: opts.glowStrength,
       },
     };
     this._nodeMap.set(id, node);
@@ -328,6 +451,8 @@ export class FuiBuilder {
   ): this {
     const node: FuiSliderNode = {
       type: 'slider', id, rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       value: opts.value ?? 0,
       min:   opts.min   ?? 0,
       max:   opts.max   ?? 1,
@@ -356,6 +481,8 @@ export class FuiBuilder {
   ): this {
     const node: FuiProgressBarNode = {
       type: 'progressBar', id, rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       value: opts.value ?? 0,
       direction: opts.direction ?? 'horizontal',
       style: {
@@ -379,6 +506,8 @@ export class FuiBuilder {
   ): this {
     const node: FuiInputFieldNode = {
       type: 'inputField', id, rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       text:        opts.text        ?? '',
       placeholder: opts.placeholder ?? 'Enter text...',
       contentType: opts.contentType ?? 'standard',
@@ -387,6 +516,7 @@ export class FuiBuilder {
         backgroundColor: opts.bg, borderColor: opts.border, borderWidth: opts.borderWidth,
         radius: opts.radius, textColor: opts.textColor, placeholderColor: opts.placeholderColor,
         fontSize: opts.fontSize, fontFamily: opts.font, opacity: opts.opacity,
+        glowEnabled: opts.glowEnabled, glowColor: opts.glowColor, glowStrength: opts.glowStrength,
       },
     };
     this._nodeMap.set(id, node);
@@ -409,6 +539,8 @@ export class FuiBuilder {
       type: 'image',
       id,
       rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       src,
       style: (opts.opacity !== undefined || opts.fit || opts.bg || opts.radius !== undefined)
         ? { opacity: opts.opacity, fit: opts.fit, backgroundColor: opts.bg, radius: opts.radius }
@@ -438,6 +570,8 @@ export class FuiBuilder {
       type: 'icon',
       id,
       rect: { x, y, w, h },
+      ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      ...(opts.pivot  ? { pivot:  opts.pivot  } : {}),
       src,
       style: (opts.color || opts.opacity !== undefined || opts.fit)
         ? { color: opts.color, opacity: opts.opacity, fit: opts.fit }

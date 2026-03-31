@@ -94,6 +94,8 @@ function loadScriptClass(
     'TextureRef',
     'AnimationRef',
     'FontRef',
+    'SceneRef',
+    'ColorRef',
     'console',
     compiledJs,
   )(
@@ -118,6 +120,8 @@ function loadScriptClass(
     TextureRef,
     AnimationRef,
     FontRef,
+    SceneRef,
+    ColorRef,
     console,
   );
   return mod.default;

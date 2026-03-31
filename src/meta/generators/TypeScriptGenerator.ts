@@ -354,6 +354,12 @@ declare namespace FluxionEngine {
     load(path: string): void;
     create(doc: unknown): void;
     setText(nodeId: string, text: string): void;
+    setBorder(nodeId: string, enabled: boolean): void;
+    setGlowEnabled(nodeId: string, enabled: boolean): void;
+    setGlowColor(nodeId: string, color: string): void;
+    setGlowStrength(nodeId: string, strength: number): void;
+    /** Change the image source of an image or button node (project-relative path). */
+    setImage(nodeId: string, src: string): void;
     show(): void;
     hide(): void;
     setVisible(visible: boolean): void;
@@ -362,6 +368,12 @@ declare namespace FluxionEngine {
     setScreenPosition(x: number, y: number): void;
     onButtonClick(elementId: string, callback: () => void): void;
     onAnyClick(callback: (elementId: string) => void): void;
+    onToggle(elementId: string, callback: (value: boolean) => void): void;
+    onSliderChange(elementId: string, callback: (value: number) => void): void;
+    onMouseEnter(nodeId: string, callback: () => void): void;
+    onMouseExit(nodeId: string, callback: () => void): void;
+    isHovered(nodeId: string): boolean;
+    findByType(type: string): string | null;
   }
 `;
 

@@ -27,6 +27,7 @@ const DEG2RAD = Math.PI / 180;
 const _desired       = { x: 0, y: 0, z: 0 };
 const _moveDir       = new THREE.Vector3();
 // debug draw — 10 slots avoids per-call allocation
+const _UP  = new THREE.Vector3(0, 1, 0);
 const _dA = new THREE.Vector3();
 const _dB = new THREE.Vector3();
 const _dC = new THREE.Vector3();
@@ -244,6 +245,8 @@ export class CharacterControllerSystem implements System {
     _moveDir.set(cc._moveInput.x, 0, cc._moveInput.y);
     if (_moveDir.lengthSq() > 1e-6) {
       _moveDir.normalize().multiplyScalar(lateralSpeed);
+      // Rotate movement to align with the character's facing direction (yaw)
+      _moveDir.applyAxisAngle(_UP, t.rotation.y);
     }
 
     _desired.x = _moveDir.x * dt;

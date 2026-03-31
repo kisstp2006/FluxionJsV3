@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PropertyRow, NumberInput, Checkbox, AssetInput, ColorInput, Icons, FontInput } from '../../../ui';
+import { PropertyRow, NumberInput, Checkbox, AssetInput, ColorInput, Icons, FontInput, ImageInput } from '../../../ui';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId, markDirty } from '../../../../src/core/ECS';
 import { ScriptComponent, ScriptEntry } from '../../../../src/core/Components';
@@ -521,9 +521,8 @@ const ScriptEntryRow: React.FC<{
                 />
               )}
               {p.type === 'texture' && (
-                <AssetInput
+                <ImageInput
                   value={p.value?.path || null}
-                  assetType="texture"
                   onChange={(v) => setOverride(p.key, { path: v || '' })}
                 />
               )}

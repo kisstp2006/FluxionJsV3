@@ -87,6 +87,26 @@ export class Engine {
     // Lock the component registry — no new components can be registered after this point
     ComponentRegistry.freeze();
 
+    // Handle runtime scene loading from scripts
+    this.events.on('scene:load-request', async (scenePath: string) => {
+      try {
+        const { projectManager } = await import('../project/ProjectManager');
+        const { getFileSystem } = await import('../filesystem');
+        const { deserializeScene } = await import('../project/SceneSerializer');
+        const fs = getFileSystem();
+        const absPath = projectManager.resolvePath(scenePath);
+        const content = await fs.readFile(absPath);
+        const data = JSON.parse(content);
+        // Clear current entities first
+        this.ecs.clear();
+        // Load new scene
+        await deserializeScene(this, data, /* scene */ null as any);
+        console.log(`[Engine] Scene loaded via script: ${scenePath}`);
+      } catch (err) {
+        console.error(`[Engine] Failed to load scene "${scenePath}":`, err);
+      }
+    });
+
     this.events.emit(EngineEvents.INIT);
 
     // Append canvas if needed

@@ -248,6 +248,22 @@ export class LuaScriptSystem implements System {
       setBorder(nodeId: string, enabled: boolean): void {
         _fuiRT()?.setNodeBorder?.(entity, nodeId, enabled);
       },
+      /** Enable or disable the glow effect on a label/textArea node. */
+      setGlowEnabled(nodeId: string, enabled: boolean): void {
+        _fuiRT()?.setNodeGlowEnabled?.(entity, nodeId, enabled);
+      },
+      /** Set the glow color on a label/textArea node. */
+      setGlowColor(nodeId: string, color: string): void {
+        _fuiRT()?.setNodeGlowColor?.(entity, nodeId, color);
+      },
+      /** Set the glow blur radius (1–40) on a label/textArea node. */
+      setGlowStrength(nodeId: string, strength: number): void {
+        _fuiRT()?.setNodeGlowStrength?.(entity, nodeId, strength);
+      },
+      /** Change the image source of an image or button node (project-relative path). */
+      setImage(nodeId: string, src: string): void {
+        _fuiRT()?.setNodeImage?.(entity, nodeId, src);
+      },
       show():  void { const c = _fui(); if (c) c.enabled = true;  },
       hide():  void { const c = _fui(); if (c) c.enabled = false; },
       setVisible(v: boolean): void { const c = _fui(); if (c) c.enabled = v; },

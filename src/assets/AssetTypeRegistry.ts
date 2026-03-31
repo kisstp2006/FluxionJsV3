@@ -30,8 +30,9 @@ import physObjLua  from './templates/physics-object.lua.tmpl';
 import dbgHudTs    from './templates/debug-hud.ts.tmpl';
 import dbgHudJs    from './templates/debug-hud.js.tmpl';
 import dbgHudLua   from './templates/debug-hud.lua.tmpl';
-import coroutineTs from './templates/coroutine.ts.tmpl';
-import coroutineJs from './templates/coroutine.js.tmpl';
+import coroutineTs  from './templates/coroutine.ts.tmpl';
+import coroutineJs  from './templates/coroutine.js.tmpl';
+import coroutineLua from './templates/coroutine.lua.tmpl';
 import fpsCharTs   from './templates/fps-character.ts.tmpl';
 import fpsCharJs   from './templates/fps-character.js.tmpl';
 import fpsCharLua  from './templates/fps-character.lua.tmpl';
@@ -40,11 +41,15 @@ import flyingCamJs  from './templates/flying-camera.js.tmpl';
 import flyingCamLua from './templates/flying-camera.lua.tmpl';
 import fuiFileTs   from './templates/fui-hud-file.ts.tmpl';
 import fuiFileJs   from './templates/fui-hud-file.js.tmpl';
+import fuiFileLua  from './templates/fui-hud-file.lua.tmpl';
 import fuiCodeTs   from './templates/fui-hud-code.ts.tmpl';
 import fuiCodeJs   from './templates/fui-hud-code.js.tmpl';
-import rttTs       from './templates/render-to-texture.ts.tmpl';
-import rttJs       from './templates/render-to-texture.js.tmpl';
-import rttLua      from './templates/render-to-texture.lua.tmpl';
+import rttTs          from './templates/render-to-texture.ts.tmpl';
+import rttJs          from './templates/render-to-texture.js.tmpl';
+import rttLua         from './templates/render-to-texture.lua.tmpl';
+import sceneLoaderTs  from './templates/scene-loader.ts.tmpl';
+import sceneLoaderJs  from './templates/scene-loader.js.tmpl';
+import sceneLoaderLua from './templates/scene-loader.lua.tmpl';
 
 // ── Types ──
 
@@ -518,18 +523,18 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
   {
     id: 'coroutine',
     name: 'Coroutine Example',
-    description: 'Demonstrates generator-based coroutines',
+    description: 'Generator-based coroutines (TS/JS) or state-machine timer pattern (Lua)',
     icon: '⏱️',
-    languages: ['ts', 'js'],
-    generate: (cls, lang) => tmpl(lang === 'js' ? coroutineJs : coroutineTs, cls),
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? coroutineLua : lang === 'js' ? coroutineJs : coroutineTs, cls),
   },
   {
     id: 'fui-hud-file',
     name: 'FUI HUD (file)',
     description: 'Loads a .fui file and updates labels each frame',
     icon: '🖥️',
-    languages: ['ts', 'js'],
-    generate: (cls, lang) => tmpl(lang === 'js' ? fuiFileJs : fuiFileTs, cls),
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? fuiFileLua : lang === 'js' ? fuiFileJs : fuiFileTs, cls),
   },
   {
     id: 'fui-hud-code',
@@ -562,6 +567,14 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     icon: '🎥',
     languages: ['ts', 'js', 'lua'],
     generate: (cls, lang) => tmpl(lang === 'lua' ? flyingCamLua : lang === 'js' ? flyingCamJs : flyingCamTs, cls),
+  },
+  {
+    id: 'scene-loader',
+    name: 'Scene Loader',
+    description: 'Loads the scene assigned in the Inspector when a configurable key is pressed',
+    icon: '🚪',
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? sceneLoaderLua : lang === 'js' ? sceneLoaderJs : sceneLoaderTs, cls),
   },
 ];
 

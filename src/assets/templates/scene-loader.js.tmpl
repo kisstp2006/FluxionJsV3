@@ -1,0 +1,18 @@
+const { FluxionBehaviour, SceneRef } = require('fluxion');
+
+class $CLS extends FluxionBehaviour {
+  constructor() {
+    super();
+    this.nextScene = new SceneRef();
+    this.loadKey   = 'Space';
+  }
+
+  update(_dt) {
+    if (!this.nextScene.isValid) return;
+    if (this.Input.isKeyPressed(this.loadKey)) {
+      this.Scene.load(this.nextScene.path);
+    }
+  }
+}
+
+exports.default = $CLS;

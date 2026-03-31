@@ -25,6 +25,8 @@ import { MaterialRef } from './MaterialRef';
 import { TextureRef } from './TextureRef';
 import { AnimationRef } from './AnimationRef';
 import { FontRef } from './FontRef';
+import { SceneRef } from './SceneRef';
+import { ColorRef } from './ColorRef';
 
 // ── THREE math shortcuts injected into every script's scope ──
 
@@ -373,6 +375,10 @@ export class ScriptSystem implements System {
       } else if (current instanceof FontRef && val && typeof val === 'object') {
         current.path   = typeof (val as any).path   === 'string' ? (val as any).path   : '';
         current.family = typeof (val as any).family === 'string' ? (val as any).family : '';
+      } else if (current instanceof SceneRef && val && typeof val === 'object') {
+        current.path = typeof (val as any).path === 'string' ? (val as any).path : '';
+      } else if (current instanceof ColorRef && val && typeof val === 'object') {
+        current.hex = typeof (val as any).hex === 'string' ? (val as any).hex : '#ffffff';
       } else {
         (instance as any)[key] = val;
       }

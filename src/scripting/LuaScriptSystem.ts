@@ -19,6 +19,12 @@ import { ScriptComponent, ScriptEntry } from '../core/Components';
 import { FluxionBehaviour } from './FluxionBehaviour';
 import { AnimationRef } from './AnimationRef';
 import { FontRef } from './FontRef';
+import { FuiRef } from './FuiRef';
+import { MaterialRef } from './MaterialRef';
+import { TextureRef } from './TextureRef';
+import { SceneRef } from './SceneRef';
+import { ColorRef } from './ColorRef';
+import { EntityRef } from './EntityRef';
 import { DebugConsole } from '../core/DebugConsole';
 import { projectManager } from '../project/ProjectManager';
 import { getFileSystem } from '../filesystem';
@@ -208,15 +214,14 @@ export class LuaScriptSystem implements System {
     lua.global.set('Mathf', LUA_MATHF);
 
     // ── Typed ref constructors (mirrors JS/TS API) ──────────────
-    // EntityRef(requireComponent?)      → {entity: null, requireComponent?}
-    // AnimationRef(path?, clip?)        → AnimationRef instance
-    // FuiRef/MaterialRef/TextureRef()   → default empty path string
-    lua.global.set('EntityRef',   (req?: string) => ({ entity: null, requireComponent: req ?? undefined }));
+    lua.global.set('EntityRef',   (req?: string) => new EntityRef(req));
     lua.global.set('AnimationRef', (path?: string, clip?: string) => new AnimationRef(path ?? '', clip ?? ''));
     lua.global.set('FontRef',     (path?: string, family?: string) => new FontRef(path ?? '', family ?? ''));
-    lua.global.set('FuiRef',      () => '');
-    lua.global.set('MaterialRef', () => '');
-    lua.global.set('TextureRef',  () => '');
+    lua.global.set('FuiRef',      (path?: string) => new FuiRef(path ?? ''));
+    lua.global.set('MaterialRef', (path?: string) => new MaterialRef(path ?? ''));
+    lua.global.set('TextureRef',  (path?: string) => new TextureRef(path ?? ''));
+    lua.global.set('SceneRef',    (path?: string) => new SceneRef(path ?? ''));
+    lua.global.set('ColorRef',    (hex?: string)  => new ColorRef(hex ?? '#ffffff'));
 
     // ── Create adapter first so 'self' is available during execution ──
     const adapter = new LuaBehaviourAdapter(lua);
@@ -263,13 +268,54 @@ export class LuaScriptSystem implements System {
     });
 
     // ── Apply inspector property overrides as Lua globals ──────
-    // EntityRef overrides: { entity: number } → set as number (entity ID, -1 = unset)
-    // FuiRef/MaterialRef/TextureRef overrides: { path: string } → set as string path
-    // Primitives (number, string, boolean) → set directly
+    // Dispatch by __type so all ref fields (clip, family, hex, etc.) are preserved.
     for (const [key, val] of Object.entries(entry.properties ?? {})) {
-      if (val !== null && typeof val === 'object' && 'entity' in val) {
+      if (val === null || val === undefined) { lua.global.set(key, val); continue; }
+      const t = (val as any).__type as string | undefined;
+      if (t === 'EntityRef') {
+        const ref = new EntityRef((val as any).requireComponent);
+        ref.entity = typeof (val as any).entity === 'number' ? (val as any).entity : null;
+        lua.global.set(key, ref);
+      } else if (t === 'AnimationRef') {
+        lua.global.set(key, new AnimationRef(
+          typeof (val as any).path   === 'string' ? (val as any).path   : '',
+          typeof (val as any).clip   === 'string' ? (val as any).clip   : '',
+        ));
+      } else if (t === 'FontRef') {
+        lua.global.set(key, new FontRef(
+          typeof (val as any).path   === 'string' ? (val as any).path   : '',
+          typeof (val as any).family === 'string' ? (val as any).family : '',
+        ));
+      } else if (t === 'FuiRef') {
+        lua.global.set(key, new FuiRef(typeof (val as any).path === 'string' ? (val as any).path : ''));
+      } else if (t === 'MaterialRef') {
+        lua.global.set(key, new MaterialRef(typeof (val as any).path === 'string' ? (val as any).path : ''));
+      } else if (t === 'TextureRef') {
+        lua.global.set(key, new TextureRef(typeof (val as any).path === 'string' ? (val as any).path : ''));
+      } else if (t === 'SceneRef') {
+        lua.global.set(key, new SceneRef(typeof (val as any).path === 'string' ? (val as any).path : ''));
+      } else if (t === 'ColorRef') {
+        lua.global.set(key, new ColorRef(typeof (val as any).hex === 'string' ? (val as any).hex : '#ffffff'));
+      } else if (typeof val === 'object' && 'entity' in (val as any)) {
+        // Legacy EntityRef (pre-__type): inject as entity ID number
         lua.global.set(key, typeof (val as any).entity === 'number' ? (val as any).entity : -1);
-      } else if (val !== null && typeof val === 'object' && 'path' in val) {
+      } else if (typeof val === 'object' && 'path' in (val as any) && 'clip' in (val as any)) {
+        // Duck-type AnimationRef: { path, clip }
+        lua.global.set(key, new AnimationRef(
+          typeof (val as any).path === 'string' ? (val as any).path : '',
+          typeof (val as any).clip === 'string' ? (val as any).clip : '',
+        ));
+      } else if (typeof val === 'object' && 'path' in (val as any) && 'family' in (val as any)) {
+        // Duck-type FontRef: { path, family }
+        lua.global.set(key, new FontRef(
+          typeof (val as any).path   === 'string' ? (val as any).path   : '',
+          typeof (val as any).family === 'string' ? (val as any).family : '',
+        ));
+      } else if (typeof val === 'object' && 'hex' in (val as any) && !('path' in (val as any))) {
+        // Duck-type ColorRef: { hex }
+        lua.global.set(key, new ColorRef(typeof (val as any).hex === 'string' ? (val as any).hex : '#ffffff'));
+      } else if (typeof val === 'object' && 'path' in (val as any)) {
+        // Generic path ref (FuiRef / MaterialRef / TextureRef / SceneRef) — inject path string
         lua.global.set(key, typeof (val as any).path === 'string' ? (val as any).path : '');
       } else {
         lua.global.set(key, val);

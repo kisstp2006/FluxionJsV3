@@ -17,6 +17,7 @@ import { FuiRef } from '../../../../src/scripting/FuiRef';
 import { MaterialRef } from '../../../../src/scripting/MaterialRef';
 import { TextureRef } from '../../../../src/scripting/TextureRef';
 import { FontRef } from '../../../../src/scripting/FontRef';
+import { AnimationRef } from '../../../../src/scripting/AnimationRef';
 import { SceneRef } from '../../../../src/scripting/SceneRef';
 import { ColorRef } from '../../../../src/scripting/ColorRef';
 import { ComponentSection } from './ComponentSection';
@@ -37,8 +38,8 @@ function loadScriptClass(compiledJs: string): any {
   const mod: { default: any } = { default: null };
   try {
     // eslint-disable-next-line no-new-func
-    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'FontRef', 'SceneRef', 'ColorRef', 'console', compiledJs)(
-      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, FontRef, SceneRef, ColorRef, console,
+    new Function('exports', 'FluxionBehaviour', 'FluxionScript', 'EntityRef', 'FuiRef', 'MaterialRef', 'TextureRef', 'AnimationRef', 'FontRef', 'SceneRef', 'ColorRef', 'console', compiledJs)(
+      mod, FluxionBehaviour, FluxionBehaviour, EntityRef, FuiRef, MaterialRef, TextureRef, AnimationRef, FontRef, SceneRef, ColorRef, console,
     );
   } catch {
     return null;
@@ -46,7 +47,7 @@ function loadScriptClass(compiledJs: string): any {
   return mod.default;
 }
 
-type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture' | 'font' | 'scene' | 'color';
+type ScriptPropType = 'number' | 'string' | 'boolean' | 'entity' | 'fui' | 'material' | 'texture' | 'font' | 'scene' | 'color' | 'animation';
 
 interface ScriptProp {
   key: string;
@@ -102,6 +103,16 @@ function getScriptProperties(ScriptClass: any, overrides: Record<string, any>): 
           type: 'texture',
           default: raw,
           value: { path },
+        });
+      } else if (raw instanceof AnimationRef) {
+        const override = overrides[k];
+        const path = typeof override?.path === 'string' ? override.path : raw.path;
+        const clip = typeof override?.clip === 'string' ? override.clip : raw.clip;
+        props.push({
+          key: k,
+          type: 'animation',
+          default: raw,
+          value: { path, clip },
         });
       } else if (raw instanceof FontRef) {
         const override = overrides[k];
@@ -203,6 +214,11 @@ function parseLuaProperties(source: string, overrides: Record<string, any>): Scr
           } else if (/^TextureRef\s*\(/.test(raw)) {
             const path = typeof override?.path === 'string' ? override.path : '';
             props.push({ key, type: 'texture', default: '', value: { path } });
+          // AnimationRef(path?, clip?) — animation clip picker
+          } else if (/^AnimationRef\s*\(/.test(raw)) {
+            const path = typeof override?.path === 'string' ? override.path : '';
+            const clip = typeof override?.clip === 'string' ? override.clip : '';
+            props.push({ key, type: 'animation', default: '', value: { path, clip } });
           // FontRef(path?, family?) — font asset picker
           } else if (/^FontRef\s*\(/.test(raw)) {
             const path   = typeof override?.path   === 'string' ? override.path   : '';
@@ -510,6 +526,27 @@ const ScriptEntryRow: React.FC<{
                   assetType="texture"
                   onChange={(v) => setOverride(p.key, { path: v || '' })}
                 />
+              )}
+              {p.type === 'animation' && (
+                <>
+                  <AssetInput
+                    value={p.value?.path || null}
+                    assetType="model"
+                    placeholder="Model..."
+                    onChange={(v) => setOverride(p.key, { path: v || '', clip: p.value?.clip ?? '' })}
+                  />
+                  <input
+                    value={p.value?.clip ?? ''}
+                    placeholder="Clip name"
+                    onChange={(e) => setOverride(p.key, { path: p.value?.path ?? '', clip: e.target.value })}
+                    style={{
+                      width: '100%', marginTop: 2,
+                      background: 'var(--bg-input)', border: '1px solid var(--border)',
+                      borderRadius: 3, color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono)', fontSize: 11, padding: '3px 6px',
+                    }}
+                  />
+                </>
               )}
               {p.type === 'font' && (
                 <FontInput

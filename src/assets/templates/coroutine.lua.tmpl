@@ -1,0 +1,39 @@
+-- $CLS
+-- Lua "coroutine" pattern: state-machine timer (no generators in Lua)
+-- Each state runs once its timer condition is met, then advances to the next.
+
+local _state = 0
+local _timer = 0.0
+
+function start()
+    self.log("$CLS: sequence started")
+end
+
+function update(dt)
+    _timer = _timer + dt
+
+    if _state == 0 then
+        -- Wait 1 second, then execute step 1
+        if _timer >= 1.0 then
+            self.log("Step 1: waited 1 second")
+            _timer = 0.0
+            _state = 1
+        end
+
+    elseif _state == 1 then
+        -- Wait 2 more seconds, then execute step 2
+        if _timer >= 2.0 then
+            self.log("Step 2: waited 2 more seconds")
+            _timer = 0.0
+            _state = 2
+        end
+
+    elseif _state == 2 then
+        -- Wait 0.5 seconds, then finish
+        if _timer >= 0.5 then
+            self.log("Step 3: sequence complete")
+            _state = -1  -- done
+        end
+    end
+    -- _state == -1: sequence finished, nothing more to do
+end

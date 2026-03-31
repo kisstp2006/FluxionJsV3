@@ -1,0 +1,13 @@
+import { FluxionBehaviour, SceneRef } from 'fluxion';
+
+export default class $CLS extends FluxionBehaviour {
+  nextScene = new SceneRef();
+  loadKey   = 'Space';
+
+  update(_dt: number): void {
+    if (!this.nextScene.isValid) return;
+    if (this.Input.isKeyPressed(this.loadKey)) {
+      this.Scene.load(this.nextScene.path);
+    }
+  }
+}

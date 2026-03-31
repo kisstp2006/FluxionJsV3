@@ -44,6 +44,12 @@ export default class $CLS extends FluxionBehaviour {
     } else {
       Debug.drawText(new Vec2(8, 8),  'WASD — move   Space — jump', '#94a3b8', 12);
       Debug.drawText(new Vec2(8, 22), 'Shift — sprint   Ctrl/C — crouch   Esc — release', '#94a3b8', 12);
+      
+      // Debug info: show slope state
+      const physics = this.getComponent('CharacterController');
+      if (physics && physics._isOnSteepSlope) {
+        Debug.drawText(new Vec2(8, 36), '⚠ Steep slope detected', '#f87171', 12);
+      }
     }
 
     if (!this.Input.isPointerLocked()) return;

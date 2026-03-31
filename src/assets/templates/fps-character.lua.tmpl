@@ -45,6 +45,12 @@ function update(dt)
     else
         self.Debug.drawText(Vec2(8, 8),  "WASD — move   Space — jump", "#94a3b8", 12)
         self.Debug.drawText(Vec2(8, 22), "Shift — sprint   Ctrl/C — crouch   Esc — release", "#94a3b8", 12)
+        
+        -- Debug info: show slope state
+        local physics = self.getComponent("CharacterController")
+        if physics and physics._isOnSteepSlope then
+            self.Debug.drawText(Vec2(8, 36), "⚠ Steep slope detected", "#f87171", 12)
+        end
     end
 
     if not self.Input.isPointerLocked() then return end

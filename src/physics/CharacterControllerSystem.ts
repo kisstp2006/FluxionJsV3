@@ -40,6 +40,10 @@ const _dbgGround  = new THREE.Color(0.1, 0.85, 0.3);
 const _dbgAir     = new THREE.Color(1.0, 0.5, 0.1);
 const _dbgVelUp   = new THREE.Color(0.3, 0.9, 1.0);
 const _dbgVelDown = new THREE.Color(1.0, 0.3, 0.3);
+// Module-level constants for dynamic slope adjustment
+const RUNNING_SLOPE_MULTIPLIER = 0.8;  // 20% reduction when running
+const CROUCHING_SLOPE_MULTIPLIER = 1.1; // 10% increase when crouching
+const _dbgSteepSlope = new THREE.Color(1.0, 0.2, 0.1); // Orange-red for steep slope
 
 /** Rapier skin offset — keeps the CC collider slightly away from surfaces. */
 const SKIN = 0.01;
@@ -139,7 +143,7 @@ export class CharacterControllerSystem implements System {
     // Rapier character controller
     const controller = world.createCharacterController(SKIN);
     controller.setMaxSlopeClimbAngle(cc.maxSlopeAngle * DEG2RAD);
-    controller.setMinSlopeSlideAngle(cc.maxSlopeAngle * DEG2RAD);
+    controller.setMinSlopeSlideAngle(cc.minSlopeSlideAngle * DEG2RAD);
     if (cc.maxStepHeight > 0) {
       controller.enableAutostep(cc.maxStepHeight, 0.05, true);
     }
@@ -156,6 +160,7 @@ export class CharacterControllerSystem implements System {
     cc._isGrounded      = false;
     cc._isCrouching     = false;
     cc._isRunning       = false;
+    cc._isOnSteepSlope  = false;
     cc._velocityY       = 0;
     cc._jumpCount       = 0;
     cc._coyoteTimer     = 0;
@@ -186,12 +191,17 @@ export class CharacterControllerSystem implements System {
     }
 
     // ── Jump buffer ─────────────────────────────────────────────────────────
-    if (cc._wantsJump) {
+    // Detect new jump press vs. held key to properly set buffer
+    const isJumpKeyPressed = cc._wantsJump;
+    const isNewJumpPress = isJumpKeyPressed && !cc._jumpKeyPressed;
+    cc._jumpKeyPressed = isJumpKeyPressed;
+    
+    if (isNewJumpPress) {
       cc._jumpBufferTimer = cc.jumpBufferTime;
-      cc._wantsJump = false;
     } else {
       cc._jumpBufferTimer = Math.max(0, cc._jumpBufferTimer - dt);
     }
+    cc._wantsJump = false;
 
     // ── Gravity ──────────────────────────────────────────────────────────────
     if (prevGrounded) {
@@ -262,6 +272,47 @@ export class CharacterControllerSystem implements System {
     // ── Update grounded state (post-step is authoritative) ──────────────────
     const nowGrounded = !!(cc._rapierController as any).computedGrounded();
     cc._isGrounded = nowGrounded;
+
+    // ── Slope detection and dynamic adjustment ─────────────────────────────
+    if (nowGrounded) {
+      // Use raycast to get ground normal from below the character
+      const charPos = t.position;
+      _dA.set(charPos.x, charPos.y + cc.centerOffsetY, charPos.z); // rayOrigin
+      _dB.set(0, -1, 0); // rayDirection
+      
+      // Cast a short ray downward to find ground normal
+      const hit = this.pw.query.raycast(_dA, _dB, 0.5);
+      
+      if (hit && hit.normal) {
+        // Calculate slope angle from ground normal
+        const slopeAngle = Math.acos(Math.abs(hit.normal.y)) * (180 / Math.PI);
+        
+        // Update steep slope state
+        cc._isOnSteepSlope = slopeAngle > cc.minSlopeSlideAngle;
+        
+        // Dynamic slope adjustment: only update when running/crouching state changes
+        const runningChanged = cc._isRunning !== cc._wasRunning;
+        const crouchingChanged = cc._isCrouching !== cc._wasCrouching;
+        
+        if (runningChanged || crouchingChanged) {
+          let dynamicMaxSlope = cc.maxSlopeAngle;
+          if (cc._isRunning) {
+            dynamicMaxSlope = cc.maxSlopeAngle * RUNNING_SLOPE_MULTIPLIER;
+          } else if (cc._isCrouching) {
+            dynamicMaxSlope = cc.maxSlopeAngle * CROUCHING_SLOPE_MULTIPLIER;
+          }
+          
+          // Update controller with dynamic values
+          (cc._rapierController as any).setMaxSlopeClimbAngle(dynamicMaxSlope * DEG2RAD);
+        }
+        
+        // Update previous state trackers
+        cc._wasRunning = cc._isRunning;
+        cc._wasCrouching = cc._isCrouching;
+      }
+    } else {
+      cc._isOnSteepSlope = false;
+    }
 
     // Landing: reset jump count and clamp downward velocity
     if (!prevGrounded && nowGrounded) {
@@ -404,6 +455,14 @@ export class CharacterControllerSystem implements System {
       DebugDraw.drawLine(_dG, _dH, _dbgGround);
       _dG.set(cx, fy, cz - hs);   _dH.set(cx, fy, cz + hs);
       DebugDraw.drawLine(_dG, _dH, _dbgGround);
+      
+      // Slope indicator: show steep slope warning
+      if (cc._isOnSteepSlope) {
+        _dG.set(cx, fy + 0.2, cz);   _dH.set(cx, fy + 0.4, cz);
+        DebugDraw.drawLine(_dG, _dH, _dbgSteepSlope);
+        _dG.set(cx - 0.1, fy + 0.3, cz);   _dH.set(cx + 0.1, fy + 0.3, cz);
+        DebugDraw.drawLine(_dG, _dH, _dbgSteepSlope);
+      }
     }
   }
 }

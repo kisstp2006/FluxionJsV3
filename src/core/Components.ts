@@ -622,6 +622,8 @@ export class CharacterControllerComponent extends BaseComponent {
 
   @field({ type: 'slider', label: 'Max Slope Angle', min: 0, max: 90, group: 'Slope & Step' })
   maxSlopeAngle = 45;
+  @field({ type: 'slider', label: 'Min Slope Slide Angle', min: 0, max: 90, group: 'Slope & Step' })
+  minSlopeSlideAngle = 25;
   @field({ type: 'number', label: 'Max Step Height', step: 0.05, group: 'Slope & Step' })
   maxStepHeight = 0.3;
   @field({ type: 'number', label: 'Step Down Height', step: 0.05, group: 'Slope & Step' })
@@ -654,6 +656,7 @@ export class CharacterControllerComponent extends BaseComponent {
   _isGrounded = false;
   _isCrouching = false;
   _isRunning = false;
+  _isOnSteepSlope = false;
   _velocityY = 0;
   _lateralVelocity = new THREE.Vector2(0, 0);
   _jumpCount = 0;
@@ -661,6 +664,12 @@ export class CharacterControllerComponent extends BaseComponent {
   _wantsJump = false;
   _wantsCrouch = false;
   _wantsRun = false;
+  /** Tracks previous jump key state to detect new presses vs. held keys */
+  _jumpKeyPressed = false;
+  /** Tracks previous running state to detect changes for slope adjustment */
+  _wasRunning = false;
+  /** Tracks previous crouching state to detect changes for slope adjustment */
+  _wasCrouching = false;
   /** Counts down: how many seconds of coyote-time remain after leaving ground. */
   _coyoteTimer = 0;
   /** Counts down: buffered jump request still pending. */

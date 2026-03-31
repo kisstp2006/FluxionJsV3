@@ -203,6 +203,7 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
       const entity = engine.renderer.getEntity(hit.object) ??
         (hit.object.parent ? engine.renderer.getEntity(hit.object.parent) : undefined);
       if (entity !== undefined) {
+        if (state.lockedEntities.includes(entity)) return;
         dispatch({ type: 'SELECT_ENTITY', entity });
         return;
       }

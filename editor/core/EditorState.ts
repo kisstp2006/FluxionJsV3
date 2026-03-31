@@ -82,6 +82,8 @@ export interface EditorState {
   projectName: string | null;
   currentScenePath: string | null;
   isSceneDirty: boolean;
+  /** Entity IDs that are locked (cannot be selected in viewport). */
+  lockedEntities: EntityId[];
 }
 
 // ── Actions ──
@@ -109,7 +111,8 @@ export type EditorAction =
   | { type: 'SET_SCENE_DIRTY'; dirty: boolean }
   | { type: 'SET_DEBUG_GROUP'; group: keyof DebugGroups; value: boolean }
   | { type: 'LOAD_DEBUG_GROUPS'; groups: DebugGroups }
-  | { type: 'LOAD_SNAPSHOT'; snapshot: EditorState };
+  | { type: 'LOAD_SNAPSHOT'; snapshot: EditorState }
+  | { type: 'SET_ENTITY_LOCKED'; entity: EntityId; locked: boolean };
 
 // ── Initial State ──
 export const initialEditorState: EditorState = {
@@ -152,6 +155,7 @@ export const initialEditorState: EditorState = {
   projectName: null,
   currentScenePath: null,
   isSceneDirty: false,
+  lockedEntities: [],
 };
 
 // ── Reducer ──
@@ -213,6 +217,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, debugGroups: action.groups };
     case 'LOAD_SNAPSHOT':
       return { ...state, ...action.snapshot };
+    case 'SET_ENTITY_LOCKED':
+      return {
+        ...state,
+        lockedEntities: action.locked
+          ? (state.lockedEntities.includes(action.entity) ? state.lockedEntities : [...state.lockedEntities, action.entity])
+          : state.lockedEntities.filter(id => id !== action.entity),
+      };
     default:
       return state;
   }

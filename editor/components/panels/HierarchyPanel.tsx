@@ -226,8 +226,9 @@ export const HierarchyPanel: React.FC = () => {
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   const [editingEntity, setEditingEntity] = useState<EntityId | null>(null);
   const [hiddenEntities, setHiddenEntities] = useState<Set<EntityId>>(new Set());
-  const [lockedEntities, setLockedEntities] = useState<Set<EntityId>>(new Set());
   const draggedEntity = useRef<EntityId | null>(null);
+  // Derive a Set from EditorState for O(1) has() checks inside the tree
+  const lockedEntities = useMemo(() => new Set(state.lockedEntities), [state.lockedEntities]);
 
   const handleToggleHide = useCallback((entity: EntityId) => {
     if (!engine) return;
@@ -243,12 +244,8 @@ export const HierarchyPanel: React.FC = () => {
   }, [engine]);
 
   const handleToggleLock = useCallback((entity: EntityId) => {
-    setLockedEntities(prev => {
-      const next = new Set(prev);
-      if (next.has(entity)) { next.delete(entity); } else { next.add(entity); }
-      return next;
-    });
-  }, []);
+    dispatch({ type: 'SET_ENTITY_LOCKED', entity, locked: !state.lockedEntities.includes(entity) });
+  }, [dispatch, state.lockedEntities]);
 
   // Track ECS topology changes without triggering on every frame.
   // hierarchyRevision only increments when entities are created/destroyed.

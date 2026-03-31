@@ -383,6 +383,9 @@ class MeshRendererSystem implements System {
         this._applyMeshFlags(meshComp.mesh, meshComp.castShadow, meshComp.receiveShadow);
         clearDirty(meshComp);
       }
+
+      // Respect enabled flag — hide/show without removing from scene
+      meshComp.mesh.visible = meshComp.enabled !== false;
     }
 
     // Remove deleted entities

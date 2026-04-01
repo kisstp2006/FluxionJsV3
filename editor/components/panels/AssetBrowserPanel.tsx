@@ -351,15 +351,15 @@ export const AssetBrowserPanel: React.FC<{
     } else if (entry.name.endsWith('.fluxscene')) {
       window.dispatchEvent(new CustomEvent('fluxion:open-scene', { detail: entry.path }));
     } else if (entry.name.endsWith('.fluxvismat')) {
-      window.dispatchEvent(new CustomEvent('fluxion:open-visual-material-editor', { detail: { path: entry.path } }));
+      (window as any).fluxionAPI?.openVisualMaterialEditor?.(entry.path);
     } else if (entry.name.endsWith('.fui')) {
-      window.dispatchEvent(new CustomEvent('fluxion:open-fui-editor', { detail: { path: entry.path } }));
-    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
+      (window as any).fluxionAPI?.openFuiEditor?.(entry.path);
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js') || entry.name.endsWith('.lua')) {
       const openIn = ProjectSettingsRegistry.get<string>('scripting.editor.openIn') ?? 'builtin';
       if (openIn === 'vscode') {
         (window as any).fluxionAPI?.openPath?.(entry.path);
       } else {
-        window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path: entry.path } }));
+        (window as any).fluxionAPI?.openScriptEditor?.(entry.path);
       }
     } else {
       log(`Opening ${entry.name}...`, 'info');
@@ -889,6 +889,28 @@ export const AssetBrowserPanel: React.FC<{
     if (paths.length === 0) return;
     await runImportWithSettingsCheck(paths, selectedFolder, ' via drag-and-drop');
   };
+
+  // ── Tauri file-drop bridge ──
+  // In Tauri, OS file drops are intercepted before the browser DragEvent fires.
+  // TauriAPIShim re-dispatches them as 'fluxion:file-drop'. Use refs so the
+  // effect only registers once regardless of render frequency.
+  const selectedFolderRef = React.useRef(selectedFolder);
+  selectedFolderRef.current = selectedFolder;
+  const runImportRef = React.useRef(runImportWithSettingsCheck);
+  runImportRef.current = runImportWithSettingsCheck;
+
+  React.useEffect(() => {
+    if (!(window as any).__TAURI__) return;
+    const handler = (e: Event) => {
+      const paths: string[] = (e as CustomEvent).detail?.paths ?? [];
+      if (paths.length > 0 && selectedFolderRef.current) {
+        setIsDragOver(false);
+        runImportRef.current(paths, selectedFolderRef.current, ' via drag-and-drop');
+      }
+    };
+    window.addEventListener('fluxion:file-drop', handler);
+    return () => window.removeEventListener('fluxion:file-drop', handler);
+  }, []);
 
   const filteredEntries = (() => {
     const base = searchQuery.trim()

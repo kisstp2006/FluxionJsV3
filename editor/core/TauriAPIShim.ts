@@ -644,4 +644,15 @@ export const API = new APIShim();
 // Assign to window.fluxionAPI so all editor code using window.fluxionAPI works in Tauri mode
 if (typeof window !== 'undefined') {
   (window as any).fluxionAPI = API;
+
+  // In Tauri, OS-level file drops are intercepted by Tauri before the browser DragEvent fires.
+  // Bridge tauri://file-drop → fluxion:file-drop so React components can receive dropped paths.
+  if (isTauri) {
+    window.__TAURI__.event.listen('tauri://file-drop', (event: any) => {
+      const paths: string[] = event.payload?.paths ?? [];
+      if (paths.length > 0) {
+        window.dispatchEvent(new CustomEvent('fluxion:file-drop', { detail: { paths } }));
+      }
+    });
+  }
 }

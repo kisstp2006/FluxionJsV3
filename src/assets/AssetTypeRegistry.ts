@@ -50,6 +50,12 @@ import rttLua         from './templates/render-to-texture.lua.tmpl';
 import sceneLoaderTs  from './templates/scene-loader.ts.tmpl';
 import sceneLoaderJs  from './templates/scene-loader.js.tmpl';
 import sceneLoaderLua from './templates/scene-loader.lua.tmpl';
+import interactCtrlTs  from './templates/interact-controller.ts.tmpl';
+import interactCtrlJs  from './templates/interact-controller.js.tmpl';
+import interactCtrlLua from './templates/interact-controller.lua.tmpl';
+import interactableTs  from './templates/interactable.ts.tmpl';
+import interactableJs  from './templates/interactable.js.tmpl';
+import interactableLua from './templates/interactable.lua.tmpl';
 
 // ── Types ──
 
@@ -575,6 +581,22 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     icon: 'scene',
     languages: ['ts', 'js', 'lua'],
     generate: (cls, lang) => tmpl(lang === 'lua' ? sceneLoaderLua : lang === 'js' ? sceneLoaderJs : sceneLoaderTs, cls),
+  },
+  {
+    id: 'interact-controller',
+    name: 'Interact Controller',
+    description: 'Left-click to raycast from the camera and emit an interact event on the hit entity',
+    icon: 'target',
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? interactCtrlLua : lang === 'js' ? interactCtrlJs : interactCtrlTs, cls),
+  },
+  {
+    id: 'interactable',
+    name: 'Interactable',
+    description: 'Reacts to the interact event fired by an Interact Controller',
+    icon: 'zap',
+    languages: ['ts', 'js', 'lua'],
+    generate: (cls, lang) => tmpl(lang === 'lua' ? interactableLua : lang === 'js' ? interactableJs : interactableTs, cls),
   },
 ];
 

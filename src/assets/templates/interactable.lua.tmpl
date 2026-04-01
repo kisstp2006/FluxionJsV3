@@ -1,0 +1,29 @@
+-- $CLS
+-- Attach to any entity that should be interactable.
+-- Reacts to the 'interact' event fired by an InteractController.
+
+function start()
+    self.on("interact", function(data)
+        if data.entity ~= self.entity then return end
+        onInteract(data)
+    end)
+end
+
+function onInteract(data)
+    self.log(self.getName() .. " interacted!")
+
+    -- ── Add your logic here ─────────────────────────────────────
+
+    -- Play a property animation:
+    -- self.anim.playPropertyClip("Open")
+
+    -- Destroy this entity:
+    -- self.destroy()
+
+    -- Emit a custom event:
+    -- self.emit("door:open", { entity = self.entity })
+
+    -- Move the transform:
+    -- local tf = self.transform
+    -- if tf then tf.position.y = tf.position.y + 1 end
+end

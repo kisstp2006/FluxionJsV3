@@ -1,0 +1,36 @@
+-- $CLS
+-- Attach to the player / camera entity.
+-- Left mouse button fires a raycast from the active camera.
+-- Emits an 'interact' event when an entity is hit.
+
+interactDistance = 3
+
+local _origin = Vec3(0, 0, 0)
+local _dir    = Vec3(0, 0, 0)
+
+function update(dt)
+    -- isMousePressed() is true only on the frame the button is first pressed
+    if not self.Input.isMousePressed() then return end
+
+    local cam = self._renderer.getActiveCamera()
+    if not cam then return end
+
+    _origin.x = cam.position.x
+    _origin.y = cam.position.y
+    _origin.z = cam.position.z
+
+    cam.getWorldDirection(_dir)
+
+    local hit = self.Physics.raycast(_origin, _dir, interactDistance)
+    if not hit or hit.entity == nil then return end
+
+    self.log("Interact → entity " .. tostring(hit.entity)
+        .. " (dist: " .. string.format("%.2f", hit.distance) .. ")")
+
+    self.emit("interact", {
+        entity     = hit.entity,
+        point      = hit.point,
+        normal     = hit.normal,
+        instigator = self.entity,
+    })
+end

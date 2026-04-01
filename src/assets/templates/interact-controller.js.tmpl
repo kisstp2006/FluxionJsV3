@@ -1,0 +1,30 @@
+export default class $CLS extends FluxionBehaviour {
+  /** Max interaction distance in world units. */
+  interactDistance = 3;
+
+  _dir    = new Vec3();
+  _origin = new Vec3();
+
+  update(dt) {
+    // isMousePressed() is true only on the frame the button is first pressed
+    if (!this.Input.isMousePressed()) return;
+
+    const cam = this._renderer?.getActiveCamera?.();
+    if (!cam) return;
+
+    this._origin.copy(cam.position);
+    cam.getWorldDirection(this._dir);
+
+    const hit = this.Physics.raycast(this._origin, this._dir, this.interactDistance);
+    if (!hit || hit.entity == null) return;
+
+    this.log(`Interact → "${this.getName(hit.entity)}" (dist: ${hit.distance.toFixed(2)})`);
+
+    this.emit('interact', {
+      entity:     hit.entity,
+      point:      hit.point,
+      normal:     hit.normal,
+      instigator: this.entity,
+    });
+  }
+}

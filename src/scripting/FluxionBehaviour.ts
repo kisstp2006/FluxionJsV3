@@ -156,7 +156,7 @@ export class FluxionBehaviour {
     const eid = this.entity;
     return {
       raycast: (origin: import('three').Vector3, direction: import('three').Vector3, maxDist = 100) =>
-        world?.raycast(origin, direction, maxDist) ?? null,
+        world?.query?.raycast(origin, direction, maxDist) ?? null,
       setGravity: (x: number, y: number, z: number) =>
         world?.setGravity(x, y, z),
       applyForce: (force: import('three').Vector3) =>

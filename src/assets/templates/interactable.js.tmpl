@@ -1,0 +1,27 @@
+export default class $CLS extends FluxionBehaviour {
+
+  start() {
+    this.on('interact', (data) => {
+      if (data.entity !== this.entity) return;
+      this.onInteract(data);
+    });
+  }
+
+  onInteract(data) {
+    this.log(`"${this.getName()}" interacted!`);
+
+    // ── Add your logic here ─────────────────────────────────────
+
+    // Play a property animation:
+    // this.anim.playPropertyClip('Open');
+
+    // Destroy this entity:
+    // this.destroy();
+
+    // Emit a custom event:
+    // this.emit('door:open', { entity: this.entity });
+
+    // Move the transform:
+    // if (this.transform) this.transform.position.y += 1;
+  }
+}

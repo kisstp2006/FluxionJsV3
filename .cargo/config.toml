@@ -1,0 +1,10 @@
+[build]
+jobs = 1
+target-dir = "../target-tauri"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+CARGO_BUILD_JOBS = "1"
+CARGO_TARGET_DIR = "../target-tauri"

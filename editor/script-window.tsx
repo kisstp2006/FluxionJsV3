@@ -11,6 +11,7 @@ import './styles/globals.css';
 import { SvgIcon } from './ui/SvgIcon';
 import terminalSvg from './ui/icons/terminal.svg';
 import xSvg from './ui/icons/x.svg';
+import './core/TauriAPIShim';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';

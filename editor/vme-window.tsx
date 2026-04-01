@@ -10,6 +10,7 @@ import { VisualMaterialEditor } from './components/panels/VisualMaterialEditor';
 import { SvgIcon } from './ui/SvgIcon';
 import apertureSvg from './ui/icons/aperture.svg';
 import xSvg from './ui/icons/x.svg';
+import './core/TauriAPIShim';
 import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';

@@ -14,6 +14,17 @@ release/
 *.deb
 *.rpm
 
+# Rust/Cargo build outputs
+target/
+target-tauri/
+Cargo.lock
+**/*.rs.bk
+
+# Tauri specific
+src-tauri/target/
+src-tauri/target-tauri/
+src-tauri/Cargo.lock
+
 # Electron builder artifacts
 builder-debug.yml
 builder-effective-config.yaml

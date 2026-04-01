@@ -13,6 +13,7 @@ import { registerDefaultSettings } from './core/DefaultSettings';
 import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
 import { registerBuiltInPanels } from './components/layout/PanelRegistrations';
 import { registerBuiltInMenus } from './components/layout/MenuRegistrations';
+import './core/TauriAPIShim'; // Initialize API shim for Electron/Tauri compatibility
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.

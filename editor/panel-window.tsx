@@ -8,6 +8,7 @@
 import React, { useReducer, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
+import './core/TauriAPIShim';
 import { PanelRegistry } from './core/PanelRegistry';
 import { registerBuiltInPanels } from './components/layout/PanelRegistrations';
 import { EditorCtxForPanelWindow } from './core/PanelWindowContext';

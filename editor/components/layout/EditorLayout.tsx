@@ -47,65 +47,63 @@ export const EditorLayout: React.FC = () => {
   const engineRef = useRef<EngineSubsystems | null>(null);
 
   // ── Panel detach handler ──
-  // Checks editor.panels.useNativeWindows: true → OS window, false → in-app float
+  // Always use in-app floating panels (ignore native windows setting)
   const handleDetachRequest = useCallback((id: string) => {
-    const useNativeWindows = SettingsRegistry.get<boolean>('editor.panels.useNativeWindows') ?? true;
-    if (useNativeWindows && window.fluxionAPI?.detachPanel) {
-      detachPanel(id);
-      window.fluxionAPI.detachPanel(id);
-    } else {
-      floatPanel(id);
-    }
-  }, [detachPanel, floatPanel]);
+    // Always float panels in-app, ignore native windows setting
+    floatPanel(id);
+  }, [floatPanel]);
 
-  // When a detached panel OS window is closed, reattach the panel to its default zone
-  React.useEffect(() => {
-    const api = window.fluxionAPI as any;
-    if (!api?.onPanelWindowClosed) return;
-    api.onPanelWindowClosed((panelId: string) => reattachPanel(panelId));
-    return () => { api.offPanelWindowClosed?.(); };
-  }, [reattachPanel]);
-
-  // Listen for open-visual-material-editor events — open in separate OS window
+  // Listen for open-visual-material-editor events — open in-app panel
   React.useEffect(() => {
     const handler = (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
-      if (path) window.fluxionAPI?.openVisualMaterialEditor?.(path);
+      if (path) {
+        // Open VME in-app instead of separate window
+        window.dispatchEvent(new CustomEvent('fluxion:open-vme-panel', { detail: { path } }));
+      }
     };
     window.addEventListener('fluxion:open-visual-material-editor', handler);
     return () => window.removeEventListener('fluxion:open-visual-material-editor', handler);
   }, []);
 
-  // Listen for open-fui-editor events — open in separate OS window
+  // Listen for open-fui-editor events — open in-app panel
   React.useEffect(() => {
     const handler = (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
-      if (path) window.fluxionAPI?.openFuiEditor?.(path);
+      if (path) {
+        // Open FUI in-app instead of separate window
+        window.dispatchEvent(new CustomEvent('fluxion:open-fui-panel', { detail: { path } }));
+      }
     };
     window.addEventListener('fluxion:open-fui-editor', handler);
     return () => window.removeEventListener('fluxion:open-fui-editor', handler);
   }, []);
 
-  // Listen for open-script-editor events — open Monaco script editor window
+  // Listen for open-script-editor events — open in-app panel
   React.useEffect(() => {
     const handler = (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
-      if (path) (window as any).fluxionAPI?.openScriptEditor?.(path);
+      if (path) {
+        // Open Script Editor in-app instead of separate window
+        window.dispatchEvent(new CustomEvent('fluxion:open-script-panel', { detail: { path } }));
+      }
     };
     window.addEventListener('fluxion:open-script-editor', handler);
     return () => window.removeEventListener('fluxion:open-script-editor', handler);
   }, []);
 
-  // Listen for material-changed relay from VME windows (IPC) and re-dispatch as local custom event
+  // Listen for material-changed events (now in-app)
   React.useEffect(() => {
-    window.fluxionAPI?.onMaterialChangedRelay?.((changedPath: string) => {
-      window.dispatchEvent(
-        new CustomEvent('fluxion:material-changed', { detail: { path: changedPath } })
-      );
-    });
-    return () => {
-      window.fluxionAPI?.offMaterialChangedRelay?.();
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent).detail?.path;
+      if (path) {
+        window.dispatchEvent(
+          new CustomEvent('fluxion:material-changed', { detail: { path } })
+        );
+      }
     };
+    window.addEventListener('fluxion:material-changed-relay', handler);
+    return () => window.removeEventListener('fluxion:material-changed-relay', handler);
   }, []);
 
   // Save scene handler

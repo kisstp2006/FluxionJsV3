@@ -12,6 +12,7 @@ import type { FuiDocument, FuiFont, FuiNode, FuiMode, FuiPanelNode, FuiRect, Fui
 import { parseFuiJson } from '../../../src/ui/FuiParser';
 import { compileFui, renderFuiToCanvas, loadFuiFonts } from '../../../src/ui/FuiRenderer';
 import { applyAnimation } from '../../../src/ui/FuiAnimator';
+import { projectManager } from '../../../src/project/ProjectManager';
 
 // ═══════════════════════════════════════════
 // Types
@@ -1090,9 +1091,9 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
   // ── Load custom fonts declared in the document ──
   useEffect(() => {
     if (!doc?.fonts?.length) return;
-    const projectDir = (window as any).fluxionAPI?.projectDir as string | undefined;
+    const projectDir = projectManager.projectDir ?? '';
     loadFuiFonts(doc.fonts, (rel) => {
-      const base = projectDir ?? '';
+      const base = projectDir;
       const abs = base ? `${base.replace(/\\/g, '/')}/${rel.replace(/\\/g, '/')}` : rel;
       return abs.startsWith('file://') ? abs : `file:///${abs.replace(/\\/g, '/')}`;
     }).then(() => setFontsVersion((v) => v + 1));

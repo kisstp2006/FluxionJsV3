@@ -79,31 +79,12 @@ export const EditorLayout: React.FC = () => {
     return () => window.removeEventListener('fluxion:open-fui-editor', handler);
   }, []);
 
-  // Listen for open-script-editor events — open in-app panel
+  // Relay material-changed from child windows (VME OS window → main window DOM)
   React.useEffect(() => {
-    const handler = (e: Event) => {
-      const path = (e as CustomEvent).detail?.path;
-      if (path) {
-        // Open Script Editor in-app instead of separate window
-        window.dispatchEvent(new CustomEvent('fluxion:open-script-panel', { detail: { path } }));
-      }
-    };
-    window.addEventListener('fluxion:open-script-editor', handler);
-    return () => window.removeEventListener('fluxion:open-script-editor', handler);
-  }, []);
-
-  // Listen for material-changed events (now in-app)
-  React.useEffect(() => {
-    const handler = (e: Event) => {
-      const path = (e as CustomEvent).detail?.path;
-      if (path) {
-        window.dispatchEvent(
-          new CustomEvent('fluxion:material-changed', { detail: { path } })
-        );
-      }
-    };
-    window.addEventListener('fluxion:material-changed-relay', handler);
-    return () => window.removeEventListener('fluxion:material-changed-relay', handler);
+    (window as any).fluxionAPI?.onMaterialChangedRelay?.((path: string) => {
+      window.dispatchEvent(new CustomEvent('fluxion:material-changed', { detail: { path } }));
+    });
+    return () => (window as any).fluxionAPI?.offMaterialChangedRelay?.();
   }, []);
 
   // Save scene handler

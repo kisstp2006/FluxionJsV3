@@ -466,14 +466,14 @@ const App: React.FC = () => {
 
   const toolbarStyle: React.CSSProperties = {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'stretch',
     background: '#161b22',
     borderBottom: '1px solid #30363d',
     height: 36,
     flexShrink: 0,
-    gap: 0,
-    overflowX: 'auto',
-  };
+    overflow: 'hidden',
+    WebkitAppRegion: 'drag',
+  } as React.CSSProperties;
 
   const tabStyle = (active: boolean, dirty: boolean): React.CSSProperties => ({
     display: 'flex',
@@ -489,7 +489,8 @@ const App: React.FC = () => {
     fontSize: 12,
     whiteSpace: 'nowrap',
     userSelect: 'none',
-  });
+    WebkitAppRegion: 'no-drag',
+  } as React.CSSProperties);
 
   const closeBtnStyle: React.CSSProperties = {
     background: 'none',
@@ -516,28 +517,45 @@ const App: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117' }}>
       {/* Tab bar */}
       <div style={toolbarStyle}>
-        {tabs.map((tab) => (
-          <div
-            key={tab.path}
-            style={tabStyle(tab.path === activeTab, tab.dirty)}
-            onClick={() => setActiveTab(tab.path)}
-          >
-            <SvgIcon svg={terminalSvg} size={11} color={tab.path === activeTab ? '#58a6ff' : '#484f58'} />
-            <span>{tab.name}{tab.dirty ? ' •' : ''}</span>
-            <button
-              style={closeBtnStyle}
-              onClick={(e) => { e.stopPropagation(); closeTab(tab.path); }}
-              title="Close tab"
+        {/* Scrollable tabs — controls stay outside this div */}
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1, height: '100%', overflowX: 'auto', scrollbarWidth: 'none', minWidth: 0 } as React.CSSProperties}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.path}
+              style={tabStyle(tab.path === activeTab, tab.dirty)}
+              onClick={() => setActiveTab(tab.path)}
             >
-              <SvgIcon svg={xSvg} size={9} color="currentColor" />
-            </button>
-          </div>
-        ))}
-        {tabs.length === 0 && (
-          <span style={{ padding: '0 12px', color: '#484f58', fontSize: 12 }}>
-            No files open
-          </span>
-        )}
+              <SvgIcon svg={terminalSvg} size={11} color={tab.path === activeTab ? '#58a6ff' : '#484f58'} />
+              <span>{tab.name}{tab.dirty ? ' •' : ''}</span>
+              <button
+                style={closeBtnStyle}
+                onClick={(e) => { e.stopPropagation(); closeTab(tab.path); }}
+                title="Close tab"
+              >
+                <SvgIcon svg={xSvg} size={9} color="currentColor" />
+              </button>
+            </div>
+          ))}
+          {tabs.length === 0 && (
+            <span style={{ padding: '0 12px', color: '#484f58', fontSize: 12 }}>
+              No files open
+            </span>
+          )}
+        </div>
+        {/* Window controls — fixed, never scrolls */}
+        <div style={{ display: 'flex', flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {([
+            { label: '─', title: 'Minimize', hover: '#21262d', onClick: () => (window as any).fluxionAPI?.minimize() },
+            { label: '□', title: 'Maximize', hover: '#21262d', onClick: () => (window as any).fluxionAPI?.maximize() },
+            { label: '✕', title: 'Close',    hover: '#c0392b', onClick: () => (window as any).fluxionAPI?.close() },
+          ] as const).map(({ label, title, hover, onClick }) => (
+            <button key={title} onClick={onClick} title={title}
+              style={{ background: 'none', border: 'none', color: '#484f58', width: 40, height: 36, cursor: 'pointer', fontSize: 12 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = hover; (e.currentTarget as HTMLButtonElement).style.color = '#e6edf3'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = '#484f58'; }}
+            >{label}</button>
+          ))}
+        </div>
       </div>
 
       {/* Editor area */}

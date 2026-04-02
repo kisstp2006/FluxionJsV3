@@ -271,6 +271,13 @@ class APIShim {
 
   // ── Build System ───────────────────────────────────────────────────────
 
+  async getEngineRoot(): Promise<string> {
+    if (this.isTauri) {
+      return window.__TAURI__.core.invoke('get_engine_root_cmd');
+    }
+    return this.tauriAPI.getEngineRoot?.() ?? '';
+  }
+
   async runBuild(engineRoot: string, configPath: string): Promise<string> {
     if (this.isTauri) {
       try {
@@ -294,9 +301,76 @@ class APIShim {
         throw error;
       }
     } else {
-      // Electron fallback
       return this.tauriAPI.cancelBuild?.(jobId);
     }
+  }
+
+  async runNpm(projectDir: string, args: string[]): Promise<string> {
+    if (this.isTauri) {
+      return window.__TAURI__.core.invoke('run_npm', { projectDir, args });
+    }
+    return this.tauriAPI.npm?.run(projectDir, args) ?? '';
+  }
+
+  async cancelNpm(jobId: string): Promise<void> {
+    if (this.isTauri) {
+      await window.__TAURI__.core.invoke('cancel_npm', { jobId });
+    } else {
+      return this.tauriAPI.npm?.cancel(jobId);
+    }
+  }
+
+  // ── build / npm namespace objects (for api.build.run / api.npm.run) ──────
+  private _buildEventUnlisten: (() => void) | null = null;
+  private _npmEventUnlisten: (() => void) | null = null;
+
+  private _parseBuildPayload(event: any): any {
+    try {
+      const p = typeof event.payload === 'string' ? JSON.parse(event.payload) : (event.payload ?? {});
+      return { jobId: p.job_id ?? p.jobId, type: p.event_type ?? p.type, data: p.data ?? '' };
+    } catch { return event; }
+  }
+
+  get build() {
+    const self = this;
+    return {
+      run:      (engineRoot: string, configPath: string) => self.runBuild(engineRoot, configPath),
+      cancel:   (jobId: string) => self.cancelBuild(jobId),
+      onEvent:  (callback: (event: any) => void) => {
+        if (self.isTauri) {
+          self._buildEventUnlisten?.();
+          window.__TAURI__.event.listen('build-output', (e: any) => {
+            callback(self._parseBuildPayload(e));
+          }).then((u) => { self._buildEventUnlisten = u; });
+        } else { self.tauriAPI?.build?.onEvent?.(callback); }
+      },
+      offEvent: () => {
+        self._buildEventUnlisten?.();
+        self._buildEventUnlisten = null;
+        if (!self.isTauri) self.tauriAPI?.build?.offEvent?.();
+      },
+    };
+  }
+
+  get npm() {
+    const self = this;
+    return {
+      run:      (projectDir: string, args: string[]) => self.runNpm(projectDir, args),
+      cancel:   (jobId: string) => self.cancelNpm(jobId),
+      onEvent:  (callback: (event: any) => void) => {
+        if (self.isTauri) {
+          self._npmEventUnlisten?.();
+          window.__TAURI__.event.listen('npm-output', (e: any) => {
+            callback(self._parseBuildPayload(e));
+          }).then((u) => { self._npmEventUnlisten = u; });
+        } else { self.tauriAPI?.npm?.onEvent?.(callback); }
+      },
+      offEvent: () => {
+        self._npmEventUnlisten?.();
+        self._npmEventUnlisten = null;
+        if (!self.isTauri) self.tauriAPI?.npm?.offEvent?.();
+      },
+    };
   }
 
   // ── File Watching ───────────────────────────────────────────────────────
@@ -497,6 +571,9 @@ class APIShim {
     if (this.isTauri) {
       window.__TAURI__.core.invoke('open_child_window', {
         label: 'script-editor', url, title: 'Script Editor', width: 1200, height: 800,
+      }).then(() => {
+        // Also emit open-tab so an already-open script window receives the new file
+        if (path) window.__TAURI__.event.emit('fluxion:script-open-tab', path).catch(() => {});
       }).catch((e: any) => console.error('open_child_window error:', e));
     } else {
       window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path } }));
@@ -508,6 +585,8 @@ class APIShim {
     if (this.isTauri) {
       window.__TAURI__.core.invoke('open_child_window', {
         label: 'vme-editor', url, title: 'Visual Material Editor', width: 1400, height: 900,
+      }).then(() => {
+        if (path) window.__TAURI__.event.emit('fluxion:vme-open-tab', path).catch(() => {});
       }).catch((e: any) => console.error('open_child_window error:', e));
     } else {
       window.dispatchEvent(new CustomEvent('fluxion:open-visual-material-editor', { detail: { path } }));
@@ -519,6 +598,8 @@ class APIShim {
     if (this.isTauri) {
       window.__TAURI__.core.invoke('open_child_window', {
         label: 'fui-editor', url, title: 'FUI Editor', width: 1200, height: 800,
+      }).then(() => {
+        if (path) window.__TAURI__.event.emit('fluxion:fui-open-tab', path).catch(() => {});
       }).catch((e: any) => console.error('open_child_window error:', e));
     } else {
       window.dispatchEvent(new CustomEvent('fluxion:open-fui-editor', { detail: { path } }));
@@ -526,7 +607,11 @@ class APIShim {
   }
 
   notifyMaterialChanged(filePath: string): void {
-    window.dispatchEvent(new CustomEvent('fluxion:material-changed', { detail: { path: filePath } }));
+    if (this.isTauri) {
+      window.__TAURI__.event.emit('fluxion:material-changed', filePath).catch(() => {});
+    } else {
+      window.dispatchEvent(new CustomEvent('fluxion:material-changed', { detail: { path: filePath } }));
+    }
   }
 
   detachPanel(panelId: string): void {
@@ -551,29 +636,136 @@ class APIShim {
     }
   }
 
-  // ── Panel IPC (cross-window state relay via DOM events) ──────────────────
+  sendPanelState(panelId: string, state: unknown): void {
+    if (this.isTauri) {
+      window.__TAURI__.event.emit(`fluxion:panel-state-${panelId}`, state).catch(() => {});
+    } else {
+      window.dispatchEvent(new CustomEvent('fluxion:panel-state', { detail: { panelId, state } }));
+    }
+  }
+
+  getPanelWindowId(): Promise<string> {
+    return Promise.resolve(new URLSearchParams(window.location.search).get('panelId') ?? '');
+  }
+
+  // ── Panel IPC (cross-window state relay via Tauri events) ─────────────────
+  private _panelStateUnlisten: (() => void) | null = null;
   private _panelStateHandler: ((e: Event) => void) | null = null;
 
   onPanelState(callback: (state: unknown) => void): void {
-    this._panelStateHandler = (e: Event) => callback((e as CustomEvent).detail.state);
-    window.addEventListener('fluxion:panel-state', this._panelStateHandler);
+    if (this.isTauri) {
+      const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
+      window.__TAURI__.event.listen(`fluxion:panel-state-${panelId}`, (event: any) => {
+        callback(event.payload);
+      }).then((unlisten) => { this._panelStateUnlisten = unlisten; });
+    } else {
+      this._panelStateHandler = (e: Event) => callback((e as CustomEvent).detail.state);
+      window.addEventListener('fluxion:panel-state', this._panelStateHandler);
+    }
   }
 
   offPanelState(): void {
-    if (this._panelStateHandler) {
+    if (this.isTauri) {
+      this._panelStateUnlisten?.();
+      this._panelStateUnlisten = null;
+    } else if (this._panelStateHandler) {
       window.removeEventListener('fluxion:panel-state', this._panelStateHandler);
       this._panelStateHandler = null;
     }
   }
 
+  private _panelActionUnlisten: (() => void) | null = null;
+  private _panelActionHandler: ((e: Event) => void) | null = null;
+
+  onPanelAction(callback: (panelId: string, action: unknown) => void): void {
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:panel-action', (event: any) => {
+        callback(event.payload.panelId, event.payload.action);
+      }).then((unlisten) => { this._panelActionUnlisten = unlisten; });
+    } else {
+      this._panelActionHandler = (e: Event) => callback(
+        (e as CustomEvent).detail.panelId, (e as CustomEvent).detail.action
+      );
+      window.addEventListener('fluxion:panel-action-relay', this._panelActionHandler);
+    }
+  }
+
+  offPanelAction(): void {
+    if (this.isTauri) {
+      this._panelActionUnlisten?.();
+      this._panelActionUnlisten = null;
+    } else if (this._panelActionHandler) {
+      window.removeEventListener('fluxion:panel-action-relay', this._panelActionHandler);
+      this._panelActionHandler = null;
+    }
+  }
+
+  private _panelWindowClosedUnlisten: (() => void) | null = null;
+  private _panelWindowClosedHandler: ((e: Event) => void) | null = null;
+
+  onPanelWindowClosed(callback: (panelId: string) => void): void {
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:panel-window-closed', (event: any) => {
+        callback(event.payload);
+      }).then((unlisten) => { this._panelWindowClosedUnlisten = unlisten; });
+    } else {
+      this._panelWindowClosedHandler = (e: Event) => callback((e as CustomEvent).detail.panelId);
+      window.addEventListener('fluxion:panel-window-closed', this._panelWindowClosedHandler);
+    }
+  }
+
+  offPanelWindowClosed(): void {
+    if (this.isTauri) {
+      this._panelWindowClosedUnlisten?.();
+      this._panelWindowClosedUnlisten = null;
+    } else if (this._panelWindowClosedHandler) {
+      window.removeEventListener('fluxion:panel-window-closed', this._panelWindowClosedHandler);
+      this._panelWindowClosedHandler = null;
+    }
+  }
+
+  // ── Material change relay ─────────────────────────────────────────────────
+  private _materialChangedUnlisten: (() => void) | null = null;
+  private _materialChangedHandler: ((e: Event) => void) | null = null;
+
+  onMaterialChangedRelay(callback: (changedPath: string) => void): void {
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:material-changed', (event: any) => {
+        callback(event.payload);
+      }).then((unlisten) => { this._materialChangedUnlisten = unlisten; });
+    } else {
+      this._materialChangedHandler = (e: Event) => callback((e as CustomEvent).detail.path);
+      window.addEventListener('fluxion:material-changed-relay', this._materialChangedHandler);
+    }
+  }
+
+  offMaterialChangedRelay(): void {
+    if (this.isTauri) {
+      this._materialChangedUnlisten?.();
+      this._materialChangedUnlisten = null;
+    } else if (this._materialChangedHandler) {
+      window.removeEventListener('fluxion:material-changed-relay', this._materialChangedHandler);
+      this._materialChangedHandler = null;
+    }
+  }
+
   dispatchEditorAction(action: unknown): void {
-    window.dispatchEvent(new CustomEvent('fluxion:panel-action', { detail: { action } }));
+    if (this.isTauri) {
+      const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
+      window.__TAURI__.event.emit('fluxion:panel-action', { panelId, action }).catch(() => {});
+    } else {
+      window.dispatchEvent(new CustomEvent('fluxion:panel-action', { detail: { action } }));
+    }
   }
 
   // ── Script settings IPC (DOM events, single-window in Tauri) ─────────────
   sendScriptSettings(settings: unknown): void {
-    window.dispatchEvent(new CustomEvent('fluxion:script-settings', { detail: { settings } }));
     try { localStorage.setItem('fluxion:script-settings', JSON.stringify(settings)); } catch { /* ignore */ }
+    if (this.isTauri) {
+      window.__TAURI__.event.emit('fluxion:script-settings', settings).catch(() => {});
+    } else {
+      window.dispatchEvent(new CustomEvent('fluxion:script-settings', { detail: { settings } }));
+    }
   }
 
   async getScriptSettings(): Promise<unknown | null> {
@@ -583,50 +775,90 @@ class APIShim {
     } catch { return null; }
   }
 
+  private _scriptSettingsUnlisten: (() => void) | null = null;
   private _scriptSettingsHandler: ((e: Event) => void) | null = null;
   onScriptSettingsUpdate(callback: (s: unknown) => void): void {
-    this._scriptSettingsHandler = (e: Event) => callback((e as CustomEvent).detail.settings);
-    window.addEventListener('fluxion:script-settings', this._scriptSettingsHandler);
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:script-settings', (event: any) => {
+        callback(event.payload);
+      }).then((unlisten) => { this._scriptSettingsUnlisten = unlisten; });
+    } else {
+      this._scriptSettingsHandler = (e: Event) => callback((e as CustomEvent).detail.settings);
+      window.addEventListener('fluxion:script-settings', this._scriptSettingsHandler);
+    }
   }
   offScriptSettingsUpdate(): void {
-    if (this._scriptSettingsHandler) {
+    if (this.isTauri) {
+      this._scriptSettingsUnlisten?.();
+      this._scriptSettingsUnlisten = null;
+    } else if (this._scriptSettingsHandler) {
       window.removeEventListener('fluxion:script-settings', this._scriptSettingsHandler);
       this._scriptSettingsHandler = null;
     }
   }
 
+  private _scriptOpenTabUnlisten: (() => void) | null = null;
   private _scriptOpenTabHandler: ((e: Event) => void) | null = null;
   onScriptOpenTab(callback: (path: string) => void): void {
-    this._scriptOpenTabHandler = (e: Event) => callback((e as CustomEvent).detail.path);
-    window.addEventListener('fluxion:open-script-tab', this._scriptOpenTabHandler);
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:script-open-tab', (event: any) => {
+        callback(event.payload);
+      }).then((unlisten) => { this._scriptOpenTabUnlisten = unlisten; });
+    } else {
+      this._scriptOpenTabHandler = (e: Event) => callback((e as CustomEvent).detail.path);
+      window.addEventListener('fluxion:open-script-tab', this._scriptOpenTabHandler);
+    }
   }
   offScriptOpenTab(): void {
-    if (this._scriptOpenTabHandler) {
+    if (this.isTauri) {
+      this._scriptOpenTabUnlisten?.();
+      this._scriptOpenTabUnlisten = null;
+    } else if (this._scriptOpenTabHandler) {
       window.removeEventListener('fluxion:open-script-tab', this._scriptOpenTabHandler);
       this._scriptOpenTabHandler = null;
     }
   }
 
   // ── VME / FUI tab IPC (DOM events) ───────────────────────────────────────
+  private _vmeOpenTabUnlisten: (() => void) | null = null;
   private _vmeOpenTabHandler: ((e: Event) => void) | null = null;
   onVmeOpenTab(handler: (event: unknown, filePath: string) => void): void {
-    this._vmeOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
-    window.addEventListener('fluxion:open-vme-tab', this._vmeOpenTabHandler);
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:vme-open-tab', (event: any) => {
+        handler(event, event.payload);
+      }).then((unlisten) => { this._vmeOpenTabUnlisten = unlisten; });
+    } else {
+      this._vmeOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
+      window.addEventListener('fluxion:open-vme-tab', this._vmeOpenTabHandler);
+    }
   }
   offVmeOpenTab(): void {
-    if (this._vmeOpenTabHandler) {
+    if (this.isTauri) {
+      this._vmeOpenTabUnlisten?.();
+      this._vmeOpenTabUnlisten = null;
+    } else if (this._vmeOpenTabHandler) {
       window.removeEventListener('fluxion:open-vme-tab', this._vmeOpenTabHandler);
       this._vmeOpenTabHandler = null;
     }
   }
 
+  private _fuiOpenTabUnlisten: (() => void) | null = null;
   private _fuiOpenTabHandler: ((e: Event) => void) | null = null;
   onFuiOpenTab(handler: (event: unknown, filePath: string) => void): void {
-    this._fuiOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
-    window.addEventListener('fluxion:open-fui-tab', this._fuiOpenTabHandler);
+    if (this.isTauri) {
+      window.__TAURI__.event.listen('fluxion:fui-open-tab', (event: any) => {
+        handler(event, event.payload);
+      }).then((unlisten) => { this._fuiOpenTabUnlisten = unlisten; });
+    } else {
+      this._fuiOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
+      window.addEventListener('fluxion:open-fui-tab', this._fuiOpenTabHandler);
+    }
   }
   offFuiOpenTab(): void {
-    if (this._fuiOpenTabHandler) {
+    if (this.isTauri) {
+      this._fuiOpenTabUnlisten?.();
+      this._fuiOpenTabUnlisten = null;
+    } else if (this._fuiOpenTabHandler) {
       window.removeEventListener('fluxion:open-fui-tab', this._fuiOpenTabHandler);
       this._fuiOpenTabHandler = null;
     }

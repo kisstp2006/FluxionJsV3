@@ -133,8 +133,9 @@ const App: React.FC = () => {
         display: 'flex', alignItems: 'center',
         background: '#181825', borderBottom: '1px solid #313244',
         height: 34, minHeight: 34, userSelect: 'none', paddingLeft: 4, overflow: 'hidden',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflow: 'auto', flex: 1, scrollbarWidth: 'none' as any }}>
+        WebkitAppRegion: 'drag',
+      } as React.CSSProperties}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflow: 'auto', flex: 1, height: '100%', scrollbarWidth: 'none' as any } as React.CSSProperties}>
           {tabs.map((tab) => (
             <div
               key={tab.id}
@@ -151,7 +152,8 @@ const App: React.FC = () => {
                 background: tab.id === activeTab.id ? '#1e1e2e' : 'transparent',
                 borderRight: '1px solid #313244', whiteSpace: 'nowrap',
                 transition: 'background 0.1s, color 0.1s',
-              }}
+                WebkitAppRegion: 'no-drag',
+              } as React.CSSProperties}
               title={tab.filePath}
             >
               <SvgIcon svg={layoutSvg} size={12} color="#58a6ff" />
@@ -166,6 +168,20 @@ const App: React.FC = () => {
                 <SvgIcon svg={xSvg} size={10} color="currentColor" />
               </span>
             </div>
+          ))}
+        </div>
+        {/* Window controls */}
+        <div style={{ display: 'flex', flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {([
+            { label: '─', title: 'Minimize', hover: '#313244', onClick: () => (window as any).fluxionAPI?.minimize() },
+            { label: '□', title: 'Maximize', hover: '#313244', onClick: () => (window as any).fluxionAPI?.maximize() },
+            { label: '✕', title: 'Close',    hover: '#c0392b', onClick: () => (window as any).fluxionAPI?.close() },
+          ] as const).map(({ label, title, hover, onClick }) => (
+            <button key={title} onClick={onClick} title={title}
+              style={{ background: 'none', border: 'none', color: '#6c7086', width: 40, height: 34, cursor: 'pointer', fontSize: 12 }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = hover; (e.currentTarget as HTMLButtonElement).style.color = '#cdd6f4'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = '#6c7086'; }}
+            >{label}</button>
           ))}
         </div>
       </div>

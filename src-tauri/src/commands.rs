@@ -75,6 +75,7 @@ pub async fn open_child_window(
     WebviewWindowBuilder::new(&app, label, WebviewUrl::App(url.into()))
         .title(title)
         .inner_size(width.unwrap_or(1200.0), height.unwrap_or(800.0))
+        .decorations(false)
         .build()
         .map_err(|e| format!("Failed to open window: {}", e))?;
 

@@ -61,11 +61,33 @@ const PanelWindowApp: React.FC = () => {
           height: 32, flexShrink: 0,
           background: 'var(--bg-secondary, #161b22)',
           borderBottom: '1px solid var(--border, #2a2d35)',
-          display: 'flex', alignItems: 'center', padding: '0 12px',
+          display: 'flex', alignItems: 'center',
           fontSize: 12, color: 'var(--text-secondary, #8b949e)', userSelect: 'none',
-        }}>
-          {reg?.icon && <span style={{ marginRight: 6, opacity: 0.7, display: 'flex', alignItems: 'center' }}>{reg.icon}</span>}
-          {reg?.title ?? panelId}
+          WebkitAppRegion: 'drag',
+        } as React.CSSProperties}>
+          <span style={{ display: 'flex', alignItems: 'center', padding: '0 12px', flex: 1, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {reg?.icon && <span style={{ marginRight: 6, opacity: 0.7, display: 'flex', alignItems: 'center' }}>{reg.icon}</span>}
+            {reg?.title ?? panelId}
+          </span>
+          {/* Window controls */}
+          <div style={{ display: 'flex', flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {([
+              { label: '─', title: 'Minimize', hover: 'var(--bg-hover, #21262d)', onClick: () => (window as any).fluxionAPI?.minimize() },
+              { label: '□', title: 'Maximize', hover: 'var(--bg-hover, #21262d)', onClick: () => (window as any).fluxionAPI?.maximize() },
+              { label: '✕', title: 'Close',    hover: '#c0392b',                  onClick: () => {
+                if ((window as any).__TAURI__) {
+                  (window as any).__TAURI__.event.emit('fluxion:panel-window-closed', panelId).catch(() => {});
+                }
+                (window as any).fluxionAPI?.close();
+              } },
+            ] as const).map(({ label, title, hover, onClick }) => (
+              <button key={title} onClick={onClick} title={title}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', width: 40, height: 32, cursor: 'pointer', fontSize: 12 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = hover; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary, #e6edf3)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary, #8b949e)'; }}
+              >{label}</button>
+            ))}
+          </div>
         </div>
 
         {/* Panel body */}

@@ -133,13 +133,14 @@ export class CSGSystem implements System {
         // New brush
         this.tracked.set(entity, { entity, brush, transform, version: brush._version, transformHash: tHash });
         dirty = true;
-      } else if (brush._dirty || existing.version !== brush._version || existing.transformHash !== tHash) {
+      } else if (brush._dirty || brush.__dirty || existing.version !== brush._version || existing.transformHash !== tHash) {
         existing.version = brush._version;
         existing.transformHash = tHash;
         dirty = true;
       }
 
       brush._dirty = false;
+      brush.__dirty = false;
     }
 
     // Removed brushes

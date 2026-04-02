@@ -22,9 +22,7 @@ import { DebugConsole } from '../core/DebugConsole';
 import { AssetManager } from '../assets/AssetManager';
 import { PhysicsWorld } from './PhysicsWorld';
 import { projectManager } from '../project/ProjectManager';
-
-// Module-level scratch — zero alloc in _extractGeometry vertex loop
-const _geoScratch = new THREE.Vector3();
+import { extractGeometryNative, initPhysicsGeometryCore } from './PhysicsGeometryBridge';
 
 // ── Rapier interaction groups helper ─────────────────────────────────────────
 // High 16 bits = membership (which groups this collider belongs to)
@@ -64,7 +62,11 @@ export class PhysicsBodySystem implements System {
   /** Loaded and extracted geometry per entity. `null` = load failed. */
   private meshGeometry     = new Map<EntityId, MeshGeo | null>();
 
-  constructor(private pw: PhysicsWorld) {}
+  constructor(private pw: PhysicsWorld) {
+    initPhysicsGeometryCore().catch((err) => {
+      console.error('[PhysicsBodySystem] Failed to load physics geometry Wasm module:', err);
+    });
+  }
 
   onSceneClear(): void {
     for (const entity of this.tracked) {
@@ -412,7 +414,7 @@ export class PhysicsBodySystem implements System {
         scene = result.scene;
       }
 
-      const geo = PhysicsBodySystem._extractGeometry(scene, worldScale);
+      const geo = extractGeometryNative(scene, worldScale);
       if (!geo) {
         DebugConsole.LogWarning(
           `[PhysicsBodySystem] No geometry found in '${meshPath}' for entity ${entity}.`
@@ -430,64 +432,6 @@ export class PhysicsBodySystem implements System {
       // Trigger collider creation on the next update tick
       col.__dirty = true;
     }
-  }
-
-  // ── Geometry extraction from THREE.Group ─────────────────────────────────
-  // Merges all sub-meshes into one flat vertex + index buffer.
-  // worldScale: if supplied, every vertex is additionally multiplied by this
-  //             so the collision mesh matches the entity's visual scale.
-
-  private static _extractGeometry(
-    root: THREE.Object3D,
-    worldScale: THREE.Vector3 | null = null,
-  ): MeshGeo | null {
-    const positions: number[] = [];
-    const indices:   number[] = [];
-    const applyScale =
-      worldScale !== null &&
-      (worldScale.x !== 1 || worldScale.y !== 1 || worldScale.z !== 1);
-
-    root.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      const geo = (obj as THREE.Mesh).geometry as THREE.BufferGeometry;
-      if (!geo) return;
-
-      // Get world-space positions (respects child transforms)
-      const posAttr = geo.getAttribute('position') as THREE.BufferAttribute | undefined;
-      if (!posAttr) return;
-
-      const vertexOffset = positions.length / 3;
-
-      // Apply object's world matrix to each vertex, then entity world scale
-      const mat = obj.matrixWorld;
-      for (let i = 0; i < posAttr.count; i++) {
-        const v = _geoScratch.fromBufferAttribute(posAttr, i).applyMatrix4(mat);
-        if (applyScale) {
-          v.x *= worldScale!.x;
-          v.y *= worldScale!.y;
-          v.z *= worldScale!.z;
-        }
-        positions.push(v.x, v.y, v.z);
-      }
-
-      if (geo.index) {
-        for (let i = 0; i < geo.index.count; i++) {
-          indices.push(geo.index.array[i] + vertexOffset);
-        }
-      } else {
-        // Non-indexed: generate triangle indices
-        for (let i = 0; i < posAttr.count; i++) {
-          indices.push(i + vertexOffset);
-        }
-      }
-    });
-
-    if (positions.length === 0) return null;
-
-    return {
-      vertices: new Float32Array(positions),
-      indices:  new Uint32Array(indices),
-    };
   }
 
   // ── In-place body property update (no recreate) ───────────────────────────

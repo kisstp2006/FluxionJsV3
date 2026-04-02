@@ -83,9 +83,10 @@ export class PhysicsGizmoSystem implements System {
       const rb  = ecs.getComponent<RigidbodyComponent>            (entity, 'Rigidbody') ?? null;
       const cc  = ecs.getComponent<CharacterControllerComponent>  (entity, 'CharacterController') ?? null;
 
-      if (col) this._drawCollider(t, col, rb);
-      if (rb && !col) this._drawRbMarker(t, rb); // RB with no collider → small cross
-      if (cc) this._drawCC(t, cc);
+      // Only draw gizmos for enabled components
+      if (col?.enabled) this._drawCollider(t, col, rb?.enabled ? rb : null);
+      if (rb?.enabled && !col?.enabled) this._drawRbMarker(t, rb); // RB with no collider → small cross
+      if (cc?.enabled) this._drawCC(t, cc);
     }
   }
 

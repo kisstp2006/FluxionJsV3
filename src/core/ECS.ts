@@ -77,6 +77,13 @@ export class ECSManager {
   private _hierarchyRevision = 0;
   /** Entity IDs that have been explicitly deactivated via setEntityEnabled(false). */
   private inactiveEntities: Set<EntityId> = new Set();
+  /**
+   * Per-entity snapshot of each component's enabled state captured at the moment
+   * the entity was deactivated. Used to restore the original per-component enabled
+   * flags when the entity is re-activated, so components that were already disabled
+   * before the entity was disabled remain disabled after re-activation.
+   */
+  private entityComponentEnabledSnapshot: Map<EntityId, Map<string, boolean>> = new Map();
 
   // ── Entity management ──
 
@@ -136,6 +143,7 @@ export class ECSManager {
     this.entityNames.delete(entity);
     this.childrenMap.delete(entity);
     this.inactiveEntities.delete(entity);
+    this.entityComponentEnabledSnapshot.delete(entity);
     this._entityCount--;
     this._hierarchyRevision++;
     this.dirty = true;
@@ -155,20 +163,39 @@ export class ECSManager {
 
   /**
    * Activate or deactivate an entity.
-   * Enabling/disabling an entity toggles every component's `enabled` flag at once.
-   * The entity's inactive state is tracked separately from individual component flags
-   * so re-activating reliably restores all components.
+   * Disabling captures each component's current enabled state so that re-enabling
+   * correctly restores components that were already disabled before the entity was
+   * deactivated (rather than blindly setting all components to enabled).
+   * The entity's inactive state is tracked separately from individual component flags.
    */
   setEntityEnabled(entity: EntityId, value: boolean): void {
     if (value) {
+      // Restore per-component enabled flags from snapshot taken at disable time
       this.inactiveEntities.delete(entity);
+      const snapshot = this.entityComponentEnabledSnapshot.get(entity);
+      for (const [type, store] of this.components) {
+        const comp = store.get(entity);
+        if (!comp) continue;
+        comp.enabled = snapshot ? (snapshot.get(type) ?? true) : true;
+      }
+      this.entityComponentEnabledSnapshot.delete(entity);
     } else {
+      // Only snapshot + force-disable if not already inactive — avoids overwriting
+      // a valid snapshot on redundant setEntityEnabled(false) calls.
+      if (!this.inactiveEntities.has(entity)) {
+        const snapshot = new Map<string, boolean>();
+        for (const [type, store] of this.components) {
+          const comp = store.get(entity);
+          if (comp) {
+            snapshot.set(type, comp.enabled);
+            comp.enabled = false;
+          }
+        }
+        this.entityComponentEnabledSnapshot.set(entity, snapshot);
+      }
       this.inactiveEntities.add(entity);
     }
-    for (const [, store] of this.components) {
-      const comp = store.get(entity);
-      if (comp) comp.enabled = value;
-    }
+    this.dirty = true;
   }
 
   getEntityName(entity: EntityId): string {
@@ -341,11 +368,15 @@ export class ECSManager {
     }
 
     component.entityId = entity;
+    // Inject callback so that toggling component.enabled invalidates system caches
+    const bc = component as any;
+    if ('_onEnabledChanged' in bc) {
+      bc._onEnabledChanged = () => { this.dirty = true; };
+    }
     store.set(entity, component);
     this.dirty = true;
 
     // Lifecycle hooks
-    const bc = component as any;
     bc.onCreate?.();
     if (component.enabled) bc.onEnable?.();
 
@@ -368,6 +399,9 @@ export class ECSManager {
       if (comp.enabled) bc.onDisable?.();
       bc.onDestroy?.();
       comp.entityId = 0 as EntityId;
+      // Detach the cache-invalidation callback so the removed component
+      // no longer triggers dirty on future enabled changes
+      if ('_onEnabledChanged' in bc) bc._onEnabledChanged = undefined;
     }
     this.components.get(type)?.delete(entity);
     this.dirty = true;
@@ -433,9 +467,13 @@ export class ECSManager {
         matching.clear();
       }
       for (const entity of this.entities) {
-        if (system.requiredComponents.every(type => this.hasComponent(entity, type))) {
-          matching!.add(entity);
-        }
+        if (this.inactiveEntities.has(entity)) continue;
+        if (!system.requiredComponents.every(type => {
+          const comp = this.components.get(type)?.get(entity);
+          // Component must exist AND be enabled for the entity to enter this system
+          return comp !== undefined && comp.enabled;
+        })) continue;
+        matching!.add(entity);
       }
     }
 
@@ -502,5 +540,6 @@ export class ECSManager {
     this.rootEntities.clear();
     this.tagIndex.clear();
     this.inactiveEntities.clear();
+    this.entityComponentEnabledSnapshot.clear();
   }
 }

@@ -285,14 +285,23 @@ class TransformSyncSystem implements System {
   readonly requiredComponents = ['Transform'];
   priority = -100;
   enabled = true;
+  private tracked: Set<EntityId> = new Set();
 
   constructor(private renderer: FluxionRenderer) {}
+
+  onSceneClear(): void {
+    this.tracked.clear();
+  }
 
   update(entities: Set<EntityId>, ecs: ECSManager): void {
     for (const entity of entities) {
       const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
       const obj = this.renderer.getObject(entity);
       if (!transform || !obj) continue;
+
+      // Restore visibility if it was hidden on a previous disable
+      if (!obj.visible) obj.visible = true;
+      this.tracked.add(entity);
 
       // Always sync local transform — TransformSystem (priority -150) already
       // cleared dirty/worldDirty before we run (priority -100), so those flags
@@ -313,6 +322,16 @@ class TransformSyncSystem implements System {
         if (obj.parent !== this.renderer.scene) {
           this.renderer.scene.add(obj); // move back to scene root
         }
+      }
+    }
+
+    // Entities that left the active set (disabled Transform or disabled entity)
+    // must be hidden so they disappear from the scene immediately.
+    for (const entity of this.tracked) {
+      if (!entities.has(entity)) {
+        const obj = this.renderer.getObject(entity);
+        if (obj) obj.visible = false;
+        this.tracked.delete(entity);
       }
     }
   }

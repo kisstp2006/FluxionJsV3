@@ -2,6 +2,7 @@ pub mod csg;
 pub mod transform;
 pub mod scene;
 pub mod particles;
+pub mod physics;
 
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;

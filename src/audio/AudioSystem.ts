@@ -163,6 +163,7 @@ class AudioSyncSystem implements System {
   priority = 60;
   enabled = true;
   private started: Set<EntityId> = new Set();
+  private tracked: Set<EntityId> = new Set();
   private cameraEntity: EntityId | null = null;
 
   constructor(private audio: AudioSystem, private engine: Engine) {}
@@ -172,6 +173,8 @@ class AudioSyncSystem implements System {
       const audioComp = ecs.getComponent<AudioSourceComponent>(entity, 'AudioSource');
       const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
       if (!audioComp || !transform) continue;
+
+      this.tracked.add(entity);
 
       // Auto-play on start — only in play mode
       if (audioComp.playOnStart && !this.started.has(entity) && !this.engine.simulationPaused) {
@@ -184,6 +187,18 @@ class AudioSyncSystem implements System {
         audioComp.pannerNode.positionX.value = transform.position.x;
         audioComp.pannerNode.positionY.value = transform.position.y;
         audioComp.pannerNode.positionZ.value = transform.position.z;
+      }
+    }
+
+    // Stop audio for entities that left the active set (disabled or destroyed)
+    for (const entity of this.tracked) {
+      if (!entities.has(entity)) {
+        if (this.started.has(entity)) {
+          const audioComp = ecs.getComponent<AudioSourceComponent>(entity, 'AudioSource');
+          if (audioComp) this.audio.stop(audioComp);
+          this.started.delete(entity);
+        }
+        this.tracked.delete(entity);
       }
     }
 
@@ -204,6 +219,7 @@ class AudioSyncSystem implements System {
 
   onSceneClear(): void {
     this.started.clear();
+    this.tracked.clear();
     this.cameraEntity = null;
   }
 }

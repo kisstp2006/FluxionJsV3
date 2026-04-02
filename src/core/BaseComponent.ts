@@ -29,7 +29,39 @@ export abstract class BaseComponent {
   get type(): string { return this.typeId; }
 
   entityId: EntityId = 0;
-  enabled = true;
+
+  private _enabled = true;
+
+  /**
+   * Whether this component is active.
+   *
+   * Setting this to `false` automatically calls `onDisable()` and notifies the
+   * ECS so the entity is removed from affected system caches immediately.
+   * Setting it back to `true` calls `onEnable()` and re-registers the entity.
+   *
+   * Rule: a component only runs if BOTH itself AND its entity are enabled.
+   * The ECS enforces the entity-level gate; the component-level gate is enforced
+   * here via the setter + cache invalidation callback.
+   */
+  get enabled(): boolean { return this._enabled; }
+  set enabled(value: boolean) {
+    if (this._enabled === value) return;
+    this._enabled = value;
+    if (value) {
+      this.onEnable?.();
+    } else {
+      this.onDisable?.();
+    }
+    // Notify ECS so the system caches are rebuilt on the next update tick
+    this._onEnabledChanged?.();
+  }
+
+  /**
+   * Injected by ECSManager.addComponent — signals dirty so rebuildCaches() runs.
+   * @internal
+   */
+  _onEnabledChanged?: () => void;
+
   __dirty?: boolean;
   __dirtyProps?: Set<string>;
 
@@ -38,6 +70,7 @@ export abstract class BaseComponent {
   //
   //  addComponent(entity, comp):
   //    comp.entityId = entity
+  //    comp._onEnabledChanged = () => ecs.dirty = true
   //    comp.onCreate?.()
   //    if comp.enabled → comp.onEnable?.()
   //
@@ -45,9 +78,10 @@ export abstract class BaseComponent {
   //    if comp.enabled → comp.onDisable?.()
   //    comp.onDestroy?.()
   //    comp.entityId = 0
+  //    comp._onEnabledChanged = undefined
   //
-  //  enabled toggle false→true:  comp.onEnable?.()
-  //  enabled toggle true→false:  comp.onDisable?.()
+  //  enabled setter false→true:  onEnable?.() + cache invalidation
+  //  enabled setter true→false:  onDisable?.() + cache invalidation
 
   onCreate?(): void;
   onDestroy?(): void;

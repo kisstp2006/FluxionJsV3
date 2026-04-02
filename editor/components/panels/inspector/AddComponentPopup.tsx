@@ -4,12 +4,16 @@
 // Reads ComponentRegistry.getAddableByCategory() — no hardcoded list.
 // ============================================================
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useEditor, useEngine } from '../../../core/EditorContext';
 import { EntityId } from '../../../../src/core/ECS';
 import { ComponentRegistry } from '../../../../src/core/ComponentRegistry';
 import type { ComponentRegistration } from '../../../../src/core/ComponentRegistry';
 import { SearchInput } from '../../../ui';
+
+const MARGIN = 8;
+const POPUP_W = 240;
+const POPUP_MAX_H = 360;
 
 interface AddComponentPopupProps {
   entity: EntityId;
@@ -28,6 +32,34 @@ export const AddComponentPopup: React.FC<AddComponentPopupProps> = ({
   const { log, dispatch } = useEditor();
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number; openUpward: boolean }>(
+    { x: position?.x ?? 0, y: position?.y ?? 0, openUpward: false },
+  );
+
+  // Clamp popup to viewport after it renders so we know its actual height
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || !position) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const spaceBelow = vh - position.y - MARGIN;
+    const spaceAbove = position.y - MARGIN;
+    const openUpward = spaceBelow < rect.height && spaceAbove > spaceBelow;
+
+    let x = position.x;
+    let y = openUpward ? position.y - rect.height : position.y;
+
+    // Horizontal clamp
+    if (x + POPUP_W > vw - MARGIN) x = vw - POPUP_W - MARGIN;
+    if (x < MARGIN) x = MARGIN;
+    // Vertical clamp (safety for when both directions are tight)
+    if (y + rect.height > vh - MARGIN) y = vh - rect.height - MARGIN;
+    if (y < MARGIN) y = MARGIN;
+
+    setAdjustedPos({ x, y, openUpward });
+  }, [position]);
 
   // Close on outside click
   useEffect(() => {
@@ -80,15 +112,15 @@ export const AddComponentPopup: React.FC<AddComponentPopupProps> = ({
       ref={containerRef}
       style={{
         position: 'fixed',
-        left: position?.x,
-        top: position?.y,
+        left: adjustedPos.x,
+        top: adjustedPos.y,
         zIndex: 1000,
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
         borderRadius: '6px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-        width: '240px',
-        maxHeight: '360px',
+        width: `${POPUP_W}px`,
+        maxHeight: `${POPUP_MAX_H}px`,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

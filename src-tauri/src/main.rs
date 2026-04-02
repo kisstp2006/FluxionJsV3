@@ -67,6 +67,7 @@ fn main() {
             engine_core::csg_op_batch,
             engine_core::load_scene,
             engine_core::save_scene,
+            engine_core::build_csg_primitive,
 
             // File watching
             watch_directory,

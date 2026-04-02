@@ -1,17 +1,16 @@
 // ============================================================
 // FluxionJS V3 — CSG ECS System
-// Manages CSGBrushComponent entities: builds CSG primitives,
-// applies boolean operations, generates THREE.Mesh, and
-// integrates with FluxionRenderer.
+// Manages CSGBrushComponent entities: builds CSG primitives
+// in Rust, applies boolean operations, generates THREE.Mesh,
+// and integrates with FluxionRenderer.
 // ============================================================
 
 import * as THREE from 'three';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, CSGBrushComponent } from '../core/Components';
-import { CSG, CSGPlane, Vec3 } from './CSGCore';
 import {
-  csgToMeshData, meshDataToGeometry,
-  csgOpBatchAsync, type CsgMeshData,
+  buildPrimitiveAsync, meshDataToGeometry,
+  csgOpBatchAsync, type CsgMeshData, type PrimitiveRequest,
 } from './CSGBridge';
 
 /** Default brush material (gray PBR) */
@@ -23,62 +22,52 @@ function createDefaultBrushMaterial(): THREE.MeshStandardMaterial {
   });
 }
 
-/** Generate a CSG solid from a brush component's shape & dimensions */
-function buildBrushCSG(brush: CSGBrushComponent): CSG {
-  const sx = brush.size.x;
-  const sy = brush.size.y;
-  const sz = brush.size.z;
-  const r = brush.radius;
+/**
+ * Build a CsgMeshData from a brush component + transform in one Rust call.
+ * The mat4 is passed so Rust applies the world transform to all vertices.
+ */
+async function buildEntryMesh(
+  brush: CSGBrushComponent,
+  transform: TransformComponent,
+): Promise<CsgMeshData> {
+  const mat4Obj = new THREE.Matrix4();
+  mat4Obj.compose(transform.position, transform.quaternion, transform.scale);
+  const mat4 = Array.from(mat4Obj.elements);
+
+  const sx  = brush.size.x;
+  const sy  = brush.size.y;
+  const sz  = brush.size.z;
+  const r   = brush.radius;
   const seg = Math.max(6, brush.segments);
 
+  let req: PrimitiveRequest;
   switch (brush.shape) {
     case 'box':
-      return CSG.box(0, 0, 0, sx, sy, sz);
+      req = { shape: 'box', sx, sy, sz, mat4 };
+      break;
     case 'cylinder':
-      return CSG.cylinder(0, 0, 0, r, sy, seg);
+      req = { shape: 'cylinder', radius: r, height: sy, slices: seg, mat4 };
+      break;
     case 'cone':
-      return CSG.cylinder(0, 0, 0, r, sy, seg, 0.001);
+      req = { shape: 'cone', radius: r, height: sy, slices: seg, mat4 };
+      break;
     case 'sphere':
-      return CSG.sphere(0, 0, 0, r, seg, Math.max(4, Math.floor(seg / 2)));
+      req = { shape: 'sphere', radius: r, slices: seg, stacks: Math.max(4, Math.floor(seg / 2)), mat4 };
+      break;
     case 'wedge':
-      return CSG.wedge(0, 0, 0, sx, sy, sz);
+      req = { shape: 'wedge', sx, sy, sz, mat4 };
+      break;
     case 'stairs':
-      return CSG.stairs(0, 0, 0, sx, sy, sz, Math.max(1, brush.stairSteps));
+      req = { shape: 'stairs', sx, sy, sz, steps: Math.max(1, brush.stairSteps), mat4 };
+      break;
     case 'arch':
-      return CSG.arch(0, 0, 0, sx, sy, sz, r, seg);
+      req = { shape: 'arch', sx, sy, sz, archRadius: r, segments: seg, mat4 };
+      break;
     default:
-      return CSG.box(0, 0, 0, sx, sy, sz);
+      req = { shape: 'box', sx, sy, sz, mat4 };
   }
-}
 
-/** Apply transform to CSG polygons (position + rotation + scale) */
-function transformCSG(csg: CSG, transform: TransformComponent): CSG {
-  const mat4 = new THREE.Matrix4();
-  mat4.compose(
-    transform.position,
-    transform.quaternion,
-    transform.scale,
-  );
-  const normalMat = new THREE.Matrix3().getNormalMatrix(mat4);
-  const result = csg.clone();
-  for (const poly of result.polygons) {
-    for (const v of poly.vertices) {
-      const p = new THREE.Vector3(v.pos.x, v.pos.y, v.pos.z).applyMatrix4(mat4);
-      v.pos.x = p.x; v.pos.y = p.y; v.pos.z = p.z;
-      const n = new THREE.Vector3(v.normal.x, v.normal.y, v.normal.z).applyMatrix3(normalMat).normalize();
-      v.normal.x = n.x; v.normal.y = n.y; v.normal.z = n.z;
-    }
-    // Recompute plane from first 3 verts
-    if (poly.vertices.length >= 3) {
-      const a = poly.vertices[0].pos, b = poly.vertices[1].pos, c = poly.vertices[2].pos;
-      poly.plane = CSGPlane.fromPoints(
-        new Vec3(a.x, a.y, a.z),
-        new Vec3(b.x, b.y, b.z),
-        new Vec3(c.x, c.y, c.z),
-      );
-    }
-  }
-  return result;
+  return buildPrimitiveAsync(req);
 }
 
 // ── System ──
@@ -171,16 +160,19 @@ export class CSGSystem implements System {
       return;
     }
 
-    // Separate additive and subtractive brushes
-    const additive:    { csg: CSG; entry: BrushEntry }[] = [];
-    const subtractive: { csg: CSG; entry: BrushEntry }[] = [];
+    // Build all primitives in Rust (parallel, order preserved by Promise.all)
+    const meshes = await Promise.all(
+      entries.map(e => buildEntryMesh(e.brush, e.transform)),
+    );
 
-    for (const entry of entries) {
-      const csg = transformCSG(buildBrushCSG(entry.brush), entry.transform);
-      if (entry.brush.operation === 'subtractive') {
-        subtractive.push({ csg, entry });
+    // Separate additive and subtractive (preserving sort order)
+    const additive:    { mesh: CsgMeshData; entry: BrushEntry }[] = [];
+    const subtractive: { mesh: CsgMeshData; entry: BrushEntry }[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].brush.operation === 'subtractive') {
+        subtractive.push({ mesh: meshes[i], entry: entries[i] });
       } else {
-        additive.push({ csg, entry });
+        additive.push({ mesh: meshes[i], entry: entries[i] });
       }
     }
 
@@ -189,12 +181,11 @@ export class CSGSystem implements System {
       return;
     }
 
-    // ── Native Rust/Wasm fast path ────────────────────────────────────────────
-    // Build a batch: [union additive[1..], subtract subtractive[*]]
-    const baseMesh = csgToMeshData(additive[0].csg);
+    // Batch all boolean ops in a single Rust round-trip
+    const baseMesh = additive[0].mesh;
     const ops: { op: 'union' | 'subtract'; mesh: CsgMeshData }[] = [
-      ...additive.slice(1).map(e => ({ op: 'union' as const, mesh: csgToMeshData(e.csg) })),
-      ...subtractive.map(e => ({ op: 'subtract' as const, mesh: csgToMeshData(e.csg) })),
+      ...additive.slice(1).map(e => ({ op: 'union' as const,     mesh: e.mesh })),
+      ...subtractive.map(e  => ({ op: 'subtract' as const, mesh: e.mesh })),
     ];
 
     const resultData = await csgOpBatchAsync(baseMesh, ops);

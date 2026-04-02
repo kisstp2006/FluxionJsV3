@@ -61,7 +61,18 @@ export { ApiEmitter } from './meta/ApiEmitter';
 export type { EngineDef, ComponentDef, FieldDef } from './meta/MetaTypes';
 
 // CSG (Constructive Solid Geometry)
-export { CSG, CSGSystem, csgToGeometry, geometryToCSG } from './csg';
+export {
+  CSGSystem,
+  meshDataToGeometry,
+  geometryToMeshData,
+  csgOpAsync,
+  csgOpBatchAsync,
+  buildPrimitiveAsync,
+  initCsgCore,
+  isCsgNativeAvailable,
+  type CsgMeshData,
+  type PrimitiveRequest,
+} from './csg';
 
 // Visual Materials
 export {

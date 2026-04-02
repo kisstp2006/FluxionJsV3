@@ -2,12 +2,15 @@
 // FluxionJS V3 — CSG Module Exports
 // ============================================================
 
-export { Vec3, Vec2, CSGVertex, CSGPlane, CSGPolygon, CSG } from './CSGCore';
 export {
-  csgToGeometry, geometryToCSG,
-  csgToMeshData, meshDataToCSG, meshDataToGeometry,
-  csgOpAsync, csgOpBatchAsync,
-  initCsgCore, isCsgNativeAvailable,
+  meshDataToGeometry,
+  geometryToMeshData,
+  csgOpAsync,
+  csgOpBatchAsync,
+  buildPrimitiveAsync,
+  initCsgCore,
+  isCsgNativeAvailable,
   type CsgMeshData,
+  type PrimitiveRequest,
 } from './CSGBridge';
 export { CSGSystem } from './CSGSystem';

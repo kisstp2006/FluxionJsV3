@@ -30,6 +30,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { DebugDraw } from './DebugDraw';
 import { DebugConsole } from '../core/DebugConsole';
+import { toLocalUrl } from '../utils/localUrl';
 
 // Module-level scratch — avoids per-frame Vector3 allocations
 const _lightForward  = new THREE.Vector3();
@@ -906,7 +907,7 @@ class TextRendererSystem implements System {
     try {
       const { projectManager } = await import('../project/ProjectManager');
       const absPath = projectManager.resolvePath(fontPath);
-      const fontUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+      const fontUrl = toLocalUrl(absPath);
       const familyName = `FluxFont_${this.sanitizeFontName(fontPath)}`;
       const face = new FontFace(familyName, `url(${fontUrl})`);
       await face.load();
@@ -1230,7 +1231,7 @@ class LightSystem implements System {
     this.cookieLoading.add(entity);
 
     const absPath = projectManager.resolvePath(currentPath);
-    const url     = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+    const url     = toLocalUrl(absPath);
 
     new THREE.TextureLoader().load(
       url,
@@ -1583,7 +1584,7 @@ class EnvironmentSystem implements System {
     this.skyboxLoading = true;
 
     if (env.skyboxMode === 'panorama' && env.skyboxPath) {
-      const url = `file:///${env.skyboxPath.replace(/\\/g, '/')}`;
+      const url = toLocalUrl(env.skyboxPath);
       new THREE.TextureLoader().load(
         url,
         (texture) => {
@@ -1604,7 +1605,7 @@ class EnvironmentSystem implements System {
       const f = env.skyboxFaces;
       const paths = [f.right, f.left, f.top, f.bottom, f.front, f.back];
       if (paths.every((p) => p != null)) {
-        const urls = paths.map((p) => `file:///${p!.replace(/\\/g, '/')}`);
+        const urls = paths.map((p) => toLocalUrl(p!));
         new THREE.CubeTextureLoader().load(
           urls,
           (cubeTexture) => {

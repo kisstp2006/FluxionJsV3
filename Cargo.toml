@@ -11,10 +11,18 @@ license = "MIT"
 repository = "https://github.com/fluxionjs/fluxionjs-v3"
 edition = "2021"
 
+[profile.release]
+opt-level     = 3        # maximum inlining + vectorisation
+lto           = "thin"   # cross-crate dead-code elimination (faster than "fat", still major gain)
+codegen-units = 1        # single codegen unit → best optimisation, slower compile
+strip         = "symbols"# smaller binary
+panic         = "abort"  # removes unwinding overhead
+
 [workspace.dependencies]
 tauri = { version = "2.0", features = [] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-shell = "2.0"
+tauri-plugin-opener = "2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_derive = "1.0.228"
 serde_json = "1.0.149"

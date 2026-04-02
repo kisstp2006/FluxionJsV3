@@ -5,6 +5,7 @@
 // ============================================================
 
 import * as THREE from 'three';
+import { toLocalUrl } from '../utils/localUrl';
 import { GLTFLoader, GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
@@ -96,12 +97,13 @@ export class AssetManager {
 
     if (this.loading.has(path)) return this.loading.get(path)!;
 
+    const url = toLocalUrl(path);
     const promise = new Promise<THREE.Texture>((resolve, reject) => {
       // Use TGALoader for .tga files, standard TextureLoader for everything else
-      const isTga = path.toLowerCase().replace(/\?.*$/, '').endsWith('.tga');
+      const isTga = url.toLowerCase().replace(/\?.*$/, '').endsWith('.tga');
       const loader = isTga ? this.tgaLoader : this.textureLoader;
       loader.load(
-        path,
+        url,
         (texture) => {
           if (options) {
             if (options.wrapS) texture.wrapS = options.wrapS;
@@ -162,14 +164,15 @@ export class AssetManager {
 
     if (this.loading.has(path)) return this.loading.get(path)!;
 
-    const format = this.getModelFormat(path);
+    const modelUrl = toLocalUrl(path);
+    const format = this.getModelFormat(modelUrl);
     let promise: Promise<ModelResult>;
 
     switch (format) {
       case 'fbx':
         promise = new Promise<ModelResult>((resolve, reject) => {
           this.fbxLoader.load(
-            path,
+            modelUrl,
             (group) => {
               this.enableShadows(group);
               const result: ModelResult = {
@@ -200,7 +203,7 @@ export class AssetManager {
       case 'obj':
         promise = new Promise<ModelResult>((resolve, reject) => {
           this.objLoader.load(
-            path,
+            modelUrl,
             (group) => {
               this.enableShadows(group);
               const result: ModelResult = {
@@ -231,7 +234,7 @@ export class AssetManager {
       default: // gltf / glb
         promise = new Promise<ModelResult>((resolve, reject) => {
           this.gltfLoader.load(
-            path,
+            modelUrl,
             (gltf) => {
               this.enableShadows(gltf.scene);
               const result: ModelResult = {

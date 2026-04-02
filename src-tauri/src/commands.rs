@@ -1,5 +1,5 @@
 use tauri::{AppHandle, Window, Manager, WebviewWindowBuilder, WebviewUrl, command};
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 
 // Re-export from modules
 pub use crate::dialogs::*;
@@ -32,8 +32,8 @@ pub fn show_item_in_folder(path: String) -> Result<(), String> {
 
 #[command]
 pub fn open_path(path: String, app: AppHandle) -> Result<(), String> {
-    app.shell()
-        .open(&path, None)
+    app.opener()
+        .open_url(&path, None::<&str>)
         .map_err(|e| format!("Failed to open path: {}", e))
 }
 

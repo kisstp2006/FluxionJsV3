@@ -1,5 +1,6 @@
 import type { FuiAlign, FuiButtonNode, FuiButtonStyle, FuiColorBlock, FuiDocument, FuiFont, FuiIconNode, FuiImageNode, FuiInputFieldNode, FuiLabelNode, FuiNode, FuiNodeType, FuiPanelNode, FuiProgressBarNode, FuiRect, FuiSliderNode, FuiTextAreaNode, FuiToggleNode } from './FuiTypes';
 import { parseFuiJson } from './FuiParser';
+import { toLocalUrl } from '../utils/localUrl';
 
 export interface FuiStyleResolved {
   backgroundColor?: string;
@@ -95,7 +96,7 @@ export function preloadFuiImages(
 
     _svgCache.set(key, { state: 'loading' });
     const absPath = resolveAbsPath(key);
-    const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+    const url = toLocalUrl(absPath);
 
     const img = new Image();
     img.crossOrigin = 'anonymous';

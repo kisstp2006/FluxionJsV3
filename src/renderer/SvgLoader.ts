@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { DebugConsole } from '../core/DebugConsole';
+import { toLocalUrl } from '../utils/localUrl';
 
 // ── Internal caches ──────────────────────────────────────────
 
@@ -36,8 +37,7 @@ async function loadSvgImage(absPath: string): Promise<HTMLImageElement> {
   const cached = _imageCache.get(absPath);
   if (cached) return cached;
 
-  // Normalise to a file:// URL that the browser's Image loader accepts.
-  const url = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+  const url = toLocalUrl(absPath);
 
   const img = new Image();
   // Allow cross-origin loading from local filesystem in Electron.

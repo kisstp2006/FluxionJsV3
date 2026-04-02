@@ -12,9 +12,10 @@ tauri-build = { version = "2.0", features = [], default-features = false }
 
 [dependencies]
 fluxion-core = { path = "../fluxion-core" }
-tauri = { workspace = true, features = [] }
+tauri = { workspace = true, features = ["protocol-asset"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-shell = { workspace = true }
+tauri-plugin-opener = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

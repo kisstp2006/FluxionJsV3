@@ -12,6 +12,7 @@ import { compileFui, hitTestFuiButtons, hitTestInteractable, loadFuiFonts, prelo
 import type { FuiCompiled, FuiCompiledNode, FuiNodeRenderState } from './FuiRenderer';
 import { parseFuiJson } from './FuiParser';
 import { applyAnimation } from './FuiAnimator';
+import { toLocalUrl } from '../utils/localUrl';
 import { FuiEngineRenderer } from './FuiEngineRenderer';
 import type { FuiTooltipState } from './FuiEngineRenderer';
 import type { FuiDocument, FuiNode, FuiPanelNode, FuiScaleMode } from './FuiTypes';
@@ -150,7 +151,7 @@ export class FuiRuntimeSystem implements System {
     if (doc.fonts?.length) {
       await loadFuiFonts(doc.fonts, (rel) => {
         const resolved = resolveFuiPath(rel);
-        return resolved.startsWith('file://') ? resolved : `file:///${resolved.replace(/\\/g, '/')}`;
+        return toLocalUrl(resolved);
       });
     }
     const compiled = compileFui(doc);

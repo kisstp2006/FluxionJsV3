@@ -3,9 +3,13 @@ use tauri::Emitter;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use notify::{Watcher, RecursiveMode, EventKind, RecommendedWatcher, Config};
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
+
+/// Minimum interval between emitting events for the same path.
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileWatchEvent {
@@ -35,31 +39,52 @@ impl FileWatcherManager {
         let app = self.app_handle.clone();
         let wid = watcher_id.clone();
 
+        // Per-path debounce: track the last time we emitted for each path.
+        // Wrapped in Arc<Mutex> so the closure can hold it across calls.
+        let last_emitted: Arc<Mutex<HashMap<PathBuf, Instant>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
         let mut watcher = RecommendedWatcher::new(
             move |res: notify::Result<notify::Event>| {
-                if let Ok(event) = res {
-                    let event_type = match event.kind {
-                        EventKind::Create(_) => "created",
-                        EventKind::Modify(_) => "modified",
-                        EventKind::Remove(_) => "removed",
-                        EventKind::Access(_) => "accessed",
-                        _ => "changed",
-                    };
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-
-                    for p in &event.paths {
-                        let we = FileWatchEvent {
-                            watcher_id: wid.clone(),
-                            path: p.to_string_lossy().to_string(),
-                            event_type: event_type.to_string(),
-                            timestamp: ts,
+                match res {
+                    Ok(event) => {
+                        let event_type = match event.kind {
+                            EventKind::Create(_) => "created",
+                            EventKind::Modify(_) => "modified",
+                            EventKind::Remove(_) => "removed",
+                            EventKind::Access(_) => "accessed",
+                            _ => "changed",
                         };
-                        if let Ok(json) = serde_json::to_string(&we) {
-                            let _ = app.emit("file-changed", json);
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+
+                        let now = Instant::now();
+                        let mut debounce = last_emitted.lock().unwrap_or_else(|e| e.into_inner());
+
+                        for p in &event.paths {
+                            // Skip if we emitted for this path too recently
+                            if let Some(last) = debounce.get(p) {
+                                if now.duration_since(*last) < DEBOUNCE_DURATION {
+                                    continue;
+                                }
+                            }
+                            debounce.insert(p.clone(), now);
+
+                            let we = FileWatchEvent {
+                                watcher_id: wid.clone(),
+                                path: p.to_string_lossy().to_string(),
+                                event_type: event_type.to_string(),
+                                timestamp: ts,
+                            };
+                            if let Ok(json) = serde_json::to_string(&we) {
+                                let _ = app.emit("file-changed", json);
+                            }
                         }
+                    }
+                    Err(e) => {
+                        eprintln!("[file_watcher] watch error: {e}");
                     }
                 }
             },
@@ -70,23 +95,23 @@ impl FileWatcherManager {
         watcher.watch(&path_buf, mode)
             .map_err(|e| format!("Failed to watch '{}': {}", path, e))?;
 
-        self.watchers.lock().unwrap().insert(watcher_id.clone(), watcher);
+        self.watchers.lock().unwrap_or_else(|e| e.into_inner()).insert(watcher_id.clone(), watcher);
         Ok(watcher_id)
     }
 
     pub fn unwatch_directory(&self, watcher_id: &str) -> Result<(), String> {
-        self.watchers.lock().unwrap()
+        self.watchers.lock().unwrap_or_else(|e| e.into_inner())
             .remove(watcher_id)
             .map(|_| ())
             .ok_or_else(|| format!("Watcher '{}' not found", watcher_id))
     }
 
     pub fn unwatch_all(&self) {
-        self.watchers.lock().unwrap().clear();
+        self.watchers.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     pub fn active_ids(&self) -> Vec<String> {
-        self.watchers.lock().unwrap().keys().cloned().collect()
+        self.watchers.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect()
     }
 }
 

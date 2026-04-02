@@ -5,7 +5,7 @@
 // popup, and large square thumbnail preview on the right.
 // ============================================================
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { resolveIcon } from '../Icons';
 import { AssetPickerPopup } from '../overlays/AssetPickerPopup';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
@@ -63,7 +63,11 @@ export const AssetInput: React.FC<AssetInputProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasValue = !!value;
-  const types = Array.isArray(assetType) ? assetType : [assetType];
+  const types = useMemo(
+    () => Array.isArray(assetType) ? assetType : [assetType],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [Array.isArray(assetType) ? assetType.join(',') : assetType],
+  );
   const isTexture = types.includes('texture');
   const displayType = types.join('/');
   const primaryType = types[0];
@@ -95,7 +99,7 @@ export const AssetInput: React.FC<AssetInputProps> = ({
     const typeDef = AssetTypeRegistry.resolveFile(assetPath);
     if (!typeDef || !types.includes(typeDef.type)) return;
     onChange(assetPath);
-  }, [assetType, onChange]);
+  }, [types, onChange]);
 
   const handleClear = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

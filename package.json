@@ -24,7 +24,8 @@
     "tauri:build": "tauri build",
     "build:wasm-csg": "wasm-pack build fluxion-core --target web --out-dir pkg --features wasm",
     "build:wasm": "wasm-pack build fluxion-core --target web --out-dir pkg --features wasm",
-    "lint": "eslint src/ editor/"
+    "lint": "eslint src/ editor/",
+    "dev:full": "npm install && npm run build:wasm && npm run tauri:dev"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",

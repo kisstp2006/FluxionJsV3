@@ -269,6 +269,19 @@ export const AssetBrowserPanel: React.FC<{
   } | null>(null);
   const [importProgress, setImportProgress] = useState<{ percent: number; file: string } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  // Reset drop highlight if the drag is cancelled (Escape, alt-tab, etc.) so the
+  // blue border doesn't stay stuck.
+  React.useEffect(() => {
+    const reset = () => setIsDragOver(false);
+    window.addEventListener('dragend', reset);
+    window.addEventListener('dragleave', (e: DragEvent) => {
+      // Only clear when leaving the browser window entirely
+      if (e.relatedTarget === null) reset();
+    });
+    return () => {
+      window.removeEventListener('dragend', reset);
+    };
+  }, []);
   const [renamingEntry, setRenamingEntry] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [outdatedPaths, setOutdatedPaths] = useState<Set<string>>(new Set());

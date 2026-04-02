@@ -443,9 +443,8 @@ export const Viewport: React.FC<ViewportProps> = ({ onCanvasReady }) => {
     if (e.dataTransfer.types.includes('application/x-fluxion-asset')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      setIsAssetDragOver(true);
-      // Show what action will happen (read path from type data if available)
-      // We cannot read the actual data during dragOver (browser security), so use a stored ref
+      // Guard: only set state when it changes — dragOver fires on every mouse-move pixel
+      setIsAssetDragOver((prev) => prev ? prev : true);
     }
   }, [isGameView]);
 

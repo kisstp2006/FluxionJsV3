@@ -67,8 +67,8 @@ pub async fn open_child_window(
 ) -> Result<(), String> {
     // If a window with this label already exists, focus it instead
     if let Some(win) = app.get_webview_window(&label) {
-        let _ = win.show();
-        let _ = win.set_focus();
+        win.show().map_err(|e| format!("Failed to show window '{}': {}", label, e))?;
+        win.set_focus().map_err(|e| format!("Failed to focus window '{}': {}", label, e))?;
         return Ok(());
     }
 
@@ -84,10 +84,10 @@ pub async fn open_child_window(
 
 #[command]
 pub async fn close_child_window(app: AppHandle, label: String) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(&label) {
-        win.close().map_err(|e| format!("Failed to close window '{}': {}", label, e))?;
+    match app.get_webview_window(&label) {
+        Some(win) => win.close().map_err(|e| format!("Failed to close window '{}': {}", label, e)),
+        None => Err(format!("Window '{}' not found", label)),
     }
-    Ok(())
 }
 
 // ── Legacy Engine Root (for compatibility) ───────────────────────────────────

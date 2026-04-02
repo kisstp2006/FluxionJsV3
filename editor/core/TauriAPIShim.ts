@@ -1,323 +1,189 @@
 // ============================================================
 // FluxionJS V3 — Tauri API Shim
-// Provides backward compatibility for Electron API calls
+// Bridges frontend editor code to the Tauri Rust backend.
 // ============================================================
 
-const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__;
-
 class APIShim {
-  private isTauri: boolean;
-  private get tauriAPI(): any { return (window as any).fluxionAPI ?? {}; }
-
-  constructor() {
-    this.isTauri = isTauri;
-  }
 
   // ── File Dialogs ───────────────────────────────────────────────────────
 
   async openFileDialog(filters?: Array<{ name: string; extensions: string[] }>): Promise<string | null> {
-    if (this.isTauri) {
-      try {
-        const requestId = await window.__TAURI__.core.invoke('show_open_dialog', { filters });
-        
-        return new Promise(async (resolve) => {
-          let unlisten: (() => void) | null = null;
-          unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
-            const result = JSON.parse(event.payload);
-            if (result.requestId === requestId) {
-              unlisten?.();
-              resolve(result.result ?? null);
-            }
-          });
+    try {
+      const requestId = await window.__TAURI__.core.invoke('show_open_dialog', { filters });
+      return new Promise(async (resolve) => {
+        let unlisten: (() => void) | null = null;
+        unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
+          const result = JSON.parse(event.payload);
+          if (result.requestId === requestId) { unlisten?.(); resolve(result.result ?? null); }
         });
-      } catch (error) {
-        console.error('Tauri open dialog error:', error);
-        return null;
-      }
-    } else {
-      return this.tauriAPI.openFileDialog?.(filters as any) ?? null;
+      });
+    } catch (error) {
+      console.error('Tauri open dialog error:', error);
+      return null;
     }
   }
 
   async openFilesDialog(filters?: Array<{ name: string; extensions: string[] }>): Promise<string[]> {
-    if (this.isTauri) {
-      try {
-        const requestId = await window.__TAURI__.core.invoke('show_open_files_dialog', { filters });
-        
-        return new Promise(async (resolve) => {
-          let unlisten: (() => void) | null = null;
-          unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
-            const result = JSON.parse(event.payload);
-            if (result.requestId === requestId) {
-              unlisten?.();
-              resolve(result.results ?? []);
-            }
-          });
+    try {
+      const requestId = await window.__TAURI__.core.invoke('show_open_files_dialog', { filters });
+      return new Promise(async (resolve) => {
+        let unlisten: (() => void) | null = null;
+        unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
+          const result = JSON.parse(event.payload);
+          if (result.requestId === requestId) { unlisten?.(); resolve(result.results ?? []); }
         });
-      } catch (error) {
-        console.error('Tauri open files dialog error:', error);
-        return [];
-      }
-    } else {
-      return this.tauriAPI.openFilesDialog?.(filters) ?? [];
+      });
+    } catch (error) {
+      console.error('Tauri open files dialog error:', error);
+      return [];
     }
   }
 
   async saveFileDialog(filters?: Array<{ name: string; extensions: string[] }>): Promise<string | null> {
-    if (this.isTauri) {
-      try {
-        const requestId = await window.__TAURI__.core.invoke('show_save_dialog', { filters });
-        
-        return new Promise(async (resolve) => {
-          let unlisten: (() => void) | null = null;
-          unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
-            const result = JSON.parse(event.payload);
-            if (result.requestId === requestId) {
-              unlisten?.();
-              resolve(result.result ?? null);
-            }
-          });
+    try {
+      const requestId = await window.__TAURI__.core.invoke('show_save_dialog', { filters });
+      return new Promise(async (resolve) => {
+        let unlisten: (() => void) | null = null;
+        unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
+          const result = JSON.parse(event.payload);
+          if (result.requestId === requestId) { unlisten?.(); resolve(result.result ?? null); }
         });
-      } catch (error) {
-        console.error('Tauri save dialog error:', error);
-        return null;
-      }
-    } else {
-      return this.tauriAPI.saveFileDialog?.(filters) ?? null;
+      });
+    } catch (error) {
+      console.error('Tauri save dialog error:', error);
+      return null;
     }
   }
 
   async openDirDialog(): Promise<string | null> {
-    if (this.isTauri) {
-      try {
-        const requestId = await window.__TAURI__.core.invoke('show_open_dir_dialog');
-        
-        return new Promise(async (resolve) => {
-          let unlisten: (() => void) | null = null;
-          unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
-            const result = JSON.parse(event.payload);
-            if (result.requestId === requestId) {
-              unlisten?.();
-              resolve(result.result ?? null);
-            }
-          });
+    try {
+      const requestId = await window.__TAURI__.core.invoke('show_open_dir_dialog');
+      return new Promise(async (resolve) => {
+        let unlisten: (() => void) | null = null;
+        unlisten = await window.__TAURI__.event.listen('dialog-result', (event: any) => {
+          const result = JSON.parse(event.payload);
+          if (result.requestId === requestId) { unlisten?.(); resolve(result.result ?? null); }
         });
-      } catch (error) {
-        console.error('Tauri open dir dialog error:', error);
-        return null;
-      }
-    } else {
-      return this.tauriAPI.openDirDialog?.() ?? null;
+      });
+    } catch (error) {
+      console.error('Tauri open dir dialog error:', error);
+      return null;
     }
   }
 
   // ── File System Operations ───────────────────────────────────────────────
 
   async readFile(path: string): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('read_file', { path });
-      } catch (error) {
-        console.error('Tauri read file error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.readFile?.(path) || '';
-    }
+    return window.__TAURI__.core.invoke('read_file', { path });
   }
 
   async writeFile(path: string, data: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('write_file', { path, data });
-      } catch (error) {
-        console.error('Tauri write file error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.writeFile?.(path, data);
-    }
+    return window.__TAURI__.core.invoke('write_file', { path, data });
+  }
+
+  async appendFile(path: string, data: string): Promise<void> {
+    return window.__TAURI__.core.invoke('append_file', { path, data });
+  }
+
+  async writeFileAtomic(path: string, data: string): Promise<void> {
+    return window.__TAURI__.core.invoke('write_file_atomic', { path, data });
   }
 
   async readBinary(path: string): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('read_binary', { path });
-      } catch (error) {
-        console.error('Tauri read binary error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.readBinary?.(path) || '';
-    }
+    return window.__TAURI__.core.invoke('read_binary', { path });
   }
 
   async writeBinary(path: string, base64Data: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('write_binary', { path, base64Data });
-      } catch (error) {
-        console.error('Tauri write binary error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.writeBinary?.(path, base64Data);
-    }
+    return window.__TAURI__.core.invoke('write_binary', { path, base64Data });
+  }
+
+  async writeBinaryAtomic(path: string, base64Data: string): Promise<void> {
+    return window.__TAURI__.core.invoke('write_binary_atomic', { path, base64Data });
   }
 
   async listDir(path: string): Promise<any[]> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('list_dir', { path });
-      } catch (error) {
-        console.error('Tauri list dir error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.listDir?.(path) || [];
-    }
+    return window.__TAURI__.core.invoke('list_dir', { path });
+  }
+
+  async walkDir(
+    path: string,
+    opts?: { recursive?: boolean; includeHidden?: boolean; maxDepth?: number; filterExts?: string[] },
+  ): Promise<any[]> {
+    return window.__TAURI__.core.invoke('walk_dir_cmd', {
+      path,
+      recursive:     opts?.recursive,
+      includeHidden: opts?.includeHidden,
+      maxDepth:      opts?.maxDepth,
+      filterExts:    opts?.filterExts,
+    });
   }
 
   async exists(path: string): Promise<boolean> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('exists', { path });
-      } catch (error) {
-        console.error('Tauri exists error:', error);
-        return false;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.exists?.(path) || false;
+    try {
+      return await window.__TAURI__.core.invoke('exists', { path });
+    } catch {
+      return false;
     }
+  }
+
+  async isFile(path: string): Promise<boolean> {
+    try { return await window.__TAURI__.core.invoke('is_file', { path }); } catch { return false; }
+  }
+
+  async isDir(path: string): Promise<boolean> {
+    try { return await window.__TAURI__.core.invoke('is_directory', { path }); } catch { return false; }
+  }
+
+  async fileSize(path: string): Promise<number> {
+    try { return await window.__TAURI__.core.invoke('get_file_size', { path }); } catch { return 0; }
+  }
+
+  async getTempDir(): Promise<string> {
+    return window.__TAURI__.core.invoke('get_temp_dir');
   }
 
   async mkdir(path: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('mkdir', { path });
-      } catch (error) {
-        console.error('Tauri mkdir error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.mkdir?.(path);
-    }
+    return window.__TAURI__.core.invoke('mkdir', { path });
   }
 
   async deleteFile(path: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('delete_file', { path });
-      } catch (error) {
-        console.error('Tauri delete file error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.deleteFile?.(path);
-    }
+    return window.__TAURI__.core.invoke('delete_file', { path });
   }
 
   // ── App Paths ───────────────────────────────────────────────────────────
 
   async getAppDataPath(): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('get_app_data_path');
-      } catch (error) {
-        console.error('Tauri get app data path error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.getAppDataPath?.() || '';
-    }
+    return window.__TAURI__.core.invoke('get_app_data_path');
   }
 
   async getAppConfigPath(): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('get_app_config_path');
-      } catch (error) {
-        console.error('Tauri get app config path error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.getAppConfigPath?.() || '';
-    }
+    return window.__TAURI__.core.invoke('get_app_config_path');
   }
 
   async getHomePath(): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('get_home_path');
-      } catch (error) {
-        console.error('Tauri get home path error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.getHomePath?.() || '';
-    }
+    return window.__TAURI__.core.invoke('get_home_path');
   }
 
   // ── Build System ───────────────────────────────────────────────────────
 
   async getEngineRoot(): Promise<string> {
-    if (this.isTauri) {
-      return window.__TAURI__.core.invoke('get_engine_root_cmd');
-    }
-    return this.tauriAPI.getEngineRoot?.() ?? '';
+    return window.__TAURI__.core.invoke('get_engine_root_cmd');
   }
 
   async runBuild(engineRoot: string, configPath: string): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('run_build', { engineRoot, configPath });
-      } catch (error) {
-        console.error('Tauri run build error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.runBuild?.(engineRoot, configPath) || '';
-    }
+    return window.__TAURI__.core.invoke('run_build', { engineRoot, configPath });
   }
 
   async cancelBuild(jobId: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('cancel_build', { jobId });
-      } catch (error) {
-        console.error('Tauri cancel build error:', error);
-        throw error;
-      }
-    } else {
-      return this.tauriAPI.cancelBuild?.(jobId);
-    }
+    return window.__TAURI__.core.invoke('cancel_build', { jobId });
   }
 
   async runNpm(projectDir: string, args: string[]): Promise<string> {
-    if (this.isTauri) {
-      return window.__TAURI__.core.invoke('run_npm', { projectDir, args });
-    }
-    return this.tauriAPI.npm?.run(projectDir, args) ?? '';
+    return window.__TAURI__.core.invoke('run_npm', { projectDir, args });
   }
 
   async cancelNpm(jobId: string): Promise<void> {
-    if (this.isTauri) {
-      await window.__TAURI__.core.invoke('cancel_npm', { jobId });
-    } else {
-      return this.tauriAPI.npm?.cancel(jobId);
-    }
+    return window.__TAURI__.core.invoke('cancel_npm', { jobId });
   }
 
   // ── build / npm namespace objects (for api.build.run / api.npm.run) ──────
@@ -337,17 +203,14 @@ class APIShim {
       run:      (engineRoot: string, configPath: string) => self.runBuild(engineRoot, configPath),
       cancel:   (jobId: string) => self.cancelBuild(jobId),
       onEvent:  (callback: (event: any) => void) => {
-        if (self.isTauri) {
-          self._buildEventUnlisten?.();
-          window.__TAURI__.event.listen('build-output', (e: any) => {
-            callback(self._parseBuildPayload(e));
-          }).then((u) => { self._buildEventUnlisten = u; });
-        } else { self.tauriAPI?.build?.onEvent?.(callback); }
+        self._buildEventUnlisten?.();
+        window.__TAURI__.event.listen('build-output', (e: any) => {
+          callback(self._parseBuildPayload(e));
+        }).then((u) => { self._buildEventUnlisten = u; });
       },
       offEvent: () => {
         self._buildEventUnlisten?.();
         self._buildEventUnlisten = null;
-        if (!self.isTauri) self.tauriAPI?.build?.offEvent?.();
       },
     };
   }
@@ -358,17 +221,14 @@ class APIShim {
       run:      (projectDir: string, args: string[]) => self.runNpm(projectDir, args),
       cancel:   (jobId: string) => self.cancelNpm(jobId),
       onEvent:  (callback: (event: any) => void) => {
-        if (self.isTauri) {
-          self._npmEventUnlisten?.();
-          window.__TAURI__.event.listen('npm-output', (e: any) => {
-            callback(self._parseBuildPayload(e));
-          }).then((u) => { self._npmEventUnlisten = u; });
-        } else { self.tauriAPI?.npm?.onEvent?.(callback); }
+        self._npmEventUnlisten?.();
+        window.__TAURI__.event.listen('npm-output', (e: any) => {
+          callback(self._parseBuildPayload(e));
+        }).then((u) => { self._npmEventUnlisten = u; });
       },
       offEvent: () => {
         self._npmEventUnlisten?.();
         self._npmEventUnlisten = null;
-        if (!self.isTauri) self.tauriAPI?.npm?.offEvent?.();
       },
     };
   }
@@ -376,171 +236,66 @@ class APIShim {
   // ── File Watching ───────────────────────────────────────────────────────
 
   async watchDirectory(path: string, recursive?: boolean): Promise<string> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('watch_directory', { path, recursive });
-      } catch (error) {
-        console.error('Tauri watch directory error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.watchDirectory?.(path, recursive) || '';
-    }
+    return window.__TAURI__.core.invoke('watch_directory', { path, recursive });
   }
 
   async unwatchDirectory(watcherId: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('unwatch_directory', { watcherId });
-      } catch (error) {
-        console.error('Tauri unwatch directory error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.unwatchDirectory?.(watcherId);
-    }
+    return window.__TAURI__.core.invoke('unwatch_directory', { watcherId });
   }
 
   // ── Event Listeners ─────────────────────────────────────────────────────
 
   onBuildOutput(callback: (event: any) => void): Promise<() => void> {
-    if (this.isTauri) {
-      return window.__TAURI__.event.listen('build-output', callback);
-    }
-    return Promise.resolve(this.tauriAPI.onBuildOutput?.(callback) ?? (() => {}));
+    return window.__TAURI__.event.listen('build-output', callback);
   }
 
   onNpmOutput(callback: (event: any) => void): Promise<() => void> {
-    if (this.isTauri) {
-      return window.__TAURI__.event.listen('npm-output', callback);
-    }
-    return Promise.resolve(this.tauriAPI.onNpmOutput?.(callback) ?? (() => {}));
+    return window.__TAURI__.event.listen('npm-output', callback);
   }
 
   onFileChanged(callback: (event: any) => void): Promise<() => void> {
-    if (this.isTauri) {
-      return window.__TAURI__.event.listen('file-changed', callback);
-    }
-    return Promise.resolve(this.tauriAPI.onFileChanged?.(callback) ?? (() => {}));
+    return window.__TAURI__.event.listen('file-changed', callback);
   }
 
   // ── Shell Operations ───────────────────────────────────────────────────
 
   async showItemInFolder(path: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('show_item_in_folder', { path });
-      } catch (error) {
-        console.error('Tauri show item in folder error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.showItemInFolder?.(path);
-    }
+    return window.__TAURI__.core.invoke('show_item_in_folder', { path });
   }
 
   async openPath(path: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('open_path', { path });
-      } catch (error) {
-        console.error('Tauri open path error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.openPath?.(path);
-    }
+    return window.__TAURI__.core.invoke('open_path', { path });
   }
 
   // ── Window Controls ───────────────────────────────────────────────────
 
   async minimizeWindow(): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('minimize_window');
-      } catch (error) {
-        console.error('Tauri minimize window error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.minimizeWindow?.();
-    }
+    return window.__TAURI__.core.invoke('minimize_window');
   }
 
   async maximizeWindow(): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('maximize_window');
-      } catch (error) {
-        console.error('Tauri maximize window error:', error);
-        throw error;
-      }
-    } else {
-      // Electron fallback
-      return this.tauriAPI.maximizeWindow?.();
-    }
+    return window.__TAURI__.core.invoke('maximize_window');
   }
 
   async closeWindow(): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('close_window');
-      } catch (error) {
-        console.error('Tauri close window error:', error);
-        throw error;
-      }
-    } else {
-      return this.tauriAPI.closeWindow?.();
-    }
+    return window.__TAURI__.core.invoke('close_window');
   }
 
-  // ── File system aliases for ElectronFileSystem compatibility ────────────
+  // ── File system aliases for NativeFileSystem compatibility ────────────
   async readDir(path: string): Promise<any[]> {
     return this.listDir(path);
   }
 
   async stat(path: string): Promise<any> {
-    if (this.isTauri) {
-      try {
-        return await window.__TAURI__.core.invoke('stat', { path });
-      } catch (error) {
-        console.error('Tauri stat error:', error);
-        throw error;
-      }
-    } else {
-      return this.tauriAPI.stat?.(path);
-    }
+    return window.__TAURI__.core.invoke('stat', { path });
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('rename', { oldPath, newPath });
-      } catch (error) {
-        console.error('Tauri rename error:', error);
-        throw error;
-      }
-    } else {
-      return this.tauriAPI.rename?.(oldPath, newPath);
-    }
+    return window.__TAURI__.core.invoke('rename', { oldPath, newPath });
   }
 
   async copy(srcPath: string, destPath: string): Promise<void> {
-    if (this.isTauri) {
-      try {
-        await window.__TAURI__.core.invoke('copy', { srcPath, destPath });
-      } catch (error) {
-        console.error('Tauri copy error:', error);
-        throw error;
-      }
-    } else {
-      return this.tauriAPI.copy?.(srcPath, destPath);
-    }
+    return window.__TAURI__.core.invoke('copy', { srcPath, destPath });
   }
 
   watch(path: string): Promise<string> { return this.watchDirectory(path); }
@@ -555,7 +310,7 @@ class APIShim {
     });
   }
 
-  offWatchEvent(): void { /* no-op in Tauri – listeners cleaned up via their own unlisten() */ }
+  offWatchEvent(): void { /* listeners cleaned up via their own unlisten() */ }
 
   // ── Binary file write (ArrayBuffer → base64 → write_binary) ─────────────
   async writeFileBinary(path: string, buffer: ArrayBuffer | Uint8Array): Promise<void> {
@@ -565,83 +320,54 @@ class APIShim {
     return this.writeBinary(path, btoa(binary));
   }
 
-  // ── Multi-window launchers (Tauri: create real OS windows) ─────────────
+  // ── Multi-window launchers ─────────────────────────────────────────────
   openScriptEditor(path: string): void {
     const url = path ? `script-window.html?filePath=${encodeURIComponent(path)}` : 'script-window.html';
-    if (this.isTauri) {
-      window.__TAURI__.core.invoke('open_child_window', {
-        label: 'script-editor', url, title: 'Script Editor', width: 1200, height: 800,
-      }).then(() => {
-        // Also emit open-tab so an already-open script window receives the new file
-        if (path) window.__TAURI__.event.emit('fluxion:script-open-tab', path).catch(() => {});
-      }).catch((e: any) => console.error('open_child_window error:', e));
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:open-script-editor', { detail: { path } }));
-    }
+    window.__TAURI__.core.invoke('open_child_window', {
+      label: 'script-editor', url, title: 'Script Editor', width: 1200, height: 800,
+    }).then(() => {
+      if (path) window.__TAURI__.event.emit('fluxion:script-open-tab', path).catch(() => {});
+    }).catch((e: any) => console.error('open_child_window error:', e));
   }
 
   openVisualMaterialEditor(path: string): void {
     const url = path ? `vme-window.html?filePath=${encodeURIComponent(path)}` : 'vme-window.html';
-    if (this.isTauri) {
-      window.__TAURI__.core.invoke('open_child_window', {
-        label: 'vme-editor', url, title: 'Visual Material Editor', width: 1400, height: 900,
-      }).then(() => {
-        if (path) window.__TAURI__.event.emit('fluxion:vme-open-tab', path).catch(() => {});
-      }).catch((e: any) => console.error('open_child_window error:', e));
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:open-visual-material-editor', { detail: { path } }));
-    }
+    window.__TAURI__.core.invoke('open_child_window', {
+      label: 'vme-editor', url, title: 'Visual Material Editor', width: 1400, height: 900,
+    }).then(() => {
+      if (path) window.__TAURI__.event.emit('fluxion:vme-open-tab', path).catch(() => {});
+    }).catch((e: any) => console.error('open_child_window error:', e));
   }
 
   openFuiEditor(path: string): void {
     const url = path ? `fui-window.html?filePath=${encodeURIComponent(path)}` : 'fui-window.html';
-    if (this.isTauri) {
-      window.__TAURI__.core.invoke('open_child_window', {
-        label: 'fui-editor', url, title: 'FUI Editor', width: 1200, height: 800,
-      }).then(() => {
-        if (path) window.__TAURI__.event.emit('fluxion:fui-open-tab', path).catch(() => {});
-      }).catch((e: any) => console.error('open_child_window error:', e));
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:open-fui-editor', { detail: { path } }));
-    }
+    window.__TAURI__.core.invoke('open_child_window', {
+      label: 'fui-editor', url, title: 'FUI Editor', width: 1200, height: 800,
+    }).then(() => {
+      if (path) window.__TAURI__.event.emit('fluxion:fui-open-tab', path).catch(() => {});
+    }).catch((e: any) => console.error('open_child_window error:', e));
   }
 
   notifyMaterialChanged(filePath: string): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.emit('fluxion:material-changed', filePath).catch(() => {});
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:material-changed', { detail: { path: filePath } }));
-    }
+    window.__TAURI__.event.emit('fluxion:material-changed', filePath).catch(() => {});
   }
 
   detachPanel(panelId: string): void {
-    if (this.isTauri) {
-      window.__TAURI__.core.invoke('open_child_window', {
-        label: `panel-${panelId}`,
-        url: `panel-window.html?panelId=${encodeURIComponent(panelId)}`,
-        title: panelId,
-        width: 700, height: 500,
-      }).catch((e: any) => console.error('open_child_window error:', e));
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:detach-panel', { detail: { panelId } }));
-    }
+    window.__TAURI__.core.invoke('open_child_window', {
+      label: `panel-${panelId}`,
+      url: `panel-window.html?panelId=${encodeURIComponent(panelId)}`,
+      title: panelId,
+      width: 700, height: 500,
+    }).catch((e: any) => console.error('open_child_window error:', e));
   }
 
   closePanelWindow(panelId: string): void {
-    if (this.isTauri) {
-      window.__TAURI__.core.invoke('close_child_window', { label: `panel-${panelId}` })
-        .catch((e: any) => console.error('close_child_window error:', e));
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:close-panel-window', { detail: { panelId } }));
-    }
+    window.__TAURI__.core.invoke('close_child_window', { label: `panel-${panelId}` })
+      .catch((e: any) => console.error('close_child_window error:', e));
   }
 
   sendPanelState(panelId: string, state: unknown): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.emit(`fluxion:panel-state-${panelId}`, state).catch(() => {});
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:panel-state', { detail: { panelId, state } }));
-    }
+    window.__TAURI__.event.emit(`fluxion:panel-state-${panelId}`, state).catch(() => {});
   }
 
   getPanelWindowId(): Promise<string> {
@@ -650,122 +376,68 @@ class APIShim {
 
   // ── Panel IPC (cross-window state relay via Tauri events) ─────────────────
   private _panelStateUnlisten: (() => void) | null = null;
-  private _panelStateHandler: ((e: Event) => void) | null = null;
 
   onPanelState(callback: (state: unknown) => void): void {
-    if (this.isTauri) {
-      const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
-      window.__TAURI__.event.listen(`fluxion:panel-state-${panelId}`, (event: any) => {
-        callback(event.payload);
-      }).then((unlisten) => { this._panelStateUnlisten = unlisten; });
-    } else {
-      this._panelStateHandler = (e: Event) => callback((e as CustomEvent).detail.state);
-      window.addEventListener('fluxion:panel-state', this._panelStateHandler);
-    }
+    const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
+    window.__TAURI__.event.listen(`fluxion:panel-state-${panelId}`, (event: any) => {
+      callback(event.payload);
+    }).then((unlisten) => { this._panelStateUnlisten = unlisten; });
   }
 
   offPanelState(): void {
-    if (this.isTauri) {
-      this._panelStateUnlisten?.();
-      this._panelStateUnlisten = null;
-    } else if (this._panelStateHandler) {
-      window.removeEventListener('fluxion:panel-state', this._panelStateHandler);
-      this._panelStateHandler = null;
-    }
+    this._panelStateUnlisten?.();
+    this._panelStateUnlisten = null;
   }
 
   private _panelActionUnlisten: (() => void) | null = null;
-  private _panelActionHandler: ((e: Event) => void) | null = null;
 
   onPanelAction(callback: (panelId: string, action: unknown) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:panel-action', (event: any) => {
-        callback(event.payload.panelId, event.payload.action);
-      }).then((unlisten) => { this._panelActionUnlisten = unlisten; });
-    } else {
-      this._panelActionHandler = (e: Event) => callback(
-        (e as CustomEvent).detail.panelId, (e as CustomEvent).detail.action
-      );
-      window.addEventListener('fluxion:panel-action-relay', this._panelActionHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:panel-action', (event: any) => {
+      callback(event.payload.panelId, event.payload.action);
+    }).then((unlisten) => { this._panelActionUnlisten = unlisten; });
   }
 
   offPanelAction(): void {
-    if (this.isTauri) {
-      this._panelActionUnlisten?.();
-      this._panelActionUnlisten = null;
-    } else if (this._panelActionHandler) {
-      window.removeEventListener('fluxion:panel-action-relay', this._panelActionHandler);
-      this._panelActionHandler = null;
-    }
+    this._panelActionUnlisten?.();
+    this._panelActionUnlisten = null;
   }
 
   private _panelWindowClosedUnlisten: (() => void) | null = null;
-  private _panelWindowClosedHandler: ((e: Event) => void) | null = null;
 
   onPanelWindowClosed(callback: (panelId: string) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:panel-window-closed', (event: any) => {
-        callback(event.payload);
-      }).then((unlisten) => { this._panelWindowClosedUnlisten = unlisten; });
-    } else {
-      this._panelWindowClosedHandler = (e: Event) => callback((e as CustomEvent).detail.panelId);
-      window.addEventListener('fluxion:panel-window-closed', this._panelWindowClosedHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:panel-window-closed', (event: any) => {
+      callback(event.payload);
+    }).then((unlisten) => { this._panelWindowClosedUnlisten = unlisten; });
   }
 
   offPanelWindowClosed(): void {
-    if (this.isTauri) {
-      this._panelWindowClosedUnlisten?.();
-      this._panelWindowClosedUnlisten = null;
-    } else if (this._panelWindowClosedHandler) {
-      window.removeEventListener('fluxion:panel-window-closed', this._panelWindowClosedHandler);
-      this._panelWindowClosedHandler = null;
-    }
+    this._panelWindowClosedUnlisten?.();
+    this._panelWindowClosedUnlisten = null;
   }
 
   // ── Material change relay ─────────────────────────────────────────────────
   private _materialChangedUnlisten: (() => void) | null = null;
-  private _materialChangedHandler: ((e: Event) => void) | null = null;
 
   onMaterialChangedRelay(callback: (changedPath: string) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:material-changed', (event: any) => {
-        callback(event.payload);
-      }).then((unlisten) => { this._materialChangedUnlisten = unlisten; });
-    } else {
-      this._materialChangedHandler = (e: Event) => callback((e as CustomEvent).detail.path);
-      window.addEventListener('fluxion:material-changed-relay', this._materialChangedHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:material-changed', (event: any) => {
+      callback(event.payload);
+    }).then((unlisten) => { this._materialChangedUnlisten = unlisten; });
   }
 
   offMaterialChangedRelay(): void {
-    if (this.isTauri) {
-      this._materialChangedUnlisten?.();
-      this._materialChangedUnlisten = null;
-    } else if (this._materialChangedHandler) {
-      window.removeEventListener('fluxion:material-changed-relay', this._materialChangedHandler);
-      this._materialChangedHandler = null;
-    }
+    this._materialChangedUnlisten?.();
+    this._materialChangedUnlisten = null;
   }
 
   dispatchEditorAction(action: unknown): void {
-    if (this.isTauri) {
-      const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
-      window.__TAURI__.event.emit('fluxion:panel-action', { panelId, action }).catch(() => {});
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:panel-action', { detail: { action } }));
-    }
+    const panelId = new URLSearchParams(window.location.search).get('panelId') ?? '';
+    window.__TAURI__.event.emit('fluxion:panel-action', { panelId, action }).catch(() => {});
   }
 
-  // ── Script settings IPC (DOM events, single-window in Tauri) ─────────────
+  // ── Script settings IPC ─────────────────────────────────────────────────
   sendScriptSettings(settings: unknown): void {
     try { localStorage.setItem('fluxion:script-settings', JSON.stringify(settings)); } catch { /* ignore */ }
-    if (this.isTauri) {
-      window.__TAURI__.event.emit('fluxion:script-settings', settings).catch(() => {});
-    } else {
-      window.dispatchEvent(new CustomEvent('fluxion:script-settings', { detail: { settings } }));
-    }
+    window.__TAURI__.event.emit('fluxion:script-settings', settings).catch(() => {});
   }
 
   async getScriptSettings(): Promise<unknown | null> {
@@ -776,92 +448,48 @@ class APIShim {
   }
 
   private _scriptSettingsUnlisten: (() => void) | null = null;
-  private _scriptSettingsHandler: ((e: Event) => void) | null = null;
   onScriptSettingsUpdate(callback: (s: unknown) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:script-settings', (event: any) => {
-        callback(event.payload);
-      }).then((unlisten) => { this._scriptSettingsUnlisten = unlisten; });
-    } else {
-      this._scriptSettingsHandler = (e: Event) => callback((e as CustomEvent).detail.settings);
-      window.addEventListener('fluxion:script-settings', this._scriptSettingsHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:script-settings', (event: any) => {
+      callback(event.payload);
+    }).then((unlisten) => { this._scriptSettingsUnlisten = unlisten; });
   }
   offScriptSettingsUpdate(): void {
-    if (this.isTauri) {
-      this._scriptSettingsUnlisten?.();
-      this._scriptSettingsUnlisten = null;
-    } else if (this._scriptSettingsHandler) {
-      window.removeEventListener('fluxion:script-settings', this._scriptSettingsHandler);
-      this._scriptSettingsHandler = null;
-    }
+    this._scriptSettingsUnlisten?.();
+    this._scriptSettingsUnlisten = null;
   }
 
   private _scriptOpenTabUnlisten: (() => void) | null = null;
-  private _scriptOpenTabHandler: ((e: Event) => void) | null = null;
   onScriptOpenTab(callback: (path: string) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:script-open-tab', (event: any) => {
-        callback(event.payload);
-      }).then((unlisten) => { this._scriptOpenTabUnlisten = unlisten; });
-    } else {
-      this._scriptOpenTabHandler = (e: Event) => callback((e as CustomEvent).detail.path);
-      window.addEventListener('fluxion:open-script-tab', this._scriptOpenTabHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:script-open-tab', (event: any) => {
+      callback(event.payload);
+    }).then((unlisten) => { this._scriptOpenTabUnlisten = unlisten; });
   }
   offScriptOpenTab(): void {
-    if (this.isTauri) {
-      this._scriptOpenTabUnlisten?.();
-      this._scriptOpenTabUnlisten = null;
-    } else if (this._scriptOpenTabHandler) {
-      window.removeEventListener('fluxion:open-script-tab', this._scriptOpenTabHandler);
-      this._scriptOpenTabHandler = null;
-    }
+    this._scriptOpenTabUnlisten?.();
+    this._scriptOpenTabUnlisten = null;
   }
 
-  // ── VME / FUI tab IPC (DOM events) ───────────────────────────────────────
+  // ── VME / FUI tab IPC ───────────────────────────────────────────────────
   private _vmeOpenTabUnlisten: (() => void) | null = null;
-  private _vmeOpenTabHandler: ((e: Event) => void) | null = null;
   onVmeOpenTab(handler: (event: unknown, filePath: string) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:vme-open-tab', (event: any) => {
-        handler(event, event.payload);
-      }).then((unlisten) => { this._vmeOpenTabUnlisten = unlisten; });
-    } else {
-      this._vmeOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
-      window.addEventListener('fluxion:open-vme-tab', this._vmeOpenTabHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:vme-open-tab', (event: any) => {
+      handler(event, event.payload);
+    }).then((unlisten) => { this._vmeOpenTabUnlisten = unlisten; });
   }
   offVmeOpenTab(): void {
-    if (this.isTauri) {
-      this._vmeOpenTabUnlisten?.();
-      this._vmeOpenTabUnlisten = null;
-    } else if (this._vmeOpenTabHandler) {
-      window.removeEventListener('fluxion:open-vme-tab', this._vmeOpenTabHandler);
-      this._vmeOpenTabHandler = null;
-    }
+    this._vmeOpenTabUnlisten?.();
+    this._vmeOpenTabUnlisten = null;
   }
 
   private _fuiOpenTabUnlisten: (() => void) | null = null;
-  private _fuiOpenTabHandler: ((e: Event) => void) | null = null;
   onFuiOpenTab(handler: (event: unknown, filePath: string) => void): void {
-    if (this.isTauri) {
-      window.__TAURI__.event.listen('fluxion:fui-open-tab', (event: any) => {
-        handler(event, event.payload);
-      }).then((unlisten) => { this._fuiOpenTabUnlisten = unlisten; });
-    } else {
-      this._fuiOpenTabHandler = (e: Event) => handler(e, (e as CustomEvent).detail.path);
-      window.addEventListener('fluxion:open-fui-tab', this._fuiOpenTabHandler);
-    }
+    window.__TAURI__.event.listen('fluxion:fui-open-tab', (event: any) => {
+      handler(event, event.payload);
+    }).then((unlisten) => { this._fuiOpenTabUnlisten = unlisten; });
   }
   offFuiOpenTab(): void {
-    if (this.isTauri) {
-      this._fuiOpenTabUnlisten?.();
-      this._fuiOpenTabUnlisten = null;
-    } else if (this._fuiOpenTabHandler) {
-      window.removeEventListener('fluxion:open-fui-tab', this._fuiOpenTabHandler);
-      this._fuiOpenTabHandler = null;
-    }
+    this._fuiOpenTabUnlisten?.();
+    this._fuiOpenTabUnlisten = null;
   }
 
   // ── FluxionAPI interface aliases (used by Titlebar and other UI) ──────────
@@ -873,18 +501,15 @@ class APIShim {
 // Export singleton instance
 export const API = new APIShim();
 
-// Assign to window.fluxionAPI so all editor code using window.fluxionAPI works in Tauri mode
+// Assign to window.fluxionAPI so all editor code using window.fluxionAPI works
 if (typeof window !== 'undefined') {
   (window as any).fluxionAPI = API;
 
-  // In Tauri, OS-level file drops are intercepted by Tauri before the browser DragEvent fires.
   // Bridge tauri://file-drop → fluxion:file-drop so React components can receive dropped paths.
-  if (isTauri) {
-    window.__TAURI__.event.listen('tauri://file-drop', (event: any) => {
-      const paths: string[] = event.payload?.paths ?? [];
-      if (paths.length > 0) {
-        window.dispatchEvent(new CustomEvent('fluxion:file-drop', { detail: { paths } }));
-      }
-    });
-  }
+  window.__TAURI__.event.listen('tauri://file-drop', (event: any) => {
+    const paths: string[] = event.payload?.paths ?? [];
+    if (paths.length > 0) {
+      window.dispatchEvent(new CustomEvent('fluxion:file-drop', { detail: { paths } }));
+    }
+  });
 }

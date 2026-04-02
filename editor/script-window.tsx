@@ -12,17 +12,16 @@ import { SvgIcon } from './ui/SvgIcon';
 import terminalSvg from './ui/icons/terminal.svg';
 import xSvg from './ui/icons/x.svg';
 import './core/TauriAPIShim';
-import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
+import { NativeFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
 
 // Point @monaco-editor/react to the locally-served monaco min/vs files
-// (dist/editor/vs/) instead of the default CDN. This is required in Electron
-// because the renderer runs at file:// and cannot reach external URLs.
+// (dist/editor/vs/) instead of fetching from CDN.
 loader.config({ paths: { vs: './vs' } });
 
 // Initialize filesystem
-const _fs = new ElectronFileSystem((window as any).fluxionAPI);
+const _fs = new NativeFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(_fs);
 
 // Read initial file from URL

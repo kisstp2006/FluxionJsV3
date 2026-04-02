@@ -1,169 +1,252 @@
 use tauri::command;
 use std::path::Path;
-use std::fs;
-use std::time::UNIX_EPOCH;
+use std::sync::Arc;
 use sha2::Digest;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use crate::utils::{DirEntry, FileStat};
+use crate::fs::{NativeFs, FileSystem, CopyOptions};
+
+// Helper: convert a FileEntry list to the legacy DirEntry format used by
+// the frontend (camelCase, flat path string).
+fn to_dir_entries(entries: Vec<crate::fs::FileEntry>) -> Vec<DirEntry> {
+    entries
+        .into_iter()
+        .map(|e| DirEntry {
+            name:         e.name,
+            is_directory: e.kind.is_directory(),
+            path:         e.path.to_string_lossy().into_owned(),
+            size:         e.size,
+            modified_at:  e.modified_at,
+        })
+        .collect()
+}
+
+// ── Text I/O ─────────────────────────────────────────────────────────────────
 
 #[command]
-pub async fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file '{}': {}", path, e))
+pub async fn read_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<String, String> {
+    state.read_text(Path::new(&path)).map_err(|e| e.to_string())
 }
 
 #[command]
-pub async fn write_file(path: String, data: String) -> Result<(), String> {
-    // Create parent directories if they don't exist
-    if let Some(parent) = Path::new(&path).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directories for '{}': {}", path, e))?;
-    }
-    
-    fs::write(&path, data)
-        .map_err(|e| format!("Failed to write file '{}': {}", path, e))
+pub async fn write_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+    data:  String,
+) -> Result<(), String> {
+    state.write_text(Path::new(&path), &data).map_err(|e| e.to_string())
+}
+
+// ── Binary I/O (Base64 transport) ────────────────────────────────────────────
+
+#[command]
+pub async fn read_binary(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<String, String> {
+    let bytes = state.read_bytes(Path::new(&path)).map_err(|e| e.to_string())?;
+    Ok(STANDARD.encode(&bytes))
 }
 
 #[command]
-pub async fn read_binary(path: String) -> Result<String, String> {
-    let data = fs::read(&path)
-        .map_err(|e| format!("Failed to read binary file '{}': {}", path, e))?;
-    
-    Ok(STANDARD.encode(&data))
-}
-
-#[command]
-pub async fn write_binary(path: String, base64_data: String) -> Result<(), String> {
+pub async fn write_binary(
+    state:       tauri::State<'_, Arc<NativeFs>>,
+    path:        String,
+    base64_data: String,
+) -> Result<(), String> {
     let data = STANDARD.decode(&base64_data)
-        .map_err(|e| format!("Failed to decode base64 data: {}", e))?;
-    
-    // Create parent directories if they don't exist
-    if let Some(parent) = Path::new(&path).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directories for '{}': {}", path, e))?;
-    }
-    
-    fs::write(&path, data)
-        .map_err(|e| format!("Failed to write binary file '{}': {}", path, e))
+        .map_err(|e| format!("Failed to decode base64: {e}"))?;
+    state.write_bytes(Path::new(&path), &data).map_err(|e| e.to_string())
+}
+
+// ── Directory ─────────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn list_dir(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<Vec<DirEntry>, String> {
+    let entries = state.list_dir(Path::new(&path)).map_err(|e| e.to_string())?;
+    Ok(to_dir_entries(entries))
 }
 
 #[command]
-pub async fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
-    let entries = fs::read_dir(&path)
-        .map_err(|e| format!("Failed to read directory '{}': {}", path, e))?;
-    
-    let mut result = Vec::new();
-    
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let metadata = entry.metadata().map_err(|e| format!("Failed to read metadata: {}", e))?;
-        
-        let path = entry.path();
-        let name = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-        
-        let path_str = path.to_string_lossy().to_string();
-        
-        result.push(DirEntry {
-            name,
-            is_directory: metadata.is_dir(),
-            path: path_str,
-        });
-    }
-    
-    Ok(result)
+pub async fn read_dir(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<Vec<DirEntry>, String> {
+    list_dir(state, path).await
 }
 
 #[command]
-pub async fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
-    list_dir(path).await
+pub async fn mkdir(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<(), String> {
+    state.mkdir(Path::new(&path)).map_err(|e| e.to_string())
+}
+
+// ── Queries ───────────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn exists(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<bool, String> {
+    Ok(state.exists(Path::new(&path)))
 }
 
 #[command]
-pub async fn exists(path: String) -> Result<bool, String> {
-    Ok(Path::new(&path).exists())
-}
-
-#[command]
-pub async fn mkdir(path: String) -> Result<(), String> {
-    fs::create_dir_all(&path)
-        .map_err(|e| format!("Failed to create directory '{}': {}", path, e))
-}
-
-#[command]
-pub async fn delete_file(path: String) -> Result<(), String> {
-    if Path::new(&path).is_dir() {
-        fs::remove_dir_all(&path)
-            .map_err(|e| format!("Failed to remove directory '{}': {}", path, e))
-    } else {
-        fs::remove_file(&path)
-            .map_err(|e| format!("Failed to remove file '{}': {}", path, e))
-    }
-}
-
-#[command]
-pub async fn stat(path: String) -> Result<FileStat, String> {
-    let metadata = fs::metadata(&path)
-        .map_err(|e| format!("Failed to get metadata for '{}': {}", path, e))?;
-    
-    let modified_at = metadata.modified().ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    
+pub async fn stat(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<FileStat, String> {
+    let s = state.stat(Path::new(&path)).map_err(|e| e.to_string())?;
     Ok(FileStat {
-        size: metadata.len(),
-        is_directory: metadata.is_dir(),
-        modified_at,
+        size:         s.size,
+        is_directory: s.kind.is_directory(),
+        modified_at:  s.modified_at,
     })
 }
 
 #[command]
-pub async fn rename(old_path: String, new_path: String) -> Result<(), String> {
-    fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("Failed to rename '{}' to '{}': {}", old_path, new_path, e))
+pub async fn is_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<bool, String> {
+    Ok(state.is_file(Path::new(&path)))
 }
 
 #[command]
-pub async fn copy(src_path: String, dest_path: String) -> Result<(), String> {
-    // Create parent directories if they don't exist
-    if let Some(parent) = Path::new(&dest_path).parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directories for '{}': {}", dest_path, e))?;
-    }
-    
-    fs::copy(&src_path, &dest_path)
-        .map_err(|e| format!("Failed to copy '{}' to '{}': {}", src_path, dest_path, e))?;
-    
-    Ok(())
+pub async fn is_directory(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<bool, String> {
+    Ok(state.is_dir(Path::new(&path)))
+}
+
+// ── Mutation ──────────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn delete_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<(), String> {
+    state.delete(Path::new(&path)).map_err(|e| e.to_string())
 }
 
 #[command]
-pub async fn hash_file(path: String) -> Result<String, String> {
-    let data = fs::read(&path)
-        .map_err(|e| format!("Failed to read file for hashing '{}': {}", path, e))?;
-    
+pub async fn rename(
+    state:    tauri::State<'_, Arc<NativeFs>>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    state.rename(Path::new(&old_path), Path::new(&new_path))
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn copy(
+    state:     tauri::State<'_, Arc<NativeFs>>,
+    src_path:  String,
+    dest_path: String,
+) -> Result<(), String> {
+    state.copy_file(
+        Path::new(&src_path),
+        Path::new(&dest_path),
+        &CopyOptions { overwrite: true, skip_existing: false },
+    ).map_err(|e| e.to_string())
+}
+
+// ── Hashing ───────────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn hash_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<String, String> {
+    let data = state.read_bytes(Path::new(&path)).map_err(|e| e.to_string())?;
     let mut hasher = sha2::Sha256::new();
     hasher.update(&data);
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+// ── Convenience ───────────────────────────────────────────────────────────────
+
 #[command]
-pub async fn get_file_size(path: String) -> Result<u64, String> {
-    let metadata = fs::metadata(&path)
-        .map_err(|e| format!("Failed to get metadata for '{}': {}", path, e))?;
-    
-    Ok(metadata.len())
+pub async fn get_file_size(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+) -> Result<u64, String> {
+    Ok(state.file_size(Path::new(&path)))
+}
+
+// ── Atomic writes ─────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn append_file(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+    data:  String,
+) -> Result<(), String> {
+    state.append_text(Path::new(&path), &data).map_err(|e| e.to_string())
 }
 
 #[command]
-pub async fn is_file(path: String) -> Result<bool, String> {
-    Ok(Path::new(&path).is_file())
+pub async fn write_file_atomic(
+    state: tauri::State<'_, Arc<NativeFs>>,
+    path:  String,
+    data:  String,
+) -> Result<(), String> {
+    state.write_text_atomic(Path::new(&path), &data).map_err(|e| e.to_string())
 }
 
 #[command]
-pub async fn is_directory(path: String) -> Result<bool, String> {
-    Ok(Path::new(&path).is_dir())
+pub async fn write_binary_atomic(
+    state:       tauri::State<'_, Arc<NativeFs>>,
+    path:        String,
+    base64_data: String,
+) -> Result<(), String> {
+    let data = STANDARD.decode(&base64_data)
+        .map_err(|e| format!("Failed to decode base64: {e}"))?;
+    state.write_bytes_atomic(Path::new(&path), &data).map_err(|e| e.to_string())
+}
+
+// ── Walk directory ────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn walk_dir_cmd(
+    state:          tauri::State<'_, Arc<NativeFs>>,
+    path:           String,
+    recursive:      Option<bool>,
+    include_hidden: Option<bool>,
+    max_depth:      Option<usize>,
+    filter_exts:    Option<Vec<String>>,
+) -> Result<Vec<DirEntry>, String> {
+    use crate::fs::WalkOptions;
+    let opts = WalkOptions {
+        include_hidden:   include_hidden.unwrap_or(false),
+        max_depth:        if recursive.unwrap_or(true) { max_depth } else { Some(0) },
+        filter_extensions: filter_exts.unwrap_or_default(),
+    };
+    let entries = state.walk_dir(Path::new(&path), &opts).map_err(|e| e.to_string())?;
+    Ok(entries.into_iter().map(|e| DirEntry {
+        name:         e.name,
+        is_directory: e.kind.is_directory(),
+        path:         e.path.to_string_lossy().into_owned(),
+        size:         e.size,
+        modified_at:  e.modified_at,
+    }).collect())
+}
+
+// ── Platform paths ────────────────────────────────────────────────────────────
+
+#[command]
+pub async fn get_temp_dir(
+    state: tauri::State<'_, Arc<NativeFs>>,
+) -> Result<String, String> {
+    Ok(state.temp_dir().to_string_lossy().into_owned())
 }

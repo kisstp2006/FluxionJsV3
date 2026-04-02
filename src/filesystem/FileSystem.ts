@@ -68,12 +68,29 @@ export interface FileInfo {
   modifiedAt: number;
 }
 
-// ── Directory Entry (lightweight, returned by readDir) ───────
+// ── Directory Entry (lightweight, returned by readDir / walkDir) ─────
 
 export interface DirEntry {
   name: string;
   path: string;
   isDirectory: boolean;
+  /** File size in bytes (populated by walkDir; 0 for directories). */
+  size?: number;
+  /** Last-modified timestamp in ms since epoch (populated by walkDir). */
+  modifiedAt?: number;
+}
+
+// ── WalkDir options ──────────────────────────────────────────
+
+export interface WalkDirOptions {
+  /** Recurse into sub-directories. Default: true. */
+  recursive?: boolean;
+  /** Include hidden entries (names starting with '.'). Default: false. */
+  includeHidden?: boolean;
+  /** Maximum recursion depth (undefined = unlimited). */
+  maxDepth?: number;
+  /** Only return files whose extension is in this list (e.g. ['.png', '.ts']). */
+  filterExtensions?: string[];
 }
 
 // ── File Watch Events ────────────────────────────────────────
@@ -88,43 +105,160 @@ export interface FileWatchEvent {
 export type FileWatchCallback = (event: FileWatchEvent) => void;
 
 // ── IFileSystem Interface ────────────────────────────────────
+// Mirrors the Rust FileSystem trait so code written against this
+// interface compiles and runs identically on Tauri, web (OPFS),
+// and in-memory environments.
 
 export interface IFileSystem {
-  // ── Text I/O ──
+  // ── Text I/O ──────────────────────────────────────────────
   readFile(path: string): Promise<string>;
   writeFile(path: string, data: string): Promise<void>;
+  /** Append text to a file; creates the file if it does not exist. */
+  appendFile(path: string, data: string): Promise<void>;
+  /** Write atomically (write-to-temp then rename). Crash-safe. */
+  writeFileAtomic(path: string, data: string): Promise<void>;
 
-  // ── Binary I/O ──
+  // ── Binary I/O ────────────────────────────────────────────
   readBinary(path: string): Promise<ArrayBuffer>;
   writeBinary(path: string, data: ArrayBuffer): Promise<void>;
+  /** Write binary atomically. */
+  writeBinaryAtomic(path: string, data: ArrayBuffer): Promise<void>;
 
-  // ── Directory ──
+  // ── Directory ─────────────────────────────────────────────
   readDir(path: string): Promise<DirEntry[]>;
+  /** Recursively enumerate all entries under path. */
+  walkDir(path: string, opts?: WalkDirOptions): Promise<DirEntry[]>;
   mkdir(path: string): Promise<void>;
 
-  // ── Queries ──
+  // ── Queries ───────────────────────────────────────────────
   exists(path: string): Promise<boolean>;
+  isFile(path: string): Promise<boolean>;
+  isDir(path: string): Promise<boolean>;
   stat(path: string): Promise<FileInfo>;
+  fileSize(path: string): Promise<number>;
 
-  // ── Mutation ──
+  // ── Mutation ──────────────────────────────────────────────
   delete(path: string): Promise<void>;
   rename(oldPath: string, newPath: string): Promise<void>;
   copy(srcPath: string, destPath: string): Promise<void>;
 
-  // ── Watching ──
-  watch(path: string, callback: FileWatchCallback): Promise<string>;   // returns watchId
+  // ── Watching ──────────────────────────────────────────────
+  watch(path: string, callback: FileWatchCallback): Promise<string>;
   unwatch(watchId: string): Promise<void>;
 
-  // ── Dialogs (editor-only, may throw in headless) ──
+  // ── Dialogs (editor-only, may return null in headless/game) ──
   openFileDialog(filters?: FileDialogFilter[]): Promise<string | null>;
   saveFileDialog(filters?: FileDialogFilter[]): Promise<string | null>;
   openDirDialog(): Promise<string | null>;
 
-  // ── Paths ──
+  // ── Paths ─────────────────────────────────────────────────
   getAppDataPath(): Promise<string>;
+  tempDir(): Promise<string>;
+
+  // ── JSON helpers ──────────────────────────────────────────
+  readJson<T = unknown>(path: string): Promise<T>;
+  writeJson(path: string, value: unknown): Promise<void>;
+
+  // ── Directory helper ──────────────────────────────────────
+  ensureDir(path: string): Promise<void>;
 }
 
 export interface FileDialogFilter {
   name: string;
   extensions: string[];
+}
+
+// ── FileSystemBase ────────────────────────────────────────────
+// Abstract base class that provides default implementations for
+// all helper methods so concrete classes only override what they
+// can do better (e.g. true atomic writes, native walk, etc.).
+
+export abstract class FileSystemBase implements IFileSystem {
+  // ── Abstract core — must be implemented ──────────────────
+  abstract readFile(path: string): Promise<string>;
+  abstract writeFile(path: string, data: string): Promise<void>;
+  abstract readBinary(path: string): Promise<ArrayBuffer>;
+  abstract writeBinary(path: string, data: ArrayBuffer): Promise<void>;
+  abstract readDir(path: string): Promise<DirEntry[]>;
+  abstract mkdir(path: string): Promise<void>;
+  abstract exists(path: string): Promise<boolean>;
+  abstract stat(path: string): Promise<FileInfo>;
+  abstract delete(path: string): Promise<void>;
+  abstract rename(oldPath: string, newPath: string): Promise<void>;
+  abstract copy(srcPath: string, destPath: string): Promise<void>;
+  abstract watch(path: string, callback: FileWatchCallback): Promise<string>;
+  abstract unwatch(watchId: string): Promise<void>;
+  abstract openFileDialog(filters?: FileDialogFilter[]): Promise<string | null>;
+  abstract saveFileDialog(filters?: FileDialogFilter[]): Promise<string | null>;
+  abstract openDirDialog(): Promise<string | null>;
+  abstract getAppDataPath(): Promise<string>;
+
+  // ── Default helper implementations ───────────────────────
+
+  async appendFile(path: string, data: string): Promise<void> {
+    const existing = (await this.exists(path)) ? await this.readFile(path) : '';
+    await this.writeFile(path, existing + data);
+  }
+
+  async writeFileAtomic(path: string, data: string): Promise<void> {
+    await this.writeFile(path, data);
+  }
+
+  async writeBinaryAtomic(path: string, data: ArrayBuffer): Promise<void> {
+    await this.writeBinary(path, data);
+  }
+
+  async walkDir(path: string, opts?: WalkDirOptions): Promise<DirEntry[]> {
+    const result: DirEntry[] = [];
+    await this._walkRecursive(path, 0, opts ?? {}, result);
+    return result;
+  }
+
+  private async _walkRecursive(
+    path: string,
+    depth: number,
+    opts: WalkDirOptions,
+    out: DirEntry[],
+  ): Promise<void> {
+    const entries = await this.readDir(path);
+    for (const e of entries) {
+      if (!opts.includeHidden && e.name.startsWith('.')) continue;
+      if (!e.isDirectory && opts.filterExtensions?.length) {
+        const ext = pathExtension(e.path);
+        if (!opts.filterExtensions.includes(ext)) continue;
+      }
+      out.push(e);
+      if (e.isDirectory && opts.recursive !== false) {
+        if (opts.maxDepth === undefined || depth < opts.maxDepth) {
+          await this._walkRecursive(e.path, depth + 1, opts, out);
+        }
+      }
+    }
+  }
+
+  async isFile(path: string): Promise<boolean> {
+    try { return !(await this.stat(path)).isDirectory; } catch { return false; }
+  }
+
+  async isDir(path: string): Promise<boolean> {
+    try { return (await this.stat(path)).isDirectory; } catch { return false; }
+  }
+
+  async fileSize(path: string): Promise<number> {
+    try { return (await this.stat(path)).size; } catch { return 0; }
+  }
+
+  async tempDir(): Promise<string> { return '/tmp'; }
+
+  async readJson<T = unknown>(path: string): Promise<T> {
+    return JSON.parse(await this.readFile(path)) as T;
+  }
+
+  async writeJson(path: string, value: unknown): Promise<void> {
+    await this.writeFileAtomic(path, JSON.stringify(value, null, 2));
+  }
+
+  async ensureDir(path: string): Promise<void> {
+    if (!(await this.exists(path))) await this.mkdir(path);
+  }
 }

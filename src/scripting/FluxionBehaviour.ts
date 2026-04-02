@@ -200,7 +200,7 @@ export class FluxionBehaviour {
     return {
       get fps()      { return eng?.time?.fps ?? 0; },
       get isEditor() { return getPlatformBridge()?.isEditor ?? false; },
-      get platform() { return 'electron'; },
+      get platform() { return 'tauri'; },
       quit:          () => { getPlatformBridge()?.close?.(); },
     };
   }

@@ -289,7 +289,7 @@ function SceneAPI:load(path) end
 --- @class ApplicationAPI
 --- @field fps number Current frames per second
 --- @field isEditor boolean True when running inside the editor
---- @field platform string Platform string (e.g. 'electron')
+--- @field platform string Platform string (e.g. 'tauri')
 ApplicationAPI = {}
 function ApplicationAPI:quit() end
 

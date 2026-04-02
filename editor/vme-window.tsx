@@ -11,15 +11,15 @@ import { SvgIcon } from './ui/SvgIcon';
 import apertureSvg from './ui/icons/aperture.svg';
 import xSvg from './ui/icons/x.svg';
 import './core/TauriAPIShim';
-import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
+import { NativeFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { projectManager } from '../src/project/ProjectManager';
 import { normalizePath } from '../src/filesystem/FileSystem';
 
 // Initialize filesystem before React renders
-const _fs = new ElectronFileSystem((window as any).fluxionAPI);
+const _fs = new NativeFileSystem((window as any).fluxionAPI);
 setGlobalFileSystem(_fs);
 
-// Read initial filePath from URL query string (set by Electron main process)
+// Read initial filePath from URL query string
 const params = new URLSearchParams(window.location.search);
 const initialFilePath = params.get('filePath') || '';
 

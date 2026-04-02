@@ -5,6 +5,8 @@ export {
   type FileWatchEvent,
   type FileWatchCallback,
   type FileDialogFilter,
+  type WalkDirOptions,
+  FileSystemBase,
   normalizePath,
   pathJoin,
   pathDirname,
@@ -14,9 +16,15 @@ export {
 } from './FileSystem';
 
 export {
-  ElectronFileSystem,
+  NativeFileSystem,
   setGlobalFileSystem,
   getFileSystem,
-} from './ElectronFileSystem';
+} from './NativeFileSystem';
 
-export { WebFileSystem } from './WebFileSystem';
+export {
+  WebFileSystem,
+  FetchFileSystem,
+  OPFSFileSystem,
+  MemoryFileSystem,
+  type WebFsMode,
+} from './WebFileSystem';

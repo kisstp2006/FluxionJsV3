@@ -5,7 +5,6 @@ const webpack = require('webpack');
 
 module.exports = (env = {}) => {
   const isProd = !!env.production;
-  const isTauri = !!env.tauri || process.env.TAURI === 'true';
   const mode = isProd ? 'production' : 'development';
 
   // ts-loader with transpileOnly=true skips type-checking during build
@@ -79,52 +78,12 @@ module.exports = (env = {}) => {
     new webpack.DefinePlugin({
       'process.env': JSON.stringify({
         NODE_ENV: isProd ? 'production' : 'development',
-        TAURI: isTauri ? 'true' : 'false',
+        TAURI: 'true',
       }),
     }),
   ];
 
   const configs = [];
-
-  // Only build Electron targets if not building for Tauri
-  if (!isTauri) {
-    // Electron Main Process
-    const electronMain = {
-      name: 'main',
-      mode,
-      devtool,
-      cache,
-      optimization,
-      entry: './electron/main.ts',
-      target: 'electron-main',
-      output: {
-        path: path.resolve(__dirname, 'dist/electron'),
-        filename: 'main.js',
-      },
-      module: { rules: commonRules },
-      resolve,
-      node: { __dirname: false, __filename: false },
-    };
-
-    // Electron Preload
-    const electronPreload = {
-      name: 'preload',
-      mode,
-      devtool,
-      cache,
-      optimization,
-      entry: './electron/preload.ts',
-      target: 'electron-preload',
-      output: {
-        path: path.resolve(__dirname, 'dist/electron'),
-        filename: 'preload.js',
-      },
-      module: { rules: commonRules },
-      resolve,
-    };
-
-    configs.push(electronMain, electronPreload);
-  }
 
   // Editor Renderer Process
   const editorRenderer = {

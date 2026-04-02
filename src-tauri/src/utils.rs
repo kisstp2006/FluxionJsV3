@@ -14,6 +14,10 @@ pub struct DirEntry {
     pub name: String,
     pub is_directory: bool,
     pub path: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub modified_at: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

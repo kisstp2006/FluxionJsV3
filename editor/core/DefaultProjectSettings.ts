@@ -561,7 +561,7 @@ const buildSettings: SettingDescriptor[] = [
     order: 1,
     options: [
       { value: 'web', label: 'Web (HTML5)' },
-      { value: 'electron', label: 'Desktop (Electron)' },
+      { value: 'tauri', label: 'Desktop (Tauri)' },
     ],
   },
   {

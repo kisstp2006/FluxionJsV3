@@ -1,7 +1,7 @@
 // ============================================================
-// FluxionJS V3 — Electron preload bridge type declarations
+// FluxionJS V3 — Native API bridge type declarations
 // Extends the global Window interface with the fluxionAPI
-// object that Electron's contextBridge exposes to the renderer.
+// object provided by the TauriAPIShim at startup.
 // ============================================================
 
 interface FluxionAPI {
@@ -17,8 +17,24 @@ interface FluxionAPI {
 
   // ── File I/O ─────────────────────────────────────────────────
   writeFile(path: string, content: string): Promise<void>;
+  appendFile?(path: string, data: string): Promise<void>;
+  writeFileAtomic?(path: string, data: string): Promise<void>;
   writeFileBinary?(path: string, buffer: ArrayBuffer | Uint8Array): Promise<void>;
+  writeBinaryAtomic?(path: string, base64: string): Promise<void>;
   readFile?(path: string): Promise<string>;
+  readBinary?(path: string): Promise<string>;
+  readDir?(path: string): Promise<any[]>;
+  walkDir?(path: string, opts?: any): Promise<any[]>;
+  mkdir?(path: string): Promise<void>;
+  exists?(path: string): Promise<boolean>;
+  isFile?(path: string): Promise<boolean>;
+  isDir?(path: string): Promise<boolean>;
+  stat?(path: string): Promise<any>;
+  fileSize?(path: string): Promise<number>;
+  deleteFile?(path: string): Promise<void>;
+  rename?(oldPath: string, newPath: string): Promise<void>;
+  copy?(srcPath: string, destPath: string): Promise<void>;
+  getTempDir?(): Promise<string>;
   openPath?(path: string): void;
 
   // ── Child window launchers ───────────────────────────────────
@@ -82,7 +98,7 @@ interface FluxionAPI {
     offEvent(): void;
   };
 
-  /** Get a named Electron app path (e.g. 'exe', 'userData'). */
+  /** Get a named app path (e.g. 'exe', 'userData'). */
   getAppPath?(name: string): Promise<string>;
   /** Get the engine root directory (where node_modules/webpack lives). */
   getEngineRoot?(): Promise<string>;

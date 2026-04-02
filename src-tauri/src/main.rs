@@ -8,8 +8,11 @@ mod file_system;
 mod app_paths;
 mod build_system;
 mod file_watcher;
+pub mod fs;
 
 use commands::*;
+use std::sync::Arc;
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
@@ -18,6 +21,14 @@ fn main() {
         .setup(|app| {
             // Initialize file watcher state
             file_watcher::init_watcher_safe(app.handle().clone());
+
+            // Create the engine filesystem abstraction and expose it as
+            // managed Tauri state so commands can access it via State<Arc<NativeFs>>.
+            let app_data_dir = app.path().app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let native_fs = Arc::new(fs::NativeFs::new(app_data_dir));
+            app.handle().manage(native_fs);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -44,6 +55,11 @@ fn main() {
             get_file_size,
             is_file,
             is_directory,
+            append_file,
+            write_file_atomic,
+            write_binary_atomic,
+            walk_dir_cmd,
+            get_temp_dir,
             
             // File watching
             watch_directory,

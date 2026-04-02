@@ -1,15 +1,14 @@
 {
   "name": "fluxionjs-v2",
   "version": "2.0.0",
-  "description": "High-performance 2D/3D TypeScript game engine with Electron editor — inspired by Nuake, LumixEngine & s&box",
+  "description": "High-performance 2D/3D TypeScript game engine with Tauri editor — inspired by Nuake, LumixEngine & s&box",
   "license": "MIT",
   "author": "",
-  "main": "dist/electron/main.js",
   "keywords": [
     "game-engine",
     "typescript",
     "three.js",
-    "electron",
+    "tauri",
     "ecs",
     "webgpu",
     "pbr",
@@ -18,18 +17,12 @@
   "scripts": {
     "build": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env production",
     "build:watch": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --watch",
-    "build:tauri": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env tauri --env production",
-    "build:tauri:watch": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env tauri --watch",
+    "build:tauri": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --env production",
+    "build:tauri:watch": "node --max-old-space-size=4096 ./node_modules/webpack/bin/webpack.js --config webpack.config.js --watch",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "start": "npm run build && electron dist/electron/main.js",
-    "dev": "concurrently \"npm run build:watch\" \"wait-on dist/electron/main.js && electron dist/electron/main.js\"",
-    "lint": "eslint src/ editor/ electron/",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "lint": "eslint src/ editor/"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
@@ -54,10 +47,6 @@
     "@tauri-apps/cli": "^2.10.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.170.0",
-    "concurrently": "^9.0.0",
-    "electron": "^41.0.3",
-    "electron-builder": "^25.0.0",
-    "wait-on": "^8.0.0"
+    "@types/three": "^0.170.0"
   }
 }

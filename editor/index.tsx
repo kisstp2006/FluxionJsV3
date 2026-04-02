@@ -8,17 +8,22 @@ import './styles/globals.css';
 import { EditorProvider } from './core/EditorContext';
 import { PanelLayoutProvider } from './core/PanelLayoutContext';
 import { EditorLayout } from './components/layout/EditorLayout';
-import { ElectronFileSystem, setGlobalFileSystem } from '../src/filesystem';
+import { NativeFileSystem, OPFSFileSystem, MemoryFileSystem, WebFileSystem, setGlobalFileSystem } from '../src/filesystem';
 import { registerDefaultSettings } from './core/DefaultSettings';
 import { registerDefaultProjectSettings } from './core/DefaultProjectSettings';
 import { registerBuiltInPanels } from './components/layout/PanelRegistrations';
 import { registerBuiltInMenus } from './components/layout/MenuRegistrations';
-import './core/TauriAPIShim'; // Initialize API shim for Electron/Tauri compatibility
+import './core/TauriAPIShim'; // Initialize Tauri API shim
 
 // Initialize filesystem + settings BEFORE React renders.
 // This ensures ProjectManager can use getFileSystem() at project creation time.
-const electronFs = new ElectronFileSystem((window as any).fluxionAPI);
-setGlobalFileSystem(electronFs);
+// Auto-detect platform: Tauri → NativeFileSystem, browser → OPFSFileSystem (or MemoryFileSystem fallback).
+const _fs = (window as any).__TAURI__
+  ? new NativeFileSystem((window as any).fluxionAPI)
+  : WebFileSystem.isOPFSSupported()
+    ? new OPFSFileSystem()
+    : new MemoryFileSystem();
+setGlobalFileSystem(_fs);
 registerDefaultSettings();
 registerDefaultProjectSettings();
 // Register panels BEFORE PanelLayoutProvider mounts so the default layout

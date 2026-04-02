@@ -94,7 +94,7 @@ export {
   pathBasename,
   pathExtension,
   isInsidePath,
-  ElectronFileSystem,
+  NativeFileSystem,
   setGlobalFileSystem,
   getFileSystem,
 } from './filesystem';

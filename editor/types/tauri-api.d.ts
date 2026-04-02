@@ -1,34 +1,9 @@
 // ============================================================
-// FluxionJS V3 — Tauri API Type Definitions
+// FluxionJS V3 — Tauri Global Type Declarations
 // ============================================================
-
-export interface DirEntry {
-  name: string;
-  isDirectory: boolean;
-  path: string;
-}
-
-export interface FileStat {
-  size: number;
-  isDirectory: boolean;
-  modifiedAt: number;
-}
-
-export interface BuildEvent {
-  jobId: string;
-  type: string;
-  data: string;
-}
-
-export interface NpmEvent {
-  jobId: string;
-  type: string;
-  data: string;
-}
 
 declare global {
   interface Window {
-    // Tauri 2.0 API - available when withGlobalTauri: true is set in tauri.conf.json
     __TAURI__: {
       core: {
         invoke: <T>(command: string, args?: any) => Promise<T>;

@@ -171,9 +171,7 @@ export class MetaRegistry {
 
       let classes: ScannedClass[];
       try {
-        classes = filePath.endsWith('.lua')
-          ? ScriptScanner.scanLuaSource(source, filePath)
-          : ScriptScanner.scanSource(source, filePath);
+        classes = ScriptScanner.scanSource(source, filePath);
       } catch (err) {
         DebugConsole.LogWarning(`[MetaRegistry] Failed to scan "${filePath}": ${err}`);
         continue;
@@ -238,9 +236,7 @@ export class MetaRegistry {
       // Re-scan
       let classes: ScannedClass[];
       try {
-        classes = fp.endsWith('.lua')
-          ? ScriptScanner.scanLuaSource(source, fp)
-          : ScriptScanner.scanSource(source, fp);
+        classes = ScriptScanner.scanSource(source, fp);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : err?.toString?.() ?? 'unknown';
         DebugConsole.LogError(`[MetaRegistry] Script scanning error in "${fp}": ${errorMessage}`);
@@ -315,7 +311,7 @@ export class MetaRegistry {
 
   // ── Private helpers ──────────────────────────────────────────
 
-  /** Recursively collect .ts, .js, and .lua file paths under dirPath. */
+  /** Recursively collect .ts and .js file paths under dirPath. */
   private static async _collectScriptFiles(
     fs: IFileSystem,
     dirPath: string,
@@ -335,8 +331,7 @@ export class MetaRegistry {
         results.push(...sub);
       } else if (
         entry.name.endsWith('.ts') ||
-        entry.name.endsWith('.js') ||
-        entry.name.endsWith('.lua')
+        entry.name.endsWith('.js')
       ) {
         results.push(entry.path);
       }
@@ -380,12 +375,6 @@ export class MetaRegistry {
     const oldImports = this._fileImports.get(fp) ?? [];
     for (const imp of oldImports) {
       this._importedBy.get(imp)?.delete(fp);
-    }
-
-    if (filePath.endsWith('.lua')) {
-      // Lua files don't have TS imports
-      this._fileImports.set(fp, []);
-      return;
     }
 
     const imports = ScriptScanner.extractImports(source, fp);

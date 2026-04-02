@@ -14,7 +14,6 @@ import { DebugConsole } from '../core/DebugConsole';
 import { MetaRegistry } from './MetaRegistry';
 import { TypeScriptGenerator } from './generators/TypeScriptGenerator';
 import { JavaScriptGenerator } from './generators/JavaScriptGenerator';
-import { LuaGenerator } from './generators/LuaGenerator';
 import { RegistryReporter } from './RegistryReporter';
 
 /**
@@ -83,53 +82,6 @@ const JSCONFIG_SCRIPTS = JSON.stringify(
   2,
 );
 
-const LUA_GLOBALS = [
-  'FluxionBehaviour', 'EntityRef', 'Mathf', 'Debug',
-  'Vec2', 'Vec3', 'Vec4', 'Quat', 'Color', 'Euler', 'Mat3', 'Mat4',
-  // constructors
-  'vec3', 'vec2', 'color', 'color_hex',
-  // Vector3 utilities
-  'vec3_add', 'vec3_sub', 'vec3_mul', 'vec3_div', 'vec3_neg',
-  'vec3_dot', 'vec3_cross', 'vec3_length', 'vec3_length_sq',
-  'vec3_normalize', 'vec3_lerp', 'vec3_distance', 'vec3_distance_sq',
-  'vec3_reflect', 'vec3_project', 'vec3_angle',
-  // Vector2 utilities
-  'vec2_add', 'vec2_sub', 'vec2_mul', 'vec2_dot',
-  'vec2_length', 'vec2_normalize', 'vec2_lerp', 'vec2_angle',
-  // Color utilities
-  'color_lerp', 'color_mul', 'color_add',
-];
-
-/**
- * .luarc.json at the project root — the Lua Language Server (sumneko/lua-ls)
- * reads this automatically when VS Code opens the project folder.
- * Points the library at `.fluxion/api` so `fluxion.lua` is indexed for
- * type inference, completions and diagnostics.
- */
-const LUARC_ROOT = JSON.stringify(
-  {
-    $schema: 'https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json',
-    runtime:     { version: 'Lua 5.4' },
-    workspace:   { library: ['.fluxion/api'], checkThirdParty: false },
-    diagnostics: { globals: LUA_GLOBALS },
-  },
-  null,
-  2,
-);
-
-/**
- * .luarc.json kept in the api output dir — used when Lua LS is configured
- * to point directly at `.fluxion/api` as a library source.
- */
-const LUARC_API = JSON.stringify(
-  {
-    workspace:   { library: ['.'], checkThirdParty: false },
-    diagnostics: { globals: LUA_GLOBALS },
-  },
-  null,
-  2,
-);
-
 /**
  * .vscode/settings.json — workspace-level VS Code settings that wire up the
  * Lua LS library path, TypeScript SDK, and minor editor conveniences.
@@ -138,14 +90,6 @@ const LUARC_API = JSON.stringify(
  */
 const VSCODE_SETTINGS = JSON.stringify(
   {
-    // ── Lua Language Server ───────────────────────────────────────────────
-    'Lua.runtime.version':           'Lua 5.4',
-    'Lua.workspace.library':         ['.fluxion/api'],
-    'Lua.workspace.checkThirdParty': false,
-    'Lua.diagnostics.globals':       LUA_GLOBALS,
-    'Lua.completion.enable':         true,
-    'Lua.hover.enable':              true,
-
     // ── TypeScript / JavaScript ───────────────────────────────────────────
     'typescript.preferences.includePackageJsonAutoImports': 'off',
     'javascript.preferences.includePackageJsonAutoImports': 'off',
@@ -154,7 +98,6 @@ const VSCODE_SETTINGS = JSON.stringify(
 
     // ── File associations ─────────────────────────────────────────────────
     'files.associations': {
-      '*.lua':  'lua',
       '*.ts':   'typescript',
       '*.js':   'javascript',
     },
@@ -179,7 +122,6 @@ const VSCODE_SETTINGS = JSON.stringify(
 const VSCODE_EXTENSIONS = JSON.stringify(
   {
     recommendations: [
-      'sumneko.lua',            // Lua Language Server (type checking + completions)
       'ms-vscode.vscode-typescript-next', // latest TS language features
     ],
   },
@@ -213,7 +155,6 @@ export class ApiEmitter {
 
     const dts  = TypeScriptGenerator.generate(def);
     const js   = JavaScriptGenerator.generate(def);
-    const lua  = LuaGenerator.generate(def);
 
     const report = RegistryReporter.generate(def, MetaRegistry.getLastBuildWarnings());
 
@@ -233,19 +174,13 @@ export class ApiEmitter {
       // ── API output directory ──────────────────────────────────────────
       fs.writeFile(pathJoin(outDir, 'fluxion.d.ts'),      dts),
       fs.writeFile(pathJoin(outDir, 'fluxion.js'),         js),
-      fs.writeFile(pathJoin(outDir, 'fluxion.lua'),        lua),
       fs.writeFile(pathJoin(outDir, 'jsconfig.json'),      JSCONFIG_API),
-      fs.writeFile(pathJoin(outDir, '.luarc.json'),        LUARC_API),
       fs.writeFile(
         pathJoin(outDir, 'registry-report.json'),
         JSON.stringify(report, null, 2),
       ).catch(e => {
         DebugConsole.LogWarning(`[ApiEmitter] Could not write registry-report.json: ${e}`);
       }),
-
-      // ── Project root ──────────────────────────────────────────────────
-      // .luarc.json at the root is where Lua LS looks by default
-      fs.writeFile(pathJoin(projectRoot, '.luarc.json'),   LUARC_ROOT),
 
       // ── Assets/Scripts — language-server project configs ─────────────
       fs.writeFile(pathJoin(scriptsDir, 'tsconfig.json'),  TSCONFIG_SCRIPTS),

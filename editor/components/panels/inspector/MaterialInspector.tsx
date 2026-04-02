@@ -55,7 +55,7 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
 
   const fileName = assetPath.replace(/\\/g, '/').split('/').pop() || '';
 
-  // Base directory of the .fluxmat file for resolving texture paths
+  // Base directory of the .fluxmat file — used as fallback for old material-relative paths
   const baseDir = useMemo(
     () => normalizePath(assetPath).replace(/\/[^/]+$/, ''),
     [assetPath],
@@ -66,7 +66,16 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
       new Promise((resolve, reject) => {
         const p = relPath.replace(/\\/g, '/');
         const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
-        const url = isAbsolute ? `file:///${p.replace(/^\/+/, '')}` : `file:///${baseDir}/${p}`;
+        let url: string;
+        if (isAbsolute) {
+          url = `file:///${p.replace(/^\/+/, '')}`;
+        } else if (projectManager.projectDir) {
+          // Paths stored in .fluxmat are project-root-relative (e.g. "Assets/Textures/img.png")
+          url = `file:///${normalizePath(projectManager.projectDir)}/${p}`;
+        } else {
+          // Fallback: resolve relative to the .fluxmat's directory
+          url = `file:///${baseDir}/${p}`;
+        }
         new THREE.TextureLoader().load(url, resolve, undefined, reject);
       }),
     [baseDir],

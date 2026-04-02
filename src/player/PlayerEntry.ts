@@ -17,7 +17,6 @@ import { AssetManager }    from '../assets/AssetManager';
 import { MaterialSystem }  from '../renderer/MaterialSystem';
 import { FuiRuntimeSystem } from '../ui/FuiRuntimeSystem';
 import { ScriptSystem }    from '../scripting/ScriptSystem';
-import { LuaScriptSystem } from '../scripting/LuaScriptSystem';
 import { Scene }           from '../scene/Scene';
 import { deserializeScene } from '../project/SceneSerializer';
 import { WebFileSystem, setGlobalFileSystem } from '../filesystem';
@@ -59,8 +58,7 @@ async function bootstrap(): Promise<void> {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('Element #game-canvas not found in player.html');
 
-  // Initialize fetch-based filesystem — must happen before any system calls
-  // getFileSystem() (e.g. LuaScriptSystem loading .lua files).
+  // Initialize fetch-based filesystem — must happen before any system calls.
   setGlobalFileSystem(new WebFileSystem());
 
   // Fetch build manifest to know which scene to load
@@ -99,12 +97,10 @@ async function bootstrap(): Promise<void> {
 
   // ── Scripting systems ────────────────────────────────────
   const scriptSystem = new ScriptSystem(engine, input, renderer, audio);
-  const luaSystem    = new LuaScriptSystem(engine, input, renderer, audio);
 
   scriptSystem.setBundledRegistry(scriptRegistry);
 
   engine.ecs.addSystem(scriptSystem);
-  engine.ecs.addSystem(luaSystem);
 
   // ── Plugin registration ──────────────────────────────────
   for (const mod of pluginModules) {

@@ -141,7 +141,7 @@ export class MemoryFileSystem extends FileSystemBase {
   async readBinary(path: string): Promise<ArrayBuffer> {
     const e = this._files.get(this._key(path));
     if (!e) throw new Error(`MemoryFileSystem: not found: ${path}`);
-    return e.data.buffer.slice(e.data.byteOffset, e.data.byteOffset + e.data.byteLength);
+    return e.data.buffer.slice(e.data.byteOffset, e.data.byteOffset + e.data.byteLength) as ArrayBuffer;
   }
 
   async writeBinary(path: string, data: ArrayBuffer): Promise<void> {

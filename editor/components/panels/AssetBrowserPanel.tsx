@@ -120,13 +120,19 @@ const ModelImportSettingsDialog: React.FC<{
   );
 };
 
-// Module-level cache for texture load failures — avoids retrying known-bad paths
+// Module-level cache for texture load failures — avoids retrying known-bad paths within a session.
+// Call _texFailedClear() when new assets are imported so the cache doesn't block fresh thumbnails.
 const _texFailed = new Set<string>();
+export function _texFailedClear() { _texFailed.clear(); }
 
 /** Small texture thumbnail with icon fallback on load error. */
 const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
   const url = `file:///${path.replace(/\\/g, '/')}`;
-  const [failed, setFailed] = useState(() => _texFailed.has(url));
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    // Re-check on every mount (i.e. when parent forces remount via key change after import)
+    setFailed(_texFailed.has(url));
+  }, [url]);
   if (failed) return <>{fallback}</>;
   return (
     <img
@@ -278,7 +284,7 @@ export const AssetBrowserPanel: React.FC<{
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
   const [modelClips, setModelClips] = useState<Map<string, string[]>>(new Map());
 
-  const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+  const refresh = useCallback(() => { _texFailedClear(); setRefreshKey((n) => n + 1); }, []);
 
   // Invalidate material thumbnail cache when a material file is saved
   useEffect(() => {
@@ -354,7 +360,7 @@ export const AssetBrowserPanel: React.FC<{
       (window as any).fluxionAPI?.openVisualMaterialEditor?.(entry.path);
     } else if (entry.name.endsWith('.fui')) {
       (window as any).fluxionAPI?.openFuiEditor?.(entry.path);
-    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js') || entry.name.endsWith('.lua')) {
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
       const openIn = ProjectSettingsRegistry.get<string>('scripting.editor.openIn') ?? 'builtin';
       if (openIn === 'vscode') {
         (window as any).fluxionAPI?.openPath?.(entry.path);
@@ -1147,6 +1153,7 @@ export const AssetBrowserPanel: React.FC<{
                 )}
                 {fileType === 'texture' ? (
                   <TextureThumbnail
+                    key={entry.path + ':' + refreshKey}
                     path={entry.path}
                     fallback={<span style={{ fontSize: '28px' }}>{getTypeIcon(fileType)}</span>}
                   />
@@ -1336,7 +1343,6 @@ export const AssetBrowserPanel: React.FC<{
                 const LANG_META: Record<ScriptLang, { label: string; ext: string; color: string; bg: string }> = {
                   ts:  { label: 'TypeScript', ext: '.ts',  color: '#3b82f6', bg: '#1e3a5f' },
                   js:  { label: 'JavaScript', ext: '.js',  color: '#eab308', bg: '#3d3200' },
-                  lua: { label: 'Lua',        ext: '.lua', color: '#a855f7', bg: '#2e1a47' },
                 };
                 return (
                   <>
@@ -1402,7 +1408,7 @@ export const AssetBrowserPanel: React.FC<{
               (() => {
                 const tpl = scriptCreateDialog.templates.find((t) => t.id === scriptCreateStep.templateId)!;
                 const lang = scriptCreateStep.lang!;
-                const LANG_LABELS: Record<ScriptLang, string> = { ts: 'TypeScript', js: 'JavaScript', lua: 'Lua' };
+                const LANG_LABELS: Record<ScriptLang, string> = { ts: 'TypeScript', js: 'JavaScript' };
                 return (
                   <>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>

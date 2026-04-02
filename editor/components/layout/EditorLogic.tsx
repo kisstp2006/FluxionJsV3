@@ -14,7 +14,6 @@ import { GizmoRenderer } from '../../../src/renderer/GizmoRenderer';
 import { SettingsRegistry } from '../../core/SettingsRegistry';
 import { ParticleRenderSystem } from '../../../src/renderer/ParticleSystem';
 import { ScriptSystem } from '../../../src/scripting/ScriptSystem';
-import { LuaScriptSystem } from '../../../src/scripting/LuaScriptSystem';
 import { serializeScene, deserializeScene, SceneFileData } from '../../../src/project/SceneSerializer';
 import { ComponentIconSystem } from '../../core/ComponentIconSystem';
 import { projectManager } from '../../../src/project/ProjectManager';
@@ -314,9 +313,7 @@ export const SimulationSync: React.FC = () => {
 
       // Reset scripts: clear coroutines + re-arm onStart() for next play session
       const scriptSys    = engine.engine.ecs.getSystem<ScriptSystem>('ScriptSystem');
-      const luaScriptSys = engine.engine.ecs.getSystem<LuaScriptSystem>('LuaScriptSystem');
       scriptSys?.onSimulationStop();
-      luaScriptSys?.onSimulationStop();
 
       // Restore scene to pre-play snapshot
       if (sceneSnapshot.current) {

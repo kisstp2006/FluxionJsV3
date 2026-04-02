@@ -239,7 +239,6 @@ export class ScriptSystem implements System {
 
       for (const entry of comp.scripts) {
         if (!entry.enabled || !entry.path) continue;
-        if (entry.path.endsWith('.lua')) continue; // handled by LuaScriptSystem
 
         if (!comp._instances.has(entry.path)) {
           // Check if script is in failed cooldown state
@@ -389,12 +388,6 @@ export class ScriptSystem implements System {
       absPath = projectManager.resolvePath(entry.path);
     } catch {
       absPath = entry.path;
-    }
-
-    // Lua scripts are handled by LuaScriptSystem
-    if (absPath.endsWith('.lua') || entry.path.endsWith('.lua')) {
-      comp._loading.delete(entry.path);
-      return;
     }
 
     // ── Bundled registry (game build) — skip filesystem + eval ──

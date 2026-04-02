@@ -11,55 +11,40 @@ import type { FluxMeshData, FluxMeshMaterialSlot, FluxMeshSubMeshRef } from './F
 // ── Template file imports ─────────────────────────────────────────────────────
 import emptyTs     from './templates/empty.ts.tmpl';
 import emptyJs     from './templates/empty.js.tmpl';
-import emptyLua    from './templates/empty.lua.tmpl';
 import defaultTs   from './templates/default.ts.tmpl';
 import defaultJs   from './templates/default.js.tmpl';
-import defaultLua  from './templates/default.lua.tmpl';
 import movementTs  from './templates/movement.ts.tmpl';
 import movementJs  from './templates/movement.js.tmpl';
-import movementLua from './templates/movement.lua.tmpl';
 import rotatorTs   from './templates/rotator.ts.tmpl';
 import rotatorJs   from './templates/rotator.js.tmpl';
-import rotatorLua  from './templates/rotator.lua.tmpl';
 import camFollowTs  from './templates/camera-follow.ts.tmpl';
 import camFollowJs  from './templates/camera-follow.js.tmpl';
-import camFollowLua from './templates/camera-follow.lua.tmpl';
 import physObjTs   from './templates/physics-object.ts.tmpl';
 import physObjJs   from './templates/physics-object.js.tmpl';
-import physObjLua  from './templates/physics-object.lua.tmpl';
 import dbgHudTs    from './templates/debug-hud.ts.tmpl';
 import dbgHudJs    from './templates/debug-hud.js.tmpl';
-import dbgHudLua   from './templates/debug-hud.lua.tmpl';
 import coroutineTs  from './templates/coroutine.ts.tmpl';
 import coroutineJs  from './templates/coroutine.js.tmpl';
-import coroutineLua from './templates/coroutine.lua.tmpl';
 import fpsCharTs   from './templates/fps-character.ts.tmpl';
 import fpsCharJs   from './templates/fps-character.js.tmpl';
-import fpsCharLua  from './templates/fps-character.lua.tmpl';
 import flyingCamTs  from './templates/flying-camera.ts.tmpl';
 import flyingCamJs  from './templates/flying-camera.js.tmpl';
-import flyingCamLua from './templates/flying-camera.lua.tmpl';
 import fuiFileTs   from './templates/fui-hud-file.ts.tmpl';
 import fuiFileJs   from './templates/fui-hud-file.js.tmpl';
-import fuiFileLua  from './templates/fui-hud-file.lua.tmpl';
 import fuiCodeTs   from './templates/fui-hud-code.ts.tmpl';
 import fuiCodeJs   from './templates/fui-hud-code.js.tmpl';
 import rttTs          from './templates/render-to-texture.ts.tmpl';
 import rttJs          from './templates/render-to-texture.js.tmpl';
-import rttLua         from './templates/render-to-texture.lua.tmpl';
 import sceneLoaderTs  from './templates/scene-loader.ts.tmpl';
 import sceneLoaderJs  from './templates/scene-loader.js.tmpl';
-import sceneLoaderLua from './templates/scene-loader.lua.tmpl';
 import interactCtrlTs  from './templates/interact-controller.ts.tmpl';
 import interactCtrlJs  from './templates/interact-controller.js.tmpl';
-import interactCtrlLua from './templates/interact-controller.lua.tmpl';
 import interactableTs  from './templates/interactable.ts.tmpl';
 import interactableJs  from './templates/interactable.js.tmpl';
-import interactableLua from './templates/interactable.lua.tmpl';
 
 // ── Types ──
 
-export type ScriptLang = 'ts' | 'js' | 'lua';
+export type ScriptLang = 'ts' | 'js';
 
 export interface ScriptTemplate {
   id: string;
@@ -475,72 +460,72 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     name: 'Empty Script',
     description: 'Minimal class with no lifecycle methods',
     icon: 'file',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? emptyLua : lang === 'js' ? emptyJs : emptyTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? emptyJs : emptyTs, cls),
   },
   {
     id: 'default',
     name: 'Default Script',
     description: 'Basic template with onStart, onUpdate and onDestroy',
     icon: 'zap',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? defaultLua : lang === 'js' ? defaultJs : defaultTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? defaultJs : defaultTs, cls),
   },
   {
     id: 'movement',
     name: 'Movement Controller',
     description: 'WASD movement using Transform',
     icon: 'move',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? movementLua : lang === 'js' ? movementJs : movementTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? movementJs : movementTs, cls),
   },
   {
     id: 'rotator',
     name: 'Rotator',
     description: 'Continuously rotates an object',
     icon: 'rotate',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? rotatorLua : lang === 'js' ? rotatorJs : rotatorTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? rotatorJs : rotatorTs, cls),
   },
   {
     id: 'camera-follow',
     name: 'Camera Follow',
     description: 'Smoothly follows a target entity by name',
     icon: 'camera',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? camFollowLua : lang === 'js' ? camFollowJs : camFollowTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? camFollowJs : camFollowTs, cls),
   },
   {
     id: 'physics-object',
     name: 'Physics Object',
     description: 'Applies forces via the Physics API on input',
     icon: 'physics',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? physObjLua : lang === 'js' ? physObjJs : physObjTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? physObjJs : physObjTs, cls),
   },
   {
     id: 'debug-hud',
     name: 'Debug HUD',
     description: 'Screen-space debug overlay: FPS, position, custom text via Debug.drawText',
     icon: 'search',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? dbgHudLua : lang === 'js' ? dbgHudJs : dbgHudTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? dbgHudJs : dbgHudTs, cls),
   },
   {
     id: 'coroutine',
     name: 'Coroutine Example',
-    description: 'Generator-based coroutines (TS/JS) or state-machine timer pattern (Lua)',
+    description: 'Generator-based coroutines',
     icon: 'clock',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? coroutineLua : lang === 'js' ? coroutineJs : coroutineTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? coroutineJs : coroutineTs, cls),
   },
   {
     id: 'fui-hud-file',
     name: 'FUI HUD (file)',
     description: 'Loads a .fui file and updates labels each frame',
     icon: 'monitor',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? fuiFileLua : lang === 'js' ? fuiFileJs : fuiFileTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? fuiFileJs : fuiFileTs, cls),
   },
   {
     id: 'fui-hud-code',
@@ -555,48 +540,48 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
     name: 'Render To Texture',
     description: 'Projects a camera\'s render output onto a mesh. Assign cameraEntity and targetEntity in the Inspector.',
     icon: 'camera',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? rttLua : lang === 'js' ? rttJs : rttTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? rttJs : rttTs, cls),
   },
   {
     id: 'fps-character',
     name: 'FPS Character Controller',
     description: 'First-person character: WASD to move, Space to jump, Shift to run, click to capture mouse. Assign a Camera entity in the Inspector.',
     icon: 'target',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? fpsCharLua : lang === 'js' ? fpsCharJs : fpsCharTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? fpsCharJs : fpsCharTs, cls),
   },
   {
     id: 'flying-camera',
     name: 'Flying Camera',
     description: 'Free-fly camera: WASD + QE to move, right-click to look',
     icon: 'globe',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? flyingCamLua : lang === 'js' ? flyingCamJs : flyingCamTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? flyingCamJs : flyingCamTs, cls),
   },
   {
     id: 'scene-loader',
     name: 'Scene Loader',
     description: 'Loads the scene assigned in the Inspector when a configurable key is pressed',
     icon: 'scene',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? sceneLoaderLua : lang === 'js' ? sceneLoaderJs : sceneLoaderTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? sceneLoaderJs : sceneLoaderTs, cls),
   },
   {
     id: 'interact-controller',
     name: 'Interact Controller',
     description: 'Left-click to raycast from the camera and emit an interact event on the hit entity',
     icon: 'target',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? interactCtrlLua : lang === 'js' ? interactCtrlJs : interactCtrlTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? interactCtrlJs : interactCtrlTs, cls),
   },
   {
     id: 'interactable',
     name: 'Interactable',
     description: 'Reacts to the interact event fired by an Interact Controller',
     icon: 'zap',
-    languages: ['ts', 'js', 'lua'],
-    generate: (cls, lang) => tmpl(lang === 'lua' ? interactableLua : lang === 'js' ? interactableJs : interactableTs, cls),
+    languages: ['ts', 'js'],
+    generate: (cls, lang) => tmpl(lang === 'js' ? interactableJs : interactableTs, cls),
   },
 ];
 
@@ -604,7 +589,7 @@ AssetTypeRegistry.register({
   type: 'script',
   displayName: 'Script',
   icon: 'script',
-  extensions: ['.ts', '.js', '.lua'],
+  extensions: ['.ts', '.js'],
   category: 'Scripts',
   color: '#7986cb',
   serializable: false,

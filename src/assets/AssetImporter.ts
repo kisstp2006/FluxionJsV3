@@ -23,7 +23,7 @@ import { getPlatformBridge } from '../platform/PlatformBridge';
 import type { IFileSystem } from '../filesystem/FileSystem';
 import { getFileSystem, pathJoin, pathBasename, pathExtension, normalizePath } from '../filesystem';
 import { AssetTypeRegistry } from './AssetTypeRegistry';
-import { createAssetMeta, writeAssetMeta, readAssetMeta, type AssetMeta } from './AssetMeta';
+import { createAssetMeta, writeAssetMeta, readAssetMeta, metaPathFor, type AssetMeta } from './AssetMeta';
 
 // ── Types ──
 
@@ -116,11 +116,15 @@ async function hashFile(sourcePath: string): Promise<string> {
     return bridge.hashFile(sourcePath);
   }
   // Fallback: read binary + Web Crypto
-  const fs = getFileSystem();
-  const buf = await fs.readBinary(sourcePath);
-  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
-  const arr = new Uint8Array(hashBuf);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const fs = getFileSystem();
+    const buf = await fs.readBinary(sourcePath);
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const arr = new Uint8Array(hashBuf);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (err: any) {
+    throw new Error(`Failed to hash "${sourcePath}": ${err?.message ?? String(err)}`);
+  }
 }
 
 // ── Import a single file ──

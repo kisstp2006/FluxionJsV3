@@ -1,7 +1,7 @@
 // ============================================================
 // FluxionJS V3 — Project Manager Panel
-// Flax Engine-style project launcher:
-//   Left sidebar (logo + nav) | Right content (project grid)
+// Cocos Creator / Unity-style launcher:
+//   Left sidebar (branding + nav) | Right content (project list)
 // ============================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,14 +9,6 @@ import { Icons } from '../../ui/Icons';
 import { PathInput } from '../../ui/inputs/PathInput';
 import { useEditor } from '../../core/EditorContext';
 import { projectManager, RecentProject } from '../../../src/project/ProjectManager';
-
-// ── Sidebar nav items ─────────────────────────────────────────
-
-type NavPage = 'projects';
-
-const NAV_ITEMS: { id: NavPage; label: string; icon: React.ReactNode }[] = [
-  { id: 'projects', label: 'Projects', icon: Icons.folder },
-];
 
 // ── New-project modal ──────────────────────────────────────────
 
@@ -27,71 +19,104 @@ const NewProjectModal: React.FC<{
 }> = ({ onConfirm, onCancel, loading }) => {
   const [name, setName] = useState('');
   const [dir, setDir] = useState('');
-
   const canCreate = name.trim().length > 0 && dir.length > 0;
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.65)',
+      background: 'rgba(0,0,0,0.6)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'blur(2px)',
     }}>
       <div style={{
-        width: 440, background: '#1e2030',
-        border: '1px solid #2e3150',
-        borderRadius: 8,
-        padding: '28px 28px 22px',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+        width: 420,
+        background: 'var(--bg-secondary, #252526)',
+        border: '1px solid var(--border, #3c3c3c)',
+        borderRadius: 6,
+        overflow: 'hidden',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
       }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#d0d0e0', marginBottom: 20 }}>
-          New Project
+        {/* Modal header */}
+        <div style={{
+          padding: '14px 20px',
+          borderBottom: '1px solid var(--border, #3c3c3c)',
+          background: 'var(--bg-tertiary, #2d2d30)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary, #cccccc)' }}>
+            New Project
+          </span>
+          <button onClick={onCancel} style={{
+            background: 'none', border: 'none',
+            color: 'var(--text-muted, #5a5a5a)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', padding: 2, borderRadius: 3,
+          }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
 
-        <label style={labelStyle}>Project Name</label>
-        <input
-          autoFocus
-          type="text"
-          placeholder="MyProject"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && canCreate) onConfirm(name.trim(), dir); if (e.key === 'Escape') onCancel(); }}
-          style={modalInputStyle}
-        />
-
-        <label style={{ ...labelStyle, marginTop: 14 }}>Location</label>
-        <PathInput
-          value={dir}
-          onChange={setDir}
-          mode="folder"
-          placeholder="Choose project folder…"
-        />
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={secondaryBtnStyle}>Cancel</button>
-          <button
-            onClick={() => canCreate && onConfirm(name.trim(), dir)}
-            disabled={!canCreate || loading}
-            style={{
-              ...primaryBtnStyle,
-              opacity: (!canCreate || loading) ? 0.45 : 1,
-              cursor: (!canCreate || loading) ? 'not-allowed' : 'pointer',
+        {/* Modal body */}
+        <div style={{ padding: '20px' }}>
+          <label style={modalLabelStyle}>Project Name</label>
+          <input
+            autoFocus
+            type="text"
+            placeholder="MyGame"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && canCreate) onConfirm(name.trim(), dir);
+              if (e.key === 'Escape') onCancel();
             }}
-          >
-            {loading ? 'Creating…' : 'Create'}
-          </button>
+            style={modalInputStyle}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--border-focus, #4d9eff)'; }}
+            onBlur={e  => { e.currentTarget.style.borderColor = 'var(--border, #3c3c3c)'; }}
+          />
+
+          <label style={{ ...modalLabelStyle, marginTop: 14 }}>Location</label>
+          <PathInput
+            value={dir}
+            onChange={setDir}
+            mode="folder"
+            placeholder="Choose project folder…"
+          />
+
+          <div style={{
+            display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end',
+            paddingTop: 16, borderTop: '1px solid var(--border-subtle, #2d2d30)',
+          }}>
+            <button onClick={onCancel} style={cancelBtnStyle}>Cancel</button>
+            <button
+              onClick={() => canCreate && onConfirm(name.trim(), dir)}
+              disabled={!canCreate || loading}
+              style={{
+                ...createBtnStyle,
+                opacity: (!canCreate || loading) ? 0.4 : 1,
+                cursor: (!canCreate || loading) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {loading ? 'Creating…' : 'Create Project'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-// ── Project card ──────────────────────────────────────────────
+// ── Project row ───────────────────────────────────────────────
 
-const ProjectCard: React.FC<{
+const ProjectRow: React.FC<{
   project: RecentProject;
+  selected: boolean;
+  onSelect: () => void;
   onOpen: () => void;
   onRemove: (e: React.MouseEvent) => void;
-}> = ({ project, onOpen, onRemove }) => {
+}> = ({ project, selected, onSelect, onOpen, onRemove }) => {
+  const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -108,93 +133,119 @@ const ProjectCard: React.FC<{
     year: 'numeric', month: 'short', day: 'numeric',
   });
 
+  const pathShort = project.path.replace(/\\/g, '/').replace(/\/[^/]+\.fluxproj$/, '');
+
   return (
     <div
-      onClick={onOpen}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        width: 148,
-        background: '#1a1c2e',
-        border: '1px solid #2a2d45',
-        borderRadius: 6,
-        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '0 16px',
+        height: 52,
         cursor: 'pointer',
-        transition: 'border-color 120ms',
-        position: 'relative',
+        background: selected
+          ? 'var(--bg-active, #094771)'
+          : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        borderLeft: `2px solid ${selected ? 'var(--accent, #4d9eff)' : 'transparent'}`,
+        transition: 'background 80ms, border-color 80ms',
         userSelect: 'none',
+        flexShrink: 0,
       }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = '#4a4e7a')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = '#2a2d45')}
     >
-      {/* Thumbnail placeholder */}
+      {/* Icon */}
       <div style={{
-        height: 90,
-        background: 'linear-gradient(145deg, #1e2038 0%, #141625 100%)',
+        width: 34, height: 34, borderRadius: 6, flexShrink: 0,
+        background: selected ? 'rgba(77,158,255,0.2)' : 'var(--bg-tertiary, #2d2d30)',
+        border: `1px solid ${selected ? 'rgba(77,158,255,0.4)' : 'var(--border, #3c3c3c)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderBottom: '1px solid #2a2d45',
+        color: selected ? 'var(--accent, #4d9eff)' : 'var(--text-muted, #5a5a5a)',
+        fontSize: 16,
       }}>
-        <div style={{ opacity: 0.25, color: '#7080b0' }}>
-          {Icons.folder}
+        {Icons.folder}
+      </div>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 12, fontWeight: 600,
+          color: selected ? 'var(--accent, #4d9eff)' : 'var(--text-primary, #cccccc)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {project.name}
+        </div>
+        <div style={{
+          fontSize: 10, marginTop: 2,
+          color: 'var(--text-muted, #5a5a5a)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {pathShort}
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ padding: '7px 8px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: '#c8cce0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            maxWidth: 104,
-          }}>
-            {project.name}
-          </div>
-          <div style={{ fontSize: 9, color: '#5a5e80', marginTop: 1 }}>{dateStr}</div>
-        </div>
+      {/* Date */}
+      <div style={{
+        fontSize: 10, color: 'var(--text-muted, #5a5a5a)',
+        flexShrink: 0, width: 80, textAlign: 'right',
+      }}>
+        {dateStr}
+      </div>
 
-        {/* Context menu button */}
-        <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
-            style={{
-              background: 'none', border: 'none',
-              color: '#5a5e80', cursor: 'pointer',
-              padding: '2px 3px', borderRadius: 3,
-              display: 'flex', alignItems: 'center', gap: 1,
-              lineHeight: 1,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#9098c0')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#5a5e80')}
-            title="Options"
-          >
-            <span style={{ fontSize: 13, letterSpacing: -1 }}>···</span>
-          </button>
-          {menuOpen && (
-            <div style={{
-              position: 'absolute', right: 0, top: '100%',
-              background: '#1e2030', border: '1px solid #2e3150',
-              borderRadius: 5, overflow: 'hidden',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-              zIndex: 100, minWidth: 120,
-            }}>
-              <button
-                onClick={e => { setMenuOpen(false); onOpen(); }}
-                style={ctxItemStyle}
-              >
-                {Icons.folderOpen}
-                <span>Open</span>
-              </button>
-              <div style={{ height: 1, background: '#2e3150', margin: '2px 0' }} />
-              <button
-                onClick={e => { setMenuOpen(false); onRemove(e); }}
-                style={{ ...ctxItemStyle, color: '#e05a5a' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(224,90,90,0.1)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-              >
-                {Icons.trash}
-                <span>Remove</span>
-              </button>
-            </div>
-          )}
-        </div>
+      {/* Context menu */}
+      <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
+          style={{
+            background: (hovered || menuOpen) ? 'var(--bg-hover, #2d2d30)' : 'transparent',
+            border: '1px solid',
+            borderColor: (hovered || menuOpen) ? 'var(--border, #3c3c3c)' : 'transparent',
+            color: 'var(--text-secondary, #9d9d9d)',
+            cursor: 'pointer', padding: '3px 6px', borderRadius: 3,
+            display: 'flex', alignItems: 'center',
+            lineHeight: 1, fontSize: 13,
+            opacity: (hovered || menuOpen) ? 1 : 0,
+            transition: 'opacity 80ms',
+          }}
+          title="Options"
+        >
+          ···
+        </button>
+        {menuOpen && (
+          <div style={{
+            position: 'absolute', right: 0, top: '100%', marginTop: 2,
+            background: 'var(--bg-dropdown, #252526)',
+            border: '1px solid var(--border-focus, #4d9eff)',
+            borderRadius: 3, overflow: 'hidden',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+            zIndex: 100, minWidth: 130,
+            animation: 'dropdownFadeIn 80ms ease',
+          }}>
+            <button
+              onClick={e => { e.stopPropagation(); setMenuOpen(false); onOpen(); }}
+              style={ctxItemStyle}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover, #2d2d30)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              {Icons.folderOpen}
+              <span>Open</span>
+            </button>
+            <div style={{ height: 1, background: 'var(--border, #3c3c3c)', margin: '2px 0' }} />
+            <button
+              onClick={e => { e.stopPropagation(); setMenuOpen(false); onRemove(e); }}
+              style={{ ...ctxItemStyle, color: 'var(--accent-red, #f14c4c)' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(241,76,76,0.08)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              {Icons.trash}
+              <span>Remove</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -207,9 +258,10 @@ export const ProjectManagerPanel: React.FC<{
 }> = ({ onProjectOpened }) => {
   const { log } = useEditor();
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
-  const [activePage] = useState<NavPage>('projects');
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     projectManager.getRecentProjects().then(setRecentProjects).catch(() => {});
@@ -265,149 +317,239 @@ export const ProjectManagerPanel: React.FC<{
     e.stopPropagation();
     await projectManager.removeFromRecent(path);
     setRecentProjects(prev => prev.filter(r => r.path !== path));
+    if (selectedPath === path) setSelectedPath(null);
   };
 
+  const filtered = search
+    ? recentProjects.filter(p =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.path.toLowerCase().includes(search.toLowerCase())
+      )
+    : recentProjects;
+
+  const selectedProject = recentProjects.find(p => p.path === selectedPath) ?? null;
+
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', background: '#13141f', overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', background: 'var(--bg-primary, #1a1a1a)', overflow: 'hidden' }}>
 
       {/* ── Sidebar ── */}
       <div style={{
-        width: 148,
+        width: 180,
         flexShrink: 0,
-        background: '#0e0f1a',
-        borderRight: '1px solid #1e2035',
+        background: 'var(--bg-secondary, #252526)',
+        borderRight: '1px solid var(--border, #3c3c3c)',
         display: 'flex',
         flexDirection: 'column',
       }}>
-        {/* Logo */}
+        {/* Branding */}
         <div style={{
-          padding: '28px 16px 24px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-          borderBottom: '1px solid #1e2035',
+          padding: '32px 20px 24px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          borderBottom: '1px solid var(--border, #3c3c3c)',
         }}>
           <div style={{
-            width: 52, height: 52,
-            background: 'linear-gradient(135deg, #3a4fff 0%, #7c3aff 100%)',
-            borderRadius: 12,
+            width: 48, height: 48, borderRadius: 10, flexShrink: 0,
+            background: 'linear-gradient(135deg, #4d9eff 0%, #3a6fcf 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 16px rgba(80,80,255,0.35)',
+            boxShadow: '0 4px 16px rgba(77,158,255,0.3)',
+            color: '#fff', fontSize: 22,
           }}>
             {Icons.zap}
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#d0d4f0', letterSpacing: 0.3 }}>FLUXION</div>
-            <div style={{ fontSize: 9, color: '#555870', letterSpacing: 1.5, marginTop: 1 }}>ENGINE</div>
+            <div style={{
+              fontSize: 12, fontWeight: 800, letterSpacing: 2,
+              color: 'var(--text-primary, #cccccc)',
+            }}>
+              FLUXION
+            </div>
+            <div style={{
+              fontSize: 9, color: 'var(--text-muted, #5a5a5a)',
+              letterSpacing: 1.5, marginTop: 2, textTransform: 'uppercase',
+            }}>
+              Engine v3
+            </div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: '12px 0' }}>
-          {NAV_ITEMS.map(item => (
-            <div
-              key={item.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9,
-                padding: '9px 16px',
-                fontSize: 12,
-                fontWeight: activePage === item.id ? 600 : 400,
-                color: activePage === item.id ? '#d0d4f0' : '#5a5e80',
-                background: activePage === item.id ? 'rgba(80,100,255,0.15)' : 'none',
-                borderLeft: activePage === item.id ? '2px solid #5064ff' : '2px solid transparent',
-                cursor: 'default',
-                userSelect: 'none',
-              }}
-            >
-              {item.icon}
-              {item.label}
-            </div>
-          ))}
+        {/* Nav section */}
+        <nav style={{ flex: 1, padding: '8px 0' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 16px',
+            fontSize: 11, fontWeight: 600,
+            color: 'var(--accent, #4d9eff)',
+            background: 'var(--accent-dim, rgba(77,158,255,0.1))',
+            borderLeft: '2px solid var(--accent, #4d9eff)',
+            userSelect: 'none',
+          }}>
+            {Icons.folder}
+            Projects
+          </div>
         </nav>
 
-        {/* Footer */}
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #1e2035' }}>
-          <div style={{ fontSize: 10, color: '#3a3d55', textAlign: 'center', letterSpacing: 0.3 }}>
-            v3.0.0
+        {/* Bottom info */}
+        <div style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border, #3c3c3c)',
+        }}>
+          <div style={{ fontSize: 9, color: 'var(--text-muted, #5a5a5a)', textAlign: 'center', letterSpacing: 0.5 }}>
+            {recentProjects.length} project{recentProjects.length !== 1 ? 's' : ''}
           </div>
         </div>
       </div>
 
-      {/* ── Main Content ── */}
+      {/* ── Main ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Header bar */}
+        {/* Toolbar */}
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '18px 28px 14px',
-          borderBottom: '1px solid #1e2035',
-          flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 16px',
+          height: 44, flexShrink: 0,
+          borderBottom: '1px solid var(--border, #3c3c3c)',
+          background: 'var(--bg-secondary, #252526)',
         }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#d0d4f0', letterSpacing: 0.2 }}>
-            Projects Library
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary, #cccccc)', marginRight: 8 }}>
+            Recent Projects
+          </span>
+
+          {/* Search */}
+          <div style={{ flex: 1, position: 'relative', maxWidth: 260 }}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"
+              style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted, #5a5a5a)', pointerEvents: 'none' }}>
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Filter projects…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: '100%', height: 26,
+                background: 'var(--bg-input, #1e1e1e)',
+                border: '1px solid var(--border, #3c3c3c)',
+                borderRadius: 3,
+                color: 'var(--text-primary, #cccccc)',
+                padding: '0 24px 0 26px',
+                fontSize: 11, outline: 'none',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = 'var(--border-focus, #4d9eff)'; }}
+              onBlur={e  => { e.currentTarget.style.borderColor = 'var(--border, #3c3c3c)'; }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{
+                position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', color: 'var(--text-muted, #5a5a5a)',
+                cursor: 'pointer', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center',
+              }}>
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                  <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={() => setShowNewModal(true)}
-              disabled={loading}
-              style={primaryBtnStyle}
-            >
-              {Icons.plus}
-              <span style={{ marginLeft: 5 }}>New Project</span>
-            </button>
-            <button
-              onClick={handleAddProject}
-              disabled={loading}
-              style={secondaryBtnStyle}
-            >
-              {Icons.folderOpen}
-              <span style={{ marginLeft: 5 }}>Add Project</span>
-            </button>
-          </div>
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            onClick={() => setShowNewModal(true)}
+            disabled={loading}
+            style={createBtnStyle}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            New Project
+          </button>
+          <button
+            onClick={handleAddProject}
+            disabled={loading}
+            style={openBtnStyle}
+          >
+            {Icons.folderOpen}
+            Open
+          </button>
         </div>
 
-        {/* Project grid */}
+        {/* Column headers */}
         <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '20px 28px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '0 16px 0 64px',
+          height: 26, flexShrink: 0,
+          borderBottom: '1px solid var(--border, #3c3c3c)',
+          background: 'var(--bg-tertiary, #2d2d30)',
         }}>
-          {recentProjects.length === 0 ? (
+          <span style={{ flex: 1, fontSize: 10, color: 'var(--text-muted, #5a5a5a)', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Name</span>
+          <span style={{ width: 80, fontSize: 10, color: 'var(--text-muted, #5a5a5a)', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'right', paddingRight: 34 }}>Modified</span>
+        </div>
+
+        {/* Project list */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {filtered.length === 0 ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', height: '60%',
-              gap: 12, color: '#3a3d55',
+              justifyContent: 'center', height: '60%', gap: 10,
             }}>
-              <div style={{ opacity: 0.4 }}>{Icons.folder}</div>
-              <div style={{ fontSize: 13, color: '#4a4e70' }}>No projects yet</div>
-              <div style={{ fontSize: 11, color: '#3a3d55' }}>Create a new project or add an existing one</div>
+              <div style={{ opacity: 0.2, color: 'var(--text-secondary, #9d9d9d)', fontSize: 32 }}>{Icons.folder}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary, #9d9d9d)' }}>
+                {search ? 'No projects match your search' : 'No recent projects'}
+              </div>
+              {!search && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted, #5a5a5a)' }}>
+                  Create or open an existing project to get started
+                </div>
+              )}
             </div>
           ) : (
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 14,
-              alignContent: 'flex-start',
-            }}>
-              {recentProjects.map(project => (
-                <ProjectCard
-                  key={project.path}
-                  project={project}
-                  onOpen={() => handleOpenRecent(project)}
-                  onRemove={(e) => handleRemoveRecent(e, project.path)}
-                />
-              ))}
-            </div>
+            filtered.map(project => (
+              <ProjectRow
+                key={project.path}
+                project={project}
+                selected={selectedPath === project.path}
+                onSelect={() => setSelectedPath(project.path)}
+                onOpen={() => handleOpenRecent(project)}
+                onRemove={e => handleRemoveRecent(e, project.path)}
+              />
+            ))
           )}
         </div>
 
-        {loading && (
-          <div style={{
-            position: 'absolute', bottom: 16, right: 24,
-            fontSize: 11, color: '#5a5e80', display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            {Icons.refresh}
-            <span>Loading…</span>
+        {/* Status bar / open button */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 16px',
+          height: 36, flexShrink: 0,
+          borderTop: '1px solid var(--border, #3c3c3c)',
+          background: 'var(--bg-secondary, #252526)',
+        }}>
+          <span style={{ fontSize: 10, color: 'var(--text-muted, #5a5a5a)', fontFamily: 'var(--font-mono)' }}>
+            {selectedProject
+              ? selectedProject.path.replace(/\\/g, '/')
+              : `${filtered.length} project${filtered.length !== 1 ? 's' : ''}`}
+          </span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {loading && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted, #5a5a5a)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {Icons.refresh} Loading…
+              </span>
+            )}
+            <button
+              onClick={() => selectedProject && handleOpenRecent(selectedProject)}
+              disabled={!selectedProject || loading}
+              style={{
+                ...createBtnStyle,
+                opacity: (!selectedProject || loading) ? 0.35 : 1,
+                cursor: (!selectedProject || loading) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Open Project
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* New Project Modal */}
@@ -424,58 +566,70 @@ export const ProjectManagerPanel: React.FC<{
 
 // ── Shared styles ─────────────────────────────────────────────
 
-const primaryBtnStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center',
-  padding: '7px 14px',
-  borderRadius: 5,
+const createBtnStyle: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '0 10px', height: 26,
+  borderRadius: 3,
   border: 'none',
-  background: '#3a4fff',
+  background: 'var(--accent, #4d9eff)',
   color: '#fff',
-  fontSize: 12,
-  fontWeight: 600,
+  fontSize: 11, fontWeight: 600,
   cursor: 'pointer',
-  transition: 'opacity 120ms',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
 };
 
-const secondaryBtnStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center',
-  padding: '7px 14px',
-  borderRadius: 5,
-  border: '1px solid #2e3150',
-  background: '#1a1c2e',
-  color: '#8a8eb0',
-  fontSize: 12,
-  fontWeight: 500,
+const openBtnStyle: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '0 10px', height: 26,
+  borderRadius: 3,
+  border: '1px solid var(--border, #3c3c3c)',
+  background: '#333337',
+  color: 'var(--text-primary, #cccccc)',
+  fontSize: 11, fontWeight: 500,
   cursor: 'pointer',
-  transition: 'border-color 120ms',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
 };
 
-const labelStyle: React.CSSProperties = {
+const cancelBtnStyle: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '0 12px', height: 26,
+  borderRadius: 3,
+  border: '1px solid var(--border, #3c3c3c)',
+  background: 'transparent',
+  color: 'var(--text-secondary, #9d9d9d)',
+  fontSize: 11, cursor: 'pointer',
+  flexShrink: 0,
+};
+
+const modalLabelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 11,
-  color: '#6870a0',
+  fontSize: 11, fontWeight: 500,
+  color: 'var(--text-secondary, #9d9d9d)',
   marginBottom: 5,
-  fontWeight: 500,
 };
 
 const modalInputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '8px 10px',
-  borderRadius: 5,
-  border: '1px solid #2e3150',
-  background: '#141625',
-  color: '#d0d0e0',
-  fontSize: 12,
-  outline: 'none',
+  padding: '0 10px',
+  height: 26,
+  borderRadius: 3,
+  border: '1px solid var(--border, #3c3c3c)',
+  background: 'var(--bg-input, #1e1e1e)',
+  color: 'var(--text-primary, #cccccc)',
+  fontSize: 11, outline: 'none',
   boxSizing: 'border-box',
+  marginBottom: 0,
+  fontFamily: 'inherit',
 };
 
 const ctxItemStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8,
+  display: 'flex', alignItems: 'center', gap: 7,
   width: '100%', textAlign: 'left',
-  padding: '7px 12px',
-  background: 'none', border: 'none',
-  color: '#9098c0', fontSize: 11,
+  padding: '0 10px', height: 24,
+  background: 'transparent', border: 'none',
+  color: 'var(--text-primary, #cccccc)', fontSize: 11,
   cursor: 'pointer',
-  transition: 'background 80ms',
+  whiteSpace: 'nowrap',
 };

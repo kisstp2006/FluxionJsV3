@@ -3,23 +3,34 @@ import React from 'react';
 interface PanelHeaderProps {
   title: string;
   actions?: React.ReactNode;
+  icon?: React.ReactNode;
 }
 
-export const PanelHeader: React.FC<PanelHeaderProps> = ({ title, actions }) => (
+export const PanelHeader: React.FC<PanelHeaderProps> = ({ title, actions, icon }) => (
   <div style={{
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '8px 12px',
+    padding: '0 10px',
+    height: '28px',
+    minHeight: '28px',
     fontWeight: 600,
-    fontSize: '12px',
+    fontSize: '11px',
     color: 'var(--text-secondary)',
     textTransform: 'uppercase',
-    letterSpacing: '0.5px',
+    letterSpacing: '0.6px',
     borderBottom: '1px solid var(--border)',
     background: 'var(--bg-secondary)',
+    flexShrink: 0,
   }}>
-    <span>{title}</span>
-    {actions}
+    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+      {icon}
+      {title}
+    </span>
+    {actions && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+        {actions}
+      </div>
+    )}
   </div>
 );

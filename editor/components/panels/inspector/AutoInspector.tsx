@@ -226,7 +226,7 @@ const CurveEditorWidget: React.FC<{
     }
 
     // Curve path (cubic bezier via tangents)
-    ctx.strokeStyle = '#58a6ff';
+    ctx.strokeStyle = '#61afef';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i <= kfs.length - 1; i++) {
@@ -253,7 +253,7 @@ const CurveEditorWidget: React.FC<{
       ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
       ctx.fillStyle = draggingRef.current === i ? '#f0a500' : '#fff';
       ctx.fill();
-      ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#61afef'; ctx.lineWidth = 1.5;
       ctx.stroke();
     }
   });

@@ -29,16 +29,17 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
             left: pos.x,
             top: pos.y,
             transform: 'translateX(-50%)',
-            background: 'var(--bg-tertiary)',
+            background: '#333337',
             border: '1px solid var(--border)',
-            borderRadius: '4px',
-            padding: '4px 8px',
+            borderRadius: '3px',
+            padding: '3px 7px',
             fontSize: '11px',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-primary)',
             whiteSpace: 'nowrap',
             zIndex: 10001,
             pointerEvents: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            boxShadow: '0 3px 10px rgba(0,0,0,0.5)',
+            animation: 'fadeIn 80ms ease',
           }}
         >
           {text}

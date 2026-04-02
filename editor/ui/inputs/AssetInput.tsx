@@ -135,8 +135,9 @@ export const AssetInput: React.FC<AssetInputProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '5px',
-            background: isDragOver ? 'rgba(88,166,255,0.08)' : 'var(--bg-input, #0d1117)',
-            border: `1px solid ${isDragOver ? 'var(--accent, #58a6ff)' : 'var(--border, #30363d)'}`,
+            background: isDragOver ? 'var(--accent-dim, rgba(77,158,255,0.10))' : 'var(--bg-input, #1e1e1e)',
+            border: `1px solid ${isDragOver ? 'var(--accent, #4d9eff)' : 'var(--border, #3c3c3c)'}`,
+            height: 'var(--input-height, 22px)',
             borderRadius: '3px',
             padding: '0 6px',
             minHeight: '26px',
@@ -147,7 +148,7 @@ export const AssetInput: React.FC<AssetInputProps> = ({
         >
           {/* Hand / drag indicator */}
           <span style={{
-            color: isDragOver ? 'var(--accent, #58a6ff)' : 'var(--text-muted, #484f58)',
+            color: isDragOver ? 'var(--accent, #4d9eff)' : 'var(--text-muted, #5a5a5a)',
             flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
@@ -161,7 +162,7 @@ export const AssetInput: React.FC<AssetInputProps> = ({
             flex: 1,
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: '10px',
-            color: hasValue ? 'var(--accent, #58a6ff)' : 'var(--text-muted, #484f58)',
+            color: hasValue ? 'var(--accent, #4d9eff)' : 'var(--text-muted, #5a5a5a)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -178,17 +179,17 @@ export const AssetInput: React.FC<AssetInputProps> = ({
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--text-muted, #484f58)',
+                color: 'var(--text-muted, #5a5a5a)',
                 cursor: 'pointer',
                 padding: '2px',
                 lineHeight: 1,
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
-                transition: 'color 100ms ease',
+                transition: 'color var(--transition-fast, 80ms ease)',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary, #e6edf3)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #484f58)')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary, #cccccc)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #5a5a5a)')}
             >
               <DiamondIcon />
             </button>
@@ -196,7 +197,7 @@ export const AssetInput: React.FC<AssetInputProps> = ({
 
           {/* Browse icon (folder) — always visible on hover, subtle otherwise */}
           <span style={{
-            color: 'var(--text-muted, #484f58)',
+            color: 'var(--text-muted, #5a5a5a)',
             flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
@@ -212,9 +213,9 @@ export const AssetInput: React.FC<AssetInputProps> = ({
             width: THUMB_SIZE,
             height: THUMB_SIZE,
             flexShrink: 0,
-            border: `1px solid ${isDragOver ? 'var(--accent, #58a6ff)' : 'var(--border, #30363d)'}`,
+            border: `1px solid ${isDragOver ? 'var(--accent, #4d9eff)' : 'var(--border, #3c3c3c)'}`,
             borderRadius: '3px',
-            background: 'var(--bg-input, #0d1117)',
+            background: 'var(--bg-input, #1e1e1e)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -234,11 +235,11 @@ export const AssetInput: React.FC<AssetInputProps> = ({
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : hasValue ? (
-            <span style={{ opacity: 0.4, color: 'var(--text-primary, #e6edf3)' }}>
+            <span style={{ opacity: 0.4, color: 'var(--text-primary, #cccccc)' }}>
               {resolveIcon(AssetTypeRegistry.getByType(primaryType)?.icon || 'file')}
             </span>
           ) : (
-            <span style={{ opacity: 0.2, color: 'var(--text-muted, #484f58)', fontSize: '10px', textAlign: 'center', padding: '4px' }}>
+            <span style={{ opacity: 0.2, color: 'var(--text-muted, #5a5a5a)', fontSize: '10px', textAlign: 'center', padding: '4px' }}>
               {resolveIcon(AssetTypeRegistry.getByType(primaryType)?.icon || 'file')}
             </span>
           )}

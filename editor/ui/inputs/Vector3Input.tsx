@@ -32,15 +32,15 @@ export const Vector3Input: React.FC<Vector3InputProps> = ({
 }) => (
   <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1 }}>
-      <span style={axisLabelStyle('var(--axis-x, #f85149)')}>X</span>
+      <span style={axisLabelStyle('var(--axis-x, #e06c75)')}>X</span>
       <NumberInput axis="x" value={parseFloat(value.x.toFixed(3))} onChange={(v) => onChange('x', v)} step={step} />
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1 }}>
-      <span style={axisLabelStyle('var(--axis-y, #3fb950)')}>Y</span>
+      <span style={axisLabelStyle('var(--axis-y, #98c379)')}>Y</span>
       <NumberInput axis="y" value={parseFloat(value.y.toFixed(3))} onChange={(v) => onChange('y', v)} step={step} />
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1 }}>
-      <span style={axisLabelStyle('var(--axis-z, #58a6ff)')}>Z</span>
+      <span style={axisLabelStyle('var(--axis-z, #61afef)')}>Z</span>
       <NumberInput axis="z" value={parseFloat(value.z.toFixed(3))} onChange={(v) => onChange('z', v)} step={step} />
     </div>
   </div>

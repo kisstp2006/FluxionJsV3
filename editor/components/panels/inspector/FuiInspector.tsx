@@ -122,7 +122,7 @@ export const FuiInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => {
           <span style={labelStyle}>{fileName}</span>
         </PropertyRow>
         <PropertyRow label="Mode">
-          <span style={{ ...labelStyle, color: '#58a6ff' }}>{doc.mode}</span>
+          <span style={{ ...labelStyle, color: 'var(--accent, #4d9eff)' }}>{doc.mode}</span>
         </PropertyRow>
         <PropertyRow label="Canvas">
           <span style={labelStyle}>{doc.canvas.width} × {doc.canvas.height}</span>
@@ -165,10 +165,10 @@ export const FuiInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => {
             style={{
               width: '100%',
               padding: '7px 12px',
-              border: '1px solid #58a6ff',
-              borderRadius: 4,
-              background: 'rgba(88, 166, 255, 0.1)',
-              color: '#58a6ff',
+              border: '1px solid var(--accent, #4d9eff)',
+              borderRadius: 3,
+              background: 'var(--accent-dim, rgba(77, 158, 255, 0.1))',
+              color: 'var(--accent, #4d9eff)',
               cursor: 'pointer',
               fontSize: 11,
               fontWeight: 600,

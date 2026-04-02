@@ -59,10 +59,10 @@ const PanelWindowApp: React.FC = () => {
         {/* Minimal title bar */}
         <div style={{
           height: 32, flexShrink: 0,
-          background: 'var(--bg-secondary, #161b22)',
-          borderBottom: '1px solid var(--border, #2a2d35)',
+          background: 'var(--bg-secondary, #252526)',
+          borderBottom: '1px solid var(--border, #3c3c3c)',
           display: 'flex', alignItems: 'center',
-          fontSize: 12, color: 'var(--text-secondary, #8b949e)', userSelect: 'none',
+          fontSize: 11, color: 'var(--text-secondary, #9d9d9d)', userSelect: 'none',
           WebkitAppRegion: 'drag',
         } as React.CSSProperties}>
           <span style={{ display: 'flex', alignItems: 'center', padding: '0 12px', flex: 1, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -72,8 +72,8 @@ const PanelWindowApp: React.FC = () => {
           {/* Window controls */}
           <div style={{ display: 'flex', flexShrink: 0, WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {([
-              { label: '─', title: 'Minimize', hover: 'var(--bg-hover, #21262d)', onClick: () => (window as any).fluxionAPI?.minimize() },
-              { label: '□', title: 'Maximize', hover: 'var(--bg-hover, #21262d)', onClick: () => (window as any).fluxionAPI?.maximize() },
+              { label: '─', title: 'Minimize', hover: 'var(--bg-hover, #2d2d30)', onClick: () => (window as any).fluxionAPI?.minimize() },
+              { label: '□', title: 'Maximize', hover: 'var(--bg-hover, #2d2d30)', onClick: () => (window as any).fluxionAPI?.maximize() },
               { label: '✕', title: 'Close',    hover: '#c0392b',                  onClick: () => {
                 if ((window as any).__TAURI__) {
                   (window as any).__TAURI__.event.emit('fluxion:panel-window-closed', panelId).catch(() => {});
@@ -82,9 +82,9 @@ const PanelWindowApp: React.FC = () => {
               } },
             ] as const).map(({ label, title, hover, onClick }) => (
               <button key={title} onClick={onClick} title={title}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary, #8b949e)', width: 40, height: 32, cursor: 'pointer', fontSize: 12 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = hover; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary, #e6edf3)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary, #8b949e)'; }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary, #9d9d9d)', width: 40, height: 32, cursor: 'pointer', fontSize: 12 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = hover; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary, #cccccc)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary, #9d9d9d)'; }}
               >{label}</button>
             ))}
           </div>

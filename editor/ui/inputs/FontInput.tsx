@@ -59,10 +59,11 @@ export const FontInput: React.FC<FontInputProps> = ({
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: 'var(--bg-input, #0d1117)',
-    border: '1px solid var(--border, #30363d)',
+    background: 'var(--bg-input, #1e1e1e)',
+    border: '1px solid var(--border, #3c3c3c)',
     borderRadius: 3,
-    color: 'var(--text-primary, #e6edf3)',
+    color: 'var(--text-primary, #cccccc)',
+    height: 'var(--input-height, 22px)',
     fontFamily: 'var(--font-mono, monospace)',
     fontSize: 10,
     padding: '3px 6px',
@@ -85,7 +86,7 @@ export const FontInput: React.FC<FontInputProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{
             fontSize: 10,
-            color: 'var(--text-muted, #484f58)',
+            color: 'var(--text-muted, #5a5a5a)',
             flexShrink: 0,
             minWidth: 44,
           }}>

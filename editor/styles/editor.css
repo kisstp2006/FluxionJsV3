@@ -1,34 +1,42 @@
 /* ============================================================
-   FluxionJS V2 — Editor Theme
-   Dark professional UI inspired by s&box + LumixEngine
+   FluxionJS V3 — Editor Theme
+   Cocos Creator / Unity-style professional dark UI
    ============================================================ */
 
 :root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #1c2333;
-  --bg-panel: #13171f;
-  --bg-hover: #1f2937;
-  --bg-active: #253249;
-  --bg-input: #0d1117;
-  --border: #30363d;
-  --border-focus: #58a6ff;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #484f58;
-  --accent: #58a6ff;
-  --accent-hover: #79c0ff;
-  --accent-green: #3fb950;
-  --accent-red: #f85149;
-  --accent-yellow: #d29922;
-  --accent-purple: #bc8cff;
-  --axis-x: #f85149;
-  --axis-y: #3fb950;
-  --axis-z: #58a6ff;
+  --bg-primary:    #1a1a1a;
+  --bg-secondary:  #252526;
+  --bg-tertiary:   #2d2d30;
+  --bg-panel:      #1e1e1e;
+  --bg-hover:      #2d2d30;
+  --bg-active:     #094771;
+  --bg-input:      #1e1e1e;
+  --bg-dropdown:   #252526;
+  --bg-toolbar:    #2d2d30;
+  --border:        #3c3c3c;
+  --border-subtle: #2d2d30;
+  --border-focus:  #4d9eff;
+  --text-primary:   #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-muted:     #5a5a5a;
+  --text-disabled:  #555555;
+  --accent:        #4d9eff;
+  --accent-hover:  #6db3ff;
+  --accent-dim:    rgba(77,158,255,0.15);
+  --accent-green:  #4ec94e;
+  --accent-red:    #f14c4c;
+  --accent-yellow: #cca700;
+  --accent-purple: #c586c0;
+  --axis-x: #e06c75;
+  --axis-y: #98c379;
+  --axis-z: #61afef;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --panel-radius: 6px;
-  --transition: 150ms ease;
+  --panel-radius: 4px;
+  --transition: 120ms ease;
+  --transition-fast: 80ms ease;
+  --input-height: 22px;
+  --input-radius: 3px;
 }
 
 * {
@@ -39,7 +47,7 @@
 
 body {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-primary);
   background: var(--bg-primary);
   overflow: hidden;
@@ -162,19 +170,20 @@ body {
   background: none;
   border: 1px solid transparent;
   color: var(--text-secondary);
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all var(--transition);
+  flex-shrink: 0;
 }
 
 .tool-btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255,255,255,0.08);
   color: var(--text-primary);
 }
 
@@ -189,7 +198,7 @@ body {
 }
 
 .tool-btn.play:hover {
-  background: rgba(63, 185, 80, 0.15);
+  background: rgba(78, 201, 78, 0.12);
 }
 
 #fps-counter {
@@ -299,16 +308,17 @@ body {
 .hierarchy-item {
   display: flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 0 8px;
   padding-left: calc(8px + var(--depth, 0) * 16px);
+  height: 22px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   transition: background var(--transition);
-  gap: 6px;
+  gap: 5px;
 }
 
 .hierarchy-item:hover {
-  background: var(--bg-hover);
+  background: rgba(255,255,255,0.05);
 }
 
 .hierarchy-item.selected {
@@ -338,49 +348,57 @@ body {
 }
 
 .inspector-section {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .inspector-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 0 10px;
+  height: 26px;
   cursor: pointer;
   background: var(--bg-secondary);
+  border-left: 2px solid transparent;
   font-weight: 600;
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   color: var(--text-secondary);
+  transition: background var(--transition), border-color var(--transition);
 }
 
 .inspector-section-header:hover {
   background: var(--bg-hover);
+  border-left-color: var(--accent);
 }
 
 .inspector-section-body {
-  padding: 8px 12px;
+  padding: 6px 10px 8px 10px;
 }
 
 .inspector-row {
   display: flex;
   align-items: center;
-  margin-bottom: 6px;
-  gap: 8px;
+  margin-bottom: 4px;
+  min-height: 22px;
+  gap: 6px;
 }
 
 .inspector-label {
-  width: 80px;
-  min-width: 80px;
+  width: 90px;
+  min-width: 90px;
   font-size: 11px;
   color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspector-value {
   flex: 1;
   display: flex;
-  gap: 4px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .inspector-value input[type="number"],
@@ -388,10 +406,11 @@ body {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--input-radius);
   color: var(--text-primary);
-  padding: 3px 6px;
-  font-size: 12px;
+  padding: var(--input-padding);
+  height: var(--input-height);
+  font-size: 11px;
   font-family: var(--font-mono);
   outline: none;
   transition: border-color var(--transition);
@@ -405,24 +424,9 @@ body {
 .inspector-value input.y { border-left: 2px solid var(--axis-y); }
 .inspector-value input.z { border-left: 2px solid var(--axis-z); }
 
-.inspector-value input[type="checkbox"] {
-  accent-color: var(--accent);
-}
-
-.inspector-value select {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-primary);
-  padding: 3px 6px;
-  font-size: 12px;
-  outline: none;
-}
-
 .inspector-value .color-swatch {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 3px;
   border: 1px solid var(--border);
   cursor: pointer;
@@ -430,21 +434,27 @@ body {
 
 .btn-add-component {
   width: 100%;
-  padding: 8px;
-  margin: 8px 0;
-  background: var(--bg-hover);
+  padding: 0 8px;
+  height: 26px;
+  margin: 6px 0;
+  background: transparent;
   border: 1px dashed var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
+  border-radius: 3px;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   transition: all var(--transition);
 }
 
 .btn-add-component:hover {
   border-color: var(--accent);
+  border-style: solid;
   color: var(--accent);
-  background: var(--bg-active);
+  background: var(--accent-dim);
 }
 
 /* ── Viewport ── */
@@ -482,10 +492,10 @@ body {
   font-weight: 700;
 }
 
-.axis { padding: 2px 6px; border-radius: 3px; }
-.axis.x { background: rgba(248, 81, 73, 0.2); color: var(--axis-x); }
-.axis.y { background: rgba(63, 185, 80, 0.2); color: var(--axis-y); }
-.axis.z { background: rgba(88, 166, 255, 0.2); color: var(--axis-z); }
+.axis { padding: 1px 5px; border-radius: 2px; font-size: 10px; font-weight: 700; }
+.axis.x { background: var(--axis-x-bg); color: var(--axis-x); }
+.axis.y { background: var(--axis-y-bg); color: var(--axis-y); }
+.axis.z { background: var(--axis-z-bg); color: var(--axis-z); }
 
 #viewport-tabs {
   position: absolute;
@@ -495,24 +505,29 @@ body {
 }
 
 .tab {
-  background: var(--bg-secondary);
+  background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
-  padding: 6px 16px;
+  padding: 0 14px;
+  height: 30px;
   cursor: pointer;
-  font-size: 12px;
-  transition: all var(--transition);
+  font-size: 11px;
+  transition: color var(--transition), background var(--transition);
+  display: flex;
+  align-items: center;
 }
 
 .tab:hover {
   color: var(--text-primary);
+  background: rgba(255,255,255,0.04);
 }
 
 .tab.active {
   color: var(--text-primary);
+  font-weight: 600;
   border-bottom-color: var(--accent);
-  background: rgba(13, 17, 23, 0.8);
+  background: var(--bg-panel);
 }
 
 /* ── Bottom Panel ── */

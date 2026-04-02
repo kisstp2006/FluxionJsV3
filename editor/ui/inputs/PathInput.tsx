@@ -99,11 +99,11 @@ export const PathInput: React.FC<PathInputProps> = ({
         flex: 1,
         display: 'flex',
         alignItems: 'center',
-        background: disabled ? 'var(--bg-panel)' : 'var(--bg-input, #0d1117)',
-        border: '1px solid var(--border, #30363d)',
+        background: disabled ? 'var(--bg-tertiary)' : 'var(--bg-input, #1e1e1e)',
+        border: '1px solid var(--border, #3c3c3c)',
         borderRadius: 3,
         padding: '0 6px',
-        minHeight: 26,
+        height: 'var(--input-height, 22px)',
         overflow: 'hidden',
         opacity: disabled ? 0.5 : 1,
       }}>
@@ -118,7 +118,7 @@ export const PathInput: React.FC<PathInputProps> = ({
             background: 'none',
             border: 'none',
             outline: 'none',
-            color: hasValue ? 'var(--text-primary, #e6edf3)' : 'var(--text-muted, #484f58)',
+            color: hasValue ? 'var(--text-primary, #cccccc)' : 'var(--text-muted, #5a5a5a)',
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: 10,
             padding: 0,
@@ -132,7 +132,7 @@ export const PathInput: React.FC<PathInputProps> = ({
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--text-muted, #484f58)',
+              color: 'var(--text-muted, #5a5a5a)',
               cursor: 'pointer',
               padding: '2px',
               lineHeight: 1,
@@ -140,8 +140,8 @@ export const PathInput: React.FC<PathInputProps> = ({
               display: 'flex',
               alignItems: 'center',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary, #e6edf3)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #484f58)')}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary, #cccccc)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #5a5a5a)')}
           >
             <XIcon />
           </button>
@@ -157,18 +157,19 @@ export const PathInput: React.FC<PathInputProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          padding: '4px 8px',
-          background: 'var(--bg-hover, #1e2028)',
-          border: '1px solid var(--border, #30363d)',
+          padding: '0 8px',
+          height: 'var(--input-height, 22px)',
+          background: '#333337',
+          border: '1px solid var(--border, #3c3c3c)',
           borderRadius: 3,
-          color: 'var(--text-secondary, #c9d1d9)',
+          color: 'var(--text-secondary, #9d9d9d)',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          fontSize: 10,
+          fontSize: 11,
           flexShrink: 0,
           opacity: disabled ? 0.5 : 1,
         }}
-        onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent, #58a6ff)'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border, #30363d)'; }}
+        onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent, #4d9eff)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border, #3c3c3c)'; }}
       >
         {mode === 'folder' ? <FolderIcon /> : <FileIcon />}
         <span>…</span>

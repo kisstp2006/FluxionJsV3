@@ -87,17 +87,18 @@ const MenuRow: React.FC<{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '6px 12px',
+        padding: '0 10px',
+        height: '24px',
         cursor: item.disabled ? 'default' : 'pointer',
         color: item.disabled ? 'var(--text-muted)' : 'var(--text-primary)',
-        fontSize: '12px',
+        fontSize: '11px',
         userSelect: 'none',
         position: 'relative',
-        background: subPos ? 'var(--bg-hover)' : 'transparent',
-        transition: 'background 100ms ease',
+        background: subPos ? 'var(--bg-active)' : 'transparent',
+        transition: 'background var(--transition-fast)',
       }}
       onMouseOver={(e) => {
-        if (!item.disabled) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
+        if (!item.disabled) (e.currentTarget as HTMLElement).style.background = subPos ? 'var(--bg-active)' : 'var(--bg-hover)';
       }}
       onMouseOut={(e) => {
         if (!subPos) (e.currentTarget as HTMLElement).style.background = 'transparent';
@@ -169,13 +170,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClo
         left: pos.x,
         top: pos.y,
         zIndex: 10000,
-        background: 'var(--bg-secondary)',
+        background: 'var(--bg-dropdown)',
         border: '1px solid var(--border)',
-        borderRadius: '6px',
-        padding: '4px 0',
-        minWidth: '180px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        animation: 'fadeIn 0.1s ease',
+        borderRadius: '3px',
+        padding: '3px 0',
+        minWidth: '170px',
+        boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+        animation: 'dropdownFadeIn 80ms ease',
       }}
     >
       {items.map((item, i) =>

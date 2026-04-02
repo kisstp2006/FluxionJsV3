@@ -34,12 +34,12 @@ export const ProfilerPanel: React.FC = () => {
     const w = canvas.width;
     const h = canvas.height;
 
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, w, h);
 
     // 16ms line (60fps)
     const targetY = h - (16 / 33) * h;
-    ctx.strokeStyle = '#3fb950';
+    ctx.strokeStyle = '#4ec94e';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -50,7 +50,7 @@ export const ProfilerPanel: React.FC = () => {
 
     // 33ms line (30fps)
     const target30Y = h - (33 / 33) * h;
-    ctx.strokeStyle = '#f85149';
+    ctx.strokeStyle = '#f14c4c';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -66,12 +66,12 @@ export const ProfilerPanel: React.FC = () => {
       const barH = Math.min((val / 33) * h, h);
       const x = i * barWidth;
 
-      ctx.fillStyle = val > 16 ? (val > 33 ? '#f85149' : '#d29922') : '#58a6ff';
+      ctx.fillStyle = val > 16 ? (val > 33 ? '#f14c4c' : '#cca700') : '#4d9eff';
       ctx.fillRect(x, h - barH, barWidth - 1, barH);
     }
 
     // Labels
-    ctx.fillStyle = '#3fb950';
+    ctx.fillStyle = '#4ec94e';
     ctx.font = '9px monospace';
     ctx.fillText('60fps', w - 30, targetY - 2);
 

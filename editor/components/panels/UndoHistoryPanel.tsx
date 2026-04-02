@@ -218,7 +218,7 @@ const HistoryRow: React.FC<HistoryRowProps> = ({ label, isCurrent, isPast, isFut
       }}
     >
       {/* Icon */}
-      <span style={{ fontSize: '11px', color: isScene ? 'var(--text-muted, #555)' : isFuture ? 'var(--accent-yellow)' : 'var(--accent-blue, #58a6ff)', minWidth: '14px' }}>
+      <span style={{ fontSize: '11px', color: isScene ? 'var(--text-muted, #555)' : isFuture ? 'var(--accent-yellow)' : 'var(--accent, #4d9eff)', minWidth: '14px' }}>
         {isScene ? '⊙' : isFuture ? '○' : '●'}
       </span>
 

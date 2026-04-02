@@ -554,7 +554,7 @@ export const EntityTimeline: React.FC = () => {
 
               return (<>
                 {/* Sticky ruler */}
-                <div style={{ display: 'flex', height: 22, position: 'sticky', top: 0, background: '#0d1117', borderBottom: '1px solid var(--border)', zIndex: 5 }}>
+                <div style={{ display: 'flex', height: 22, position: 'sticky', top: 0, background: '#1a1a1a', borderBottom: '1px solid var(--border)', zIndex: 5 }}>
                   <div style={{ width: labelW, flexShrink: 0, borderRight: '1px solid var(--border)' }} />
                   <div
                     style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: 'ew-resize' }}
@@ -600,7 +600,7 @@ export const EntityTimeline: React.FC = () => {
                     </div>
                     {/* Keyframe area */}
                     <div
-                      style={{ flex: 1, position: 'relative', background: ti % 2 === 0 ? '#0d1117' : '#0a0f1a', cursor: 'crosshair', overflow: 'hidden' }}
+                      style={{ flex: 1, position: 'relative', background: ti % 2 === 0 ? '#1a1a1a' : '#161616', cursor: 'crosshair', overflow: 'hidden' }}
                       onMouseDown={(e) => {
                         if ((e.target as HTMLElement).dataset.kf) return;
                         const rect = e.currentTarget.getBoundingClientRect();

@@ -5,6 +5,7 @@ interface TextInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   mono?: boolean;
+  readOnly?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -13,6 +14,7 @@ export const TextInput: React.FC<TextInputProps> = ({
   onChange,
   placeholder,
   mono,
+  readOnly,
   style,
 }) => (
   <input
@@ -20,18 +22,23 @@ export const TextInput: React.FC<TextInputProps> = ({
     value={value}
     onChange={(e) => onChange(e.target.value)}
     placeholder={placeholder}
+    readOnly={readOnly}
     style={{
       width: '100%',
-      background: 'var(--bg-input)',
+      background: readOnly ? 'var(--bg-tertiary)' : 'var(--bg-input)',
       border: '1px solid var(--border)',
-      borderRadius: '3px',
-      color: 'var(--text-primary)',
-      padding: '3px 6px',
-      fontSize: '12px',
+      borderRadius: 'var(--input-radius)',
+      color: readOnly ? 'var(--text-secondary)' : 'var(--text-primary)',
+      padding: 'var(--input-padding)',
+      fontSize: '11px',
+      height: 'var(--input-height)',
       fontFamily: mono ? 'var(--font-mono)' : 'inherit',
       outline: 'none',
-      transition: 'border-color 150ms ease',
+      transition: 'border-color var(--transition)',
+      minWidth: 0,
       ...style,
     }}
+    onFocus={(e) => { if (!readOnly) e.currentTarget.style.borderColor = 'var(--border-focus)'; }}
+    onBlur={(e)  => { e.currentTarget.style.borderColor = 'var(--border)'; }}
   />
 );

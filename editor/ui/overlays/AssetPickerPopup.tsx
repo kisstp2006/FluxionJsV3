@@ -159,17 +159,18 @@ export const AssetPickerPopup: React.FC<AssetPickerPopupProps> = ({
         zIndex: 10001,
         width: POPUP_WIDTH,
         maxHeight: POPUP_MAX_HEIGHT,
-        background: 'var(--bg-secondary, #161b22)',
-        border: '1px solid var(--border, #30363d)',
-        borderRadius: '6px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        background: 'var(--bg-dropdown, #252526)',
+        border: '1px solid var(--border, #3c3c3c)',
+        borderRadius: '3px',
+        boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+        animation: 'dropdownFadeIn 80ms ease',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
       {/* Search */}
-      <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border, #30363d)' }}>
+      <div style={{ padding: '5px 8px', borderBottom: '1px solid var(--border, #3c3c3c)' }}>
         <input
           ref={inputRef}
           type="text"
@@ -178,14 +179,15 @@ export const AssetPickerPopup: React.FC<AssetPickerPopupProps> = ({
           onChange={(e) => setSearch(e.target.value)}
           style={{
             width: '100%',
-            padding: '4px 8px',
-            border: '1px solid var(--border, #444)',
+            padding: '2px 8px',
+            height: '22px',
+            border: '1px solid var(--border, #3c3c3c)',
             borderRadius: '3px',
-            background: 'var(--bg-input, #0d1117)',
-            color: 'var(--text-primary, #e6edf3)',
+            background: 'var(--bg-input, #1e1e1e)',
+            color: 'var(--text-primary, #cccccc)',
             fontSize: '11px',
             outline: 'none',
-            fontFamily: 'var(--font-sans, system-ui)',
+            fontFamily: 'inherit',
           }}
         />
       </div>
@@ -202,12 +204,12 @@ export const AssetPickerPopup: React.FC<AssetPickerPopupProps> = ({
             padding: '5px 10px',
             cursor: 'pointer',
             fontSize: '11px',
-            color: 'var(--text-muted, #484f58)',
+            color: 'var(--text-muted, #5a5a5a)',
             fontStyle: 'italic',
-            background: !normCurrent ? 'var(--bg-active, #253249)' : 'transparent',
+            background: !normCurrent ? 'var(--bg-active, #094771)' : 'transparent',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover, #1f2937)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = !normCurrent ? 'var(--bg-active, #253249)' : 'transparent')}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover, #2d2d30)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = !normCurrent ? 'var(--bg-active, #094771)' : 'transparent')}
         >
           None
         </div>
@@ -238,11 +240,11 @@ export const AssetPickerPopup: React.FC<AssetPickerPopupProps> = ({
                 padding: '4px 10px',
                 cursor: 'pointer',
                 fontSize: '11px',
-                color: isSelected ? 'var(--accent, #58a6ff)' : 'var(--text-primary, #e6edf3)',
-                background: isSelected ? 'var(--bg-active, #253249)' : 'transparent',
+                color: isSelected ? 'var(--accent, #4d9eff)' : 'var(--text-primary, #cccccc)',
+                background: isSelected ? 'var(--bg-active, #094771)' : 'transparent',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover, #1f2937)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = isSelected ? 'var(--bg-active, #253249)' : 'transparent')}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover, #2d2d30)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = isSelected ? 'var(--bg-active, #094771)' : 'transparent')}
             >
               {/* Thumbnail for textures, icon for others */}
               {isTexture ? (

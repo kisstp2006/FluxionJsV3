@@ -93,7 +93,7 @@ const BTN = (variant: 'primary' | 'secondary' | 'danger', small = false): React.
 });
 
 const CONSOLE: React.CSSProperties = {
-  background: '#0d1117',
+  background: '#1a1a1a',
   fontFamily: 'monospace',
   fontSize: 10,
   overflowY: 'auto',

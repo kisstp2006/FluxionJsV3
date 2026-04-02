@@ -86,7 +86,7 @@ const BTN = (variant: 'primary' | 'secondary' | 'danger'): React.CSSProperties =
 
 const LOG_AREA: React.CSSProperties = {
   flex: 1,
-  background: '#0d1117',
+  background: '#1a1a1a',
   fontFamily: 'monospace',
   fontSize: 11,
   overflowY: 'auto',

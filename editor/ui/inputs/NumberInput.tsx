@@ -69,6 +69,8 @@ export const NumberInput: React.FC<NumberInputProps> = ({
       value={value}
       onChange={(e) => onChange(clamp(parseFloat(e.target.value) || 0))}
       onMouseDown={onMouseDown}
+      onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--border-focus)'; }}
+      onBlur={(e)  => { e.currentTarget.style.borderColor = axis ? 'var(--border)' : 'var(--border)'; }}
       step={step}
       min={min}
       max={max}
@@ -76,15 +78,17 @@ export const NumberInput: React.FC<NumberInputProps> = ({
         width: '100%',
         background: 'var(--bg-input)',
         border: '1px solid var(--border)',
-        borderLeft: axis ? `2px solid ${axisColors[axis]}` : undefined,
-        borderRadius: '3px',
+        borderLeft: axis ? `2px solid ${axisColors[axis]}` : '1px solid var(--border)',
+        borderRadius: 'var(--input-radius)',
         color: 'var(--text-primary)',
-        padding: '3px 6px',
-        fontSize: '12px',
+        padding: 'var(--input-padding)',
+        fontSize: '11px',
         fontFamily: 'var(--font-mono)',
+        height: 'var(--input-height)',
         outline: 'none',
-        transition: 'border-color 150ms ease',
-        cursor: isDragging ? 'ew-resize' : 'default',
+        transition: 'border-color var(--transition)',
+        cursor: isDragging ? 'ew-resize' : 'text',
+        minWidth: 0,
         ...style,
       }}
     />

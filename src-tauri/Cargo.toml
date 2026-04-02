@@ -11,6 +11,7 @@ edition.workspace = true
 tauri-build = { version = "2.0", features = [], default-features = false }
 
 [dependencies]
+fluxion-core = { path = "../fluxion-core" }
 tauri = { workspace = true, features = [] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-shell = { workspace = true }

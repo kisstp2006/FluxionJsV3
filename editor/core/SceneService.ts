@@ -6,7 +6,7 @@
 import { EngineSubsystems, LogFn } from './EditorEngine';
 import { serializeScene } from '../../src/project/SceneSerializer';
 import { projectManager } from '../../src/project/ProjectManager';
-import { getFileSystem } from '../../src/filesystem';
+import { loadSceneNative, saveSceneNative } from '../../src/project/SceneBridge';
 
 /** Load a scene file into the engine subsystems. */
 export async function loadProjectScene(
@@ -16,12 +16,10 @@ export async function loadProjectScene(
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<void> {
   const { deserializeScene } = await import('../../src/project/SceneSerializer');
-  const fs = getFileSystem();
 
-  const content = await fs.readFile(scenePath);
-  const data = JSON.parse(content);
+  const data = await loadSceneNative(scenePath);
+  if (!data) throw new Error(`[SceneService] load_scene Tauri command returned null for: ${scenePath}`);
 
-  // Await all deferred model/material loads before returning — prevents staggered shader-compile stutter
   await deserializeScene(subsystems.engine, data, subsystems.scene, onProgress);
 
   subsystems.scene.name = data.name || 'Untitled';
@@ -68,7 +66,8 @@ export async function saveScene(
     subsystems.editorCamera,
     subsystems.orbitControls.target,
   );
-  const fs = getFileSystem();
-  await fs.writeFile(resolvedPath, JSON.stringify(data, null, 2));
+
+  const savedNative = await saveSceneNative(resolvedPath, data as any);
+  if (!savedNative) throw new Error(`[SceneService] save_scene Tauri command failed for: ${resolvedPath}`);
   log(`Scene saved: ${scenePath}`, 'system');
 }

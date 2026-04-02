@@ -9,7 +9,10 @@ import * as THREE from 'three';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, CSGBrushComponent } from '../core/Components';
 import { CSG, CSGPlane, Vec3 } from './CSGCore';
-import { csgToGeometry } from './CSGBridge';
+import {
+  csgToMeshData, meshDataToGeometry,
+  csgOpBatchAsync, type CsgMeshData,
+} from './CSGBridge';
 
 /** Default brush material (gray PBR) */
 function createDefaultBrushMaterial(): THREE.MeshStandardMaterial {
@@ -104,6 +107,8 @@ export class CSGSystem implements System {
   private tracked = new Map<EntityId, BrushEntry>();
   private resultMesh: THREE.Mesh | null = null;
   private needsRebuild = false;
+  /** True while an async CSG operation is in flight — prevents double rebuilds. */
+  private _rebuilding = false;
   private defaultMaterial = createDefaultBrushMaterial();
   /** The material path that was last applied (or is being loaded). */
   private currentMaterialPath: string | null = null;
@@ -147,13 +152,16 @@ export class CSGSystem implements System {
 
     if (dirty) this.needsRebuild = true;
 
-    if (this.needsRebuild) {
-      this.rebuild(ecs);
+    if (this.needsRebuild && !this._rebuilding) {
       this.needsRebuild = false;
+      this._rebuilding = true;
+      this.rebuild(ecs)
+        .catch(err => console.error('[CSGSystem] Rebuild failed:', err))
+        .finally(() => { this._rebuilding = false; });
     }
   }
 
-  private rebuild(_ecs: ECSManager): void {
+  private async rebuild(_ecs: ECSManager): Promise<void> {
     // Collect all brush entries sorted by entity ID for determinism
     const entries = [...this.tracked.values()].sort((a, b) => a.entity - b.entity);
 
@@ -163,12 +171,11 @@ export class CSGSystem implements System {
     }
 
     // Separate additive and subtractive brushes
-    const additive: { csg: CSG; entry: BrushEntry }[] = [];
+    const additive:    { csg: CSG; entry: BrushEntry }[] = [];
     const subtractive: { csg: CSG; entry: BrushEntry }[] = [];
 
     for (const entry of entries) {
       const csg = transformCSG(buildBrushCSG(entry.brush), entry.transform);
-
       if (entry.brush.operation === 'subtractive') {
         subtractive.push({ csg, entry });
       } else {
@@ -181,19 +188,16 @@ export class CSGSystem implements System {
       return;
     }
 
-    // Phase 1: Union all additive brushes
-    let result = additive[0].csg;
-    for (let i = 1; i < additive.length; i++) {
-      result = result.union(additive[i].csg);
-    }
+    // ── Native Rust/Wasm fast path ────────────────────────────────────────────
+    // Build a batch: [union additive[1..], subtract subtractive[*]]
+    const baseMesh = csgToMeshData(additive[0].csg);
+    const ops: { op: 'union' | 'subtract'; mesh: CsgMeshData }[] = [
+      ...additive.slice(1).map(e => ({ op: 'union' as const, mesh: csgToMeshData(e.csg) })),
+      ...subtractive.map(e => ({ op: 'subtract' as const, mesh: csgToMeshData(e.csg) })),
+    ];
 
-    // Phase 2: Subtract all subtractive brushes
-    for (const sub of subtractive) {
-      result = result.subtract(sub.csg);
-    }
-
-    // Convert to THREE.BufferGeometry
-    const geometry = csgToGeometry(result);
+    const resultData = await csgOpBatchAsync(baseMesh, ops);
+    const geometry = meshDataToGeometry(resultData);
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
 

@@ -8,6 +8,7 @@ mod file_system;
 mod app_paths;
 mod build_system;
 mod file_watcher;
+mod engine_core;
 pub mod fs;
 
 use commands::*;
@@ -60,7 +61,13 @@ fn main() {
             write_binary_atomic,
             walk_dir_cmd,
             get_temp_dir,
-            
+
+            // Engine core (fluxion-core Rust)
+            engine_core::csg_op,
+            engine_core::csg_op_batch,
+            engine_core::load_scene,
+            engine_core::save_scene,
+
             // File watching
             watch_directory,
             unwatch_directory,

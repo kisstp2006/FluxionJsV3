@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { Engine } from '../core/Engine';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, ParticleEmitterComponent } from '../core/Components';
+import { simulateParticles, initParticleSimWasm, isParticleWasmReady, PARTICLE_STRIDE } from './ParticleSimBridge';
 
 // ── Shaders ──
 
@@ -108,6 +109,8 @@ class ParticlePool {
   private instancedMesh: THREE.InstancedMesh;
   private alive = 0;
   private maxCount: number;
+  /** Pre-allocated flat state buffer for Wasm dispatch (maxCount × PARTICLE_STRIDE f32s). */
+  private stateBuffer: Float32Array;
 
   // Instanced attributes
   private offsetAttr: THREE.InstancedBufferAttribute;
@@ -120,6 +123,7 @@ class ParticlePool {
 
   constructor(maxParticles: number, scene: THREE.Scene) {
     this.maxCount = maxParticles;
+    this.stateBuffer = new Float32Array(maxParticles * PARTICLE_STRIDE);
 
     const geo = new THREE.PlaneGeometry(1, 1);
 
@@ -211,44 +215,70 @@ class ParticlePool {
   }
 
   update(dt: number, gravity: number): void {
-    let writeIdx = 0;
+    if (isParticleWasmReady() && this.particles.length > 0) {
+      this._updateWasm(dt, gravity);
+    }
+    // Wasm not yet loaded — skip this frame (particles stay still until Wasm initialises)
+  }
 
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i];
-      p.life -= dt;
+  private _packState(): number {
+    const src = this.particles;
+    const buf = this.stateBuffer;
+    const S   = PARTICLE_STRIDE;
+    for (let i = 0; i < src.length; i++) {
+      const p = src[i];
+      const s = i * S;
+      buf[s]      = p.position.x;    buf[s + 1] = p.position.y;    buf[s + 2] = p.position.z;
+      buf[s + 3]  = p.velocity.x;    buf[s + 4] = p.velocity.y;    buf[s + 5] = p.velocity.z;
+      buf[s + 6]  = p.life;          buf[s + 7] = p.maxLife;
+      buf[s + 8]  = p.startSize;     buf[s + 9] = p.endSize;
+      buf[s + 10] = p.startColor.r;  buf[s + 11] = p.startColor.g;  buf[s + 12] = p.startColor.b;
+      buf[s + 13] = p.endColor.r;    buf[s + 14] = p.endColor.g;    buf[s + 15] = p.endColor.b;
+    }
+    return src.length;
+  }
 
-      if (p.life <= 0) {
-        this.alive--;
-        continue;
-      }
+  private _updateWasm(dt: number, gravity: number): void {
+    const count  = this._packState();
+    const result = simulateParticles(this.stateBuffer, count, dt, gravity);
+    const alive  = result.alive;
 
-      // Physics
-      p.velocity.y += gravity * dt;
-      p.position.addScaledVector(p.velocity, dt);
-
-      // Interpolate
-      const t = 1 - p.life / p.maxLife;
-      const currentSize = THREE.MathUtils.lerp(p.startSize, p.endSize, t);
-      p.color.lerpColors(p.startColor, p.endColor, t);
-
-      // Write instanced attributes
-      this.offsetAttr.setXYZ(writeIdx, p.position.x, p.position.y, p.position.z);
-      this.scaleAttr.setX(writeIdx, currentSize);
-      this.colorAttr.setXYZ(writeIdx, p.color.r, p.color.g, p.color.b);
-      this.opacityAttr.setX(writeIdx, p.life / p.maxLife);
-
-      this.particles[writeIdx] = p;
-      writeIdx++;
+    // Write render attrs from Wasm result
+    const { offsets, scales, colors, opacities } = result;
+    for (let i = 0; i < alive; i++) {
+      this.offsetAttr.setXYZ(i, offsets[i * 3], offsets[i * 3 + 1], offsets[i * 3 + 2]);
+      this.scaleAttr.setX(i, scales[i]);
+      this.colorAttr.setXYZ(i, colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]);
+      this.opacityAttr.setX(i, opacities[i]);
     }
 
-    this.particles.length = writeIdx;
-    this.instancedMesh.count = writeIdx;
+    // Sync ALL 16 state fields back from Wasm compacted state.
+    // Rust may have reordered particles during compaction (dead gaps removed),
+    // so particles[i] must reflect the i-th SURVIVING particle in full —
+    // otherwise stale startSize/endSize/maxLife/colors produce size flicker.
+    const S = PARTICLE_STRIDE;
+    this.particles.length = alive;
+    for (let i = 0; i < alive; i++) {
+      const s = i * S;
+      const p = this.particles[i];
+      p.position.set(result.state[s],     result.state[s + 1], result.state[s + 2]);
+      p.velocity.set(result.state[s + 3], result.state[s + 4], result.state[s + 5]);
+      p.life      = result.state[s + 6];
+      p.maxLife   = result.state[s + 7];
+      p.startSize = result.state[s + 8];
+      p.endSize   = result.state[s + 9];
+      p.startColor.setRGB(result.state[s + 10], result.state[s + 11], result.state[s + 12]);
+      p.endColor.setRGB(  result.state[s + 13], result.state[s + 14], result.state[s + 15]);
+    }
 
+    this.alive = alive;
+    this.instancedMesh.count = alive;
     this.offsetAttr.needsUpdate = true;
-    this.scaleAttr.needsUpdate = true;
-    this.colorAttr.needsUpdate = true;
+    this.scaleAttr.needsUpdate  = true;
+    this.colorAttr.needsUpdate  = true;
     this.opacityAttr.needsUpdate = true;
   }
+
 
   /** Kill all live particles in-place, keeping the pool allocated. */
   reset(): void {
@@ -290,6 +320,8 @@ export class ParticleRenderSystem implements System {
   constructor(scene: THREE.Scene, engine?: Engine) {
     this.scene = scene;
     this.engine = engine ?? null;
+    // Kick off async Wasm init — update() will use JS fallback until ready
+    initParticleSimWasm();
   }
 
   /** Store the opaque-depth pre-pass texture for soft particles. */

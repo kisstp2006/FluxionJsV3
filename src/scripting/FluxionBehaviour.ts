@@ -508,6 +508,135 @@ export class FluxionBehaviour {
     this._engine.events.emit<T>(event, data);
   }
 
+  // ── Entity-scoped events ─────────────────────────────────────
+
+  /** @internal — Composes the internal key for entity-targeted events. */
+  private static _entityKey(event: string, entityId: EntityId): string {
+    return `${event}@@${entityId}`;
+  }
+
+  /**
+   * Listen for `event` only when sent specifically to THIS entity via sendMessage().
+   * Auto-cleanup on destroy.
+   * @example  this.onSelf('interact', (data: { point: Vec3 }) => { this.anim.play('Open'); });
+   */
+  onSelf<T = any>(event: string, cb: (data: T) => void, priority = 0): void {
+    const unsub = this._engine.events.on<T>(FluxionBehaviour._entityKey(event, this.entity), cb, priority);
+    this._cleanupFns.push(unsub);
+  }
+
+  /**
+   * Like onSelf, but fires only once.
+   * @example  this.onceSelf('hit', () => this.die());
+   */
+  onceSelf<T = any>(event: string, cb: (data: T) => void, priority = 0): void {
+    const unsub = this._engine.events.once<T>(FluxionBehaviour._entityKey(event, this.entity), cb, priority);
+    this._cleanupFns.push(unsub);
+  }
+
+  /**
+   * Listen for `event` sent to a specific OTHER entity via sendMessage().
+   * Auto-cleanup on destroy.
+   * @example  this.onEntity(this.bossRef.entity!, 'damage-taken', (d: { amount: number }) => { ... });
+   */
+  onEntity<T = any>(entity: EntityId, event: string, cb: (data: T) => void, priority = 0): void {
+    const unsub = this._engine.events.on<T>(FluxionBehaviour._entityKey(event, entity), cb, priority);
+    this._cleanupFns.push(unsub);
+  }
+
+  /**
+   * Send an event to a specific entity. Only onSelf / onEntity listeners receive it.
+   * Zero overhead if no listeners are registered.
+   * @example  this.sendMessage(hit.entity, 'interact', { point: hit.point });
+   */
+  sendMessage<T = any>(entity: EntityId, event: string, data?: T): void {
+    this._engine.events.emit<T>(FluxionBehaviour._entityKey(event, entity), data);
+  }
+
+  /**
+   * Emit a global event received by all on() listeners. Named alias for emit() —
+   * signals broadcast intent at the call site.
+   * @example  this.broadcast('round:ended', { winner: 'blue' });
+   */
+  broadcast<T = any>(event: string, data?: T): void {
+    this._engine.events.emit<T>(event, data);
+  }
+
+  // ── Engine lifecycle + physics event aliases ─────────────────
+
+  /** @internal — cached so the getter does not allocate on each access. */
+  private _engineAccessor?: ReturnType<typeof this._makeEngineAccessor>;
+
+  /** @internal */
+  private _makeEngineAccessor() {
+    const ev       = this._engine.events;
+    const cleanups = this._cleanupFns;
+    const sub = <T>(key: string, cb: (data: T) => void) =>
+      cleanups.push(ev.on<T>(key, cb));
+
+    return {
+      /** Fires when a scene finishes loading (after deserializeScene completes). */
+      onSceneLoaded(cb: () => void): void {
+        sub<void>('scene:loaded', cb as any);
+      },
+      /** Fires when the current scene is cleared / unloaded. */
+      onSceneUnloaded(cb: () => void): void {
+        sub<void>('scene:unloaded', cb as any);
+      },
+      /** Fires when any entity is created in the ECS. */
+      onEntityCreated(cb: (id: EntityId) => void): void {
+        sub<EntityId>('entity:created', cb);
+      },
+      /** Fires when any entity is destroyed. */
+      onEntityDestroyed(cb: (id: EntityId) => void): void {
+        sub<EntityId>('entity:destroyed', cb);
+      },
+      /** Fires when the viewport is resized. */
+      onResize(cb: (width: number, height: number) => void): void {
+        sub<{ width: number; height: number }>('engine:resize', (d) => cb(d.width, d.height));
+      },
+
+      // ── Physics ──────────────────────────────────────────────
+      /** Fires when two trigger colliders start overlapping. */
+      onTriggerEnter(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:trigger-enter', (d) => cb(d.entity1, d.entity2));
+      },
+      /** Fires when two trigger colliders stop overlapping. */
+      onTriggerExit(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:trigger-exit', (d) => cb(d.entity1, d.entity2));
+      },
+      /** Fires every frame while two trigger colliders overlap. */
+      onTriggerStay(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:trigger-stay', (d) => cb(d.entity1, d.entity2));
+      },
+      /** Fires when two solid colliders collide (contact begins). */
+      onCollisionEnter(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:collision-enter', (d) => cb(d.entity1, d.entity2));
+      },
+      /** Fires when two solid colliders separate. */
+      onCollisionExit(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:collision-exit', (d) => cb(d.entity1, d.entity2));
+      },
+      /** Fires every frame while two solid colliders remain in contact. */
+      onCollisionStay(cb: (entity1: EntityId, entity2: EntityId) => void): void {
+        sub<{ entity1: EntityId; entity2: EntityId }>('physics:collision-stay', (d) => cb(d.entity1, d.entity2));
+      },
+    };
+  }
+
+  /**
+   * Engine lifecycle and physics event subscriptions.
+   * All listeners auto-cleanup when the script is destroyed.
+   *
+   * @example
+   *   this.Engine.onSceneLoaded(() => this.log('scene ready'));
+   *   this.Engine.onTriggerEnter((a, b) => { if (a === this.entity) this.onHit(b); });
+   *   this.Engine.onResize((w, h) => this.ui.setScreenPosition(w / 2, h / 2));
+   */
+  get Engine(): ReturnType<typeof this._makeEngineAccessor> {
+    return (this._engineAccessor ??= this._makeEngineAccessor());
+  }
+
   // ── Coroutines ───────────────────────────────────────────────
 
   startCoroutine(gen: Generator): symbol {

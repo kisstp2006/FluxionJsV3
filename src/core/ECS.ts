@@ -4,6 +4,7 @@
 // ============================================================
 
 import * as THREE from 'three';
+import type { EventSystem } from './EventSystem';
 
 export type EntityId = number;
 
@@ -77,6 +78,8 @@ export class ECSManager {
   private _hierarchyRevision = 0;
   /** Entity IDs that have been explicitly deactivated via setEntityEnabled(false). */
   private inactiveEntities: Set<EntityId> = new Set();
+  /** Set by Engine after init — used to emit entity lifecycle events. */
+  events: EventSystem | null = null;
   /**
    * Per-entity snapshot of each component's enabled state captured at the moment
    * the entity was deactivated. Used to restore the original per-component enabled
@@ -97,6 +100,7 @@ export class ECSManager {
     this._entityCount++;
     this._hierarchyRevision++;
     this.dirty = true;
+    this.events?.emit('entity:created', id);
     return id;
   }
 
@@ -147,6 +151,7 @@ export class ECSManager {
     this._entityCount--;
     this._hierarchyRevision++;
     this.dirty = true;
+    this.events?.emit('entity:destroyed', entity);
   }
 
   entityExists(entity: EntityId): boolean {

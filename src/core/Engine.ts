@@ -65,6 +65,7 @@ export class Engine {
 
     this.ecs = new ECSManager();
     this.events = new EventSystem();
+    this.ecs.events = this.events;
     this.time = new Time();
     this.time.fixedDeltaTime = this.config.fixedTimestep;
   }

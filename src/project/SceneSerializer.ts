@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { Engine } from '../core/Engine';
+import { EngineEvents } from '../core/EventSystem';
 import { cloneSkinnedScene } from '../assets/SkinnedMeshUtils';
 import { DebugConsole } from '../core/DebugConsole';
 import { EntityId } from '../core/ECS';
@@ -195,6 +196,8 @@ export async function deserializeScene(
   } else {
     await Promise.all(pending);
   }
+
+  engine.events.emit(EngineEvents.SCENE_LOADED);
 }
 
 /** Resolve path and load a .fluxmesh asset with per-slot materials onto a MeshRendererComponent */

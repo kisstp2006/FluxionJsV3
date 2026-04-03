@@ -93,4 +93,12 @@ export const EngineEvents = {
   SCRIPT_RELOAD:   'asset:script-reload',
   MODEL_RELOAD:    'asset:model-reload',
   SCENE_SYNC:      'scene:sync',
+
+  // ── Physics events (emitted by PhysicsWorld) ──
+  TRIGGER_ENTER:   'physics:trigger-enter',
+  TRIGGER_EXIT:    'physics:trigger-exit',
+  TRIGGER_STAY:    'physics:trigger-stay',
+  COLLISION_ENTER: 'physics:collision-enter',
+  COLLISION_EXIT:  'physics:collision-exit',
+  COLLISION_STAY:  'physics:collision-stay',
 } as const;

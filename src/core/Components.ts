@@ -1299,6 +1299,26 @@ export class EnvironmentComponent extends BaseComponent {
   @field({ type: 'slider', label: 'Film Grain', min: 0, max: 1, step: 0.01, group: 'Film Effects' })
   filmGrain = 0;
 
+  // ── Volumetric Light Scattering ──
+  @field({ type: 'boolean', label: 'Enabled', group: 'Volumetric Light Scattering' })
+  vlsEnabled = false;
+  @field({ type: 'number', label: 'Light X', step: 0.5, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsLightX = 0;
+  @field({ type: 'number', label: 'Light Y', step: 0.5, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsLightY = 10;
+  @field({ type: 'number', label: 'Light Z', step: 0.5, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsLightZ = 0;
+  @field({ type: 'slider', label: 'Exposure', min: 0, max: 1, step: 0.01, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsExposure = 0.1;
+  @field({ type: 'slider', label: 'Decay', min: 0.85, max: 1.0, step: 0.001, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsDecay = 0.95;
+  @field({ type: 'slider', label: 'Density', min: 0, max: 1, step: 0.01, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsDensity = 0.8;
+  @field({ type: 'slider', label: 'Weight', min: 0, max: 1, step: 0.01, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsWeight = 0.4;
+  @field({ type: 'number', label: 'Samples', step: 1, min: 8, max: 100, group: 'Volumetric Light Scattering', visibleIf: s => s.vlsEnabled, dependsOn: ['vlsEnabled'] })
+  vlsSamples = 50;
+
   // ── Volumetric Fog ──
   @field({ type: 'boolean', label: 'Enabled', group: 'Volumetric Fog' })
   vfogEnabled = false;
@@ -1401,8 +1421,14 @@ export class CSGBrushComponent extends BaseComponent {
   @field({ type: 'boolean', label: 'Receive Shadow' })
   receiveShadow = true;
 
-  @field({ type: 'asset', label: 'Material', assetType: ['material', 'visual_material'] })
-  materialPath: string | null = null;
+  /** Project-relative path to a .fluxmat material asset - handled by MeshRendererInspector */
+  materialPath?: string;
+
+  @field({ type: 'vector2', label: 'UV Scale' })
+  uvScale = new THREE.Vector2(1, 1);
+
+  @field({ type: 'vector2', label: 'UV Offset' })
+  uvOffset = new THREE.Vector2(0, 0);
 
   /** Runtime — NOT serialized */
   _mesh:    THREE.Mesh | null = null;

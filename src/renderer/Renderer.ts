@@ -1520,6 +1520,23 @@ class EnvironmentSystem implements System {
     pp.config.chromaticAberration = env.chromaticAberration;
     pp.config.filmGrain = env.filmGrain;
 
+    // ── Volumetric Light Scattering ──
+    const vlsLightUV = new THREE.Vector2(0.5, 0.5);
+    if (env.vlsEnabled) {
+      const cam = this.renderer.getActiveCamera();
+      const clipPos = new THREE.Vector3(env.vlsLightX, env.vlsLightY, env.vlsLightZ).project(cam);
+      vlsLightUV.set((clipPos.x + 1) / 2, (clipPos.y + 1) / 2);
+    }
+    pp.config.vls = {
+      enabled:       env.vlsEnabled,
+      lightPosition: vlsLightUV,
+      exposure:      env.vlsExposure,
+      decay:         env.vlsDecay,
+      density:       env.vlsDensity,
+      weight:        env.vlsWeight,
+      samples:       env.vlsSamples,
+    };
+
     pp.config.volumetricFog = {
       enabled: env.vfogEnabled,
       density: env.vfogDensity,

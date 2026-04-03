@@ -20,6 +20,7 @@ import ssgiBlurSrc      from './shaders/ssgi_blur.frag.glsl';
 import ssgiUpscaleSrc   from './shaders/ssgi_upscale.frag.glsl';
 import cloudSrc         from './shaders/cloud.frag.glsl';
 import volumetricFogSrc from './shaders/volumetric_fog.frag.glsl';
+import vlsSrc           from './shaders/vls.frag.glsl';
 
 // Shared full-screen quad geometry — all passes reuse one PlaneGeometry
 const _sharedFSQGeometry = new THREE.PlaneGeometry(2, 2);
@@ -65,6 +66,7 @@ const SSGI_BLUR_FRAG     = ssgiBlurSrc;
 const SSGI_UPSCALE_FRAG  = ssgiUpscaleSrc;
 const CLOUD_FRAG         = cloudSrc;
 const VOLUMETRIC_FOG_FRAG = volumetricFogSrc;
+const VLS_FRAG           = vlsSrc;
 
 // ── Post-Processing Pipeline ──
 
@@ -147,6 +149,21 @@ export interface PostProcessConfig {
     /** Active lights passed from FogVolumeSystem (collected from LightComponents) */
     lights?: FogLightData[];
   };
+  vls?: {
+    enabled?: boolean;
+    /** Screen-space UV position of the light source (0–1). Updated per-frame from world pos. */
+    lightPosition?: THREE.Vector2;
+    /** Overall brightness multiplier (0–1). Default 0.1 */
+    exposure?: number;
+    /** Per-sample illumination decay (0.85–1.0). Default 0.95 */
+    decay?: number;
+    /** Ray march step density (0–1). Default 0.8 */
+    density?: number;
+    /** Per-sample weight (0–1). Default 0.4 */
+    weight?: number;
+    /** Number of ray-march samples (8–100). Default 50 */
+    samples?: number;
+  };
   exposure?: number;
   chromaticAberration?: number;
   filmGrain?: number;
@@ -195,6 +212,7 @@ export class PostProcessingPipeline {
   private dofBlurRT: THREE.WebGLRenderTarget | null = null;
   private cloudRT: THREE.WebGLRenderTarget | null = null;
   private vfogRT: THREE.WebGLRenderTarget | null = null;
+  private vlsRT: THREE.WebGLRenderTarget | null = null;
   // Stored for lazy RT creation
   private _rtParams!: THREE.RenderTargetOptions;
   private _w = 1;
@@ -215,6 +233,7 @@ export class PostProcessingPipeline {
   private dofBlurPass: FullScreenPass;
   private cloudPass: FullScreenPass;
   private volumetricFogPass: FullScreenPass;
+  private vlsPass: FullScreenPass;
   private compositePass: FullScreenPass;
 
   // Reusable matrices
@@ -247,6 +266,7 @@ export class PostProcessingPipeline {
     volumetricFog: { enabled: false, density: 0.05, albedo: new THREE.Color(0.8, 0.85, 0.9), scatter: 0.2, absorption: 1.0, heightBase: 0, heightFalloff: 0.1, emission: new THREE.Color(0, 0, 0), emissionEnergy: 0, affectSky: 0.5, steps: 32, maxDistance: 200, volumes: [], lights: [] },
     vignette: { enabled: true, intensity: 0.3, roundness: 0.5 },
     dof: { enabled: false, focusDistance: 10, aperture: 0.025, maxBlur: 10 },
+    vls: { enabled: false, lightPosition: new THREE.Vector2(0.5, 0.5), exposure: 0.1, decay: 0.95, density: 0.8, weight: 0.4, samples: 50 },
     exposure: 1.0,
     chromaticAberration: 0,
     filmGrain: 0,
@@ -547,6 +567,21 @@ export class PostProcessingPipeline {
       },
     }));
 
+    // ── VLS pass ──
+    this.vlsPass = new FullScreenPass(new THREE.ShaderMaterial({
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: VLS_FRAG,
+      uniforms: {
+        tDiffuse:      { value: null },
+        lightPosition: { value: new THREE.Vector2(0.5, 0.5) },
+        exposure:      { value: 0.1 },
+        decay:         { value: 0.95 },
+        density:       { value: 0.8 },
+        weight:        { value: 0.4 },
+        samples:       { value: 50 },
+      },
+    }));
+
     // ── Composite pass ──
     this.compositePass = new FullScreenPass(new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -560,6 +595,8 @@ export class PostProcessingPipeline {
         tClouds: { value: null },
         tVolumetricFog: { value: null },
         volumetricFogEnabled: { value: false },
+        tVLS:   { value: null },
+        vlsEnabled: { value: false },
         bloomStrength: { value: 0.5 },
         bloomRadius: { value: 0.4 },
         vignetteIntensity: { value: 0.3 },
@@ -606,6 +643,7 @@ export class PostProcessingPipeline {
     wire('ssgi_upscale',  [this.ssgiUpscalePass]);
     wire('cloud',          [this.cloudPass]);
     wire('volumetric_fog', [this.volumetricFogPass]);
+    wire('vls',            [this.vlsPass]);
   }
 
   setCamera(camera: THREE.Camera): void {
@@ -907,6 +945,22 @@ export class PostProcessingPipeline {
       this.volumetricFogPass.render(this.renderer, this.vfogRT);
     }
 
+    // 5. Volumetric Light Scattering
+    const vls = this.config.vls;
+    const doVLS = !!vls?.enabled;
+    if (doVLS) {
+      if (!this.vlsRT) this.vlsRT = this.makeRT(Math.floor(this._w / 2), Math.floor(this._h / 2));
+      const vu = this.vlsPass.material.uniforms;
+      vu['tDiffuse'].value        = this.sceneRT.texture;
+      vu['lightPosition'].value.copy(vls!.lightPosition ?? new THREE.Vector2(0.5, 0.5));
+      vu['exposure'].value        = vls!.exposure  ?? 0.1;
+      vu['decay'].value           = vls!.decay     ?? 0.95;
+      vu['density'].value         = vls!.density   ?? 0.8;
+      vu['weight'].value          = vls!.weight    ?? 0.4;
+      vu['samples'].value         = vls!.samples   ?? 50;
+      this.vlsPass.render(this.renderer, this.vlsRT);
+    }
+
     // 6. Volumetric Clouds
     const doClouds = !!clouds?.enabled;
     if (doClouds) {
@@ -957,6 +1011,8 @@ export class PostProcessingPipeline {
     cu['cloudsEnabled'].value = doClouds;
     cu['tVolumetricFog'].value = this.vfogRT?.texture ?? null;
     cu['volumetricFogEnabled'].value = doVFog;
+    cu['tVLS'].value    = this.vlsRT?.texture ?? null;
+    cu['vlsEnabled'].value = doVLS;
     cu['tDof'].value = this.dofBlurRT?.texture ?? null;
     cu['tDofCoC'].value = this.dofCocRT?.texture ?? null;
     cu['dofEnabled'].value = doDof;
@@ -1008,6 +1064,7 @@ export class PostProcessingPipeline {
     this.dofBlurRT?.setSize(width, height);
     this.cloudRT?.setSize(halfW, halfH);
     this.vfogRT?.setSize(halfW, halfH);
+    this.vlsRT?.setSize(halfW, halfH);
 
     this.ssaoPass.material.uniforms['resolution'].value.set(width, height);
     this.ssaoBlurPass.material.uniforms['resolution'].value.set(width, height);
@@ -1037,6 +1094,7 @@ export class PostProcessingPipeline {
     this.dofBlurRT?.dispose();
     this.cloudRT?.dispose();
     this.vfogRT?.dispose();
+    this.vlsRT?.dispose();
     this.bloomBrightPass.dispose();
     this.bloomDownPass.dispose();
     this.bloomUpPass.dispose();
@@ -1051,6 +1109,7 @@ export class PostProcessingPipeline {
     this.dofBlurPass.dispose();
     this.cloudPass.dispose();
     this.volumetricFogPass.dispose();
+    this.vlsPass.dispose();
     this.compositePass.dispose();
     for (const unsub of this._shaderUnsubs) unsub();
     this._shaderUnsubs = [];

@@ -137,6 +137,10 @@ pub struct PrimitiveRequest {
     /// Column-major 4×4 transform matrix (same layout as THREE.js / glam).
     /// When present, applied to all vertex positions and normals.
     pub mat4:         Option<[f32; 16]>,
+    /// UV scale [scaleX, scaleY]. When present, multiplies all UV coordinates.
+    pub uv_scale:     Option<[f32; 2]>,
+    /// UV offset [offsetX, offsetY]. When present, added to all UV coordinates after scale.
+    pub uv_offset:    Option<[f32; 2]>,
 }
 
 pub fn build_primitive(req: PrimitiveRequest) -> Result<CsgMeshData, String> {
@@ -188,6 +192,15 @@ pub fn build_primitive(req: PrimitiveRequest) -> Result<CsgMeshData, String> {
 
     if let Some(mat) = req.mat4 {
         mesh = apply_mat4(mesh, &mat);
+    }
+
+    let scale_x  = req.uv_scale.map(|s| s[0]).unwrap_or(1.0);
+    let scale_y  = req.uv_scale.map(|s| s[1]).unwrap_or(1.0);
+    let offset_x = req.uv_offset.map(|o| o[0]).unwrap_or(0.0);
+    let offset_y = req.uv_offset.map(|o| o[1]).unwrap_or(0.0);
+
+    if scale_x != 1.0 || scale_y != 1.0 || offset_x != 0.0 || offset_y != 0.0 {
+        mesh = apply_uv_transform(mesh, scale_x, scale_y, offset_x, offset_y);
     }
 
     Ok(mesh)

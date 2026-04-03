@@ -41,31 +41,34 @@ async function buildEntryMesh(
   const r   = brush.radius;
   const seg = Math.max(6, brush.segments);
 
+  const uvScale  = [brush.uvScale.x,  brush.uvScale.y];
+  const uvOffset = [brush.uvOffset.x, brush.uvOffset.y];
+
   let req: PrimitiveRequest;
   switch (brush.shape) {
     case 'box':
-      req = { shape: 'box', sx, sy, sz, mat4 };
+      req = { shape: 'box', sx, sy, sz, mat4, uvScale, uvOffset };
       break;
     case 'cylinder':
-      req = { shape: 'cylinder', radius: r, height: sy, slices: seg, mat4 };
+      req = { shape: 'cylinder', radius: r, height: sy, slices: seg, mat4, uvScale, uvOffset };
       break;
     case 'cone':
-      req = { shape: 'cone', radius: r, height: sy, slices: seg, mat4 };
+      req = { shape: 'cone', radius: r, height: sy, slices: seg, mat4, uvScale, uvOffset };
       break;
     case 'sphere':
-      req = { shape: 'sphere', radius: r, slices: seg, stacks: Math.max(4, Math.floor(seg / 2)), mat4 };
+      req = { shape: 'sphere', radius: r, slices: seg, stacks: Math.max(4, Math.floor(seg / 2)), mat4, uvScale, uvOffset };
       break;
     case 'wedge':
-      req = { shape: 'wedge', sx, sy, sz, mat4 };
+      req = { shape: 'wedge', sx, sy, sz, mat4, uvScale, uvOffset };
       break;
     case 'stairs':
-      req = { shape: 'stairs', sx, sy, sz, steps: Math.max(1, brush.stairSteps), mat4 };
+      req = { shape: 'stairs', sx, sy, sz, steps: Math.max(1, brush.stairSteps), mat4, uvScale, uvOffset };
       break;
     case 'arch':
-      req = { shape: 'arch', sx, sy, sz, archRadius: r, segments: seg, mat4 };
+      req = { shape: 'arch', sx, sy, sz, archRadius: r, segments: seg, mat4, uvScale, uvOffset };
       break;
     default:
-      req = { shape: 'box', sx, sy, sz, mat4 };
+      req = { shape: 'box', sx, sy, sz, mat4, uvScale, uvOffset };
   }
 
   return buildPrimitiveAsync(req);

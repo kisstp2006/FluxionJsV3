@@ -51,6 +51,81 @@ export class TransformSystem implements System {
    * actually recompute their matrices.
    */
   private _process(entities: Set<EntityId>, ecs: ECSManager): void {
-    transformPropagateNative(entities, ecs);
+    const nativeSuccess = transformPropagateNative(entities, ecs);
+    if (!nativeSuccess) {
+      this._processJS(entities, ecs);
+    }
+  }
+
+  /**
+   * JavaScript fallback for transform propagation when Wasm is unavailable.
+   * Simple BFS traversal that computes world matrices and decomposes them.
+   */
+  private _processJS(entities: Set<EntityId>, ecs: ECSManager): void {
+    // Find root entities (no parent)
+    const roots: EntityId[] = [];
+    const processed = new Set<EntityId>();
+    
+    for (const entity of entities) {
+      const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
+      if (!transform) continue;
+      
+      const parentId = ecs.getParent(entity);
+      if (parentId === undefined) {
+        roots.push(entity);
+      }
+    }
+
+    // Process each root and its children
+    for (const root of roots) {
+      this._processEntityAndChildren(root, entities, ecs, processed);
+    }
+  }
+
+  private _processEntityAndChildren(
+    entity: EntityId, 
+    allEntities: Set<EntityId>, 
+    ecs: ECSManager, 
+    processed: Set<EntityId>
+  ): void {
+    if (processed.has(entity)) return;
+    
+    const transform = ecs.getComponent<TransformComponent>(entity, 'Transform');
+    if (!transform) return;
+
+    const parentId = ecs.getParent(entity);
+    
+    // Update local matrix if dirty
+    if (transform.dirty) {
+      transform._matrix.compose(transform.position, transform.quaternion, transform.scale);
+    }
+    
+    // Update world matrix
+    if (parentId !== undefined && processed.has(parentId)) {
+      const parentTransform = ecs.getComponent<TransformComponent>(parentId, 'Transform');
+      if (parentTransform) {
+        transform._worldMatrix.multiplyMatrices(parentTransform._worldMatrix, transform._matrix);
+      } else {
+        transform._worldMatrix.copy(transform._matrix);
+      }
+    } else {
+      transform._worldMatrix.copy(transform._matrix);
+    }
+
+    // Decompose world matrix to position/rotation/scale
+    transform._worldMatrix.decompose(transform.worldPosition, transform.worldRotation, transform.worldScale);
+
+    // Clear dirty flags
+    transform.dirty = false;
+    transform.worldDirty = false;
+    processed.add(entity);
+
+    // Process children
+    const children = ecs.getChildren(entity);
+    for (const child of children) {
+      if (allEntities.has(child)) {
+        this._processEntityAndChildren(child, allEntities, ecs, processed);
+      }
+    }
   }
 }

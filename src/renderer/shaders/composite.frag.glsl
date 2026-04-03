@@ -6,6 +6,8 @@ uniform sampler2D tSSGI;
 uniform sampler2D tClouds;
 uniform sampler2D tVolumetricFog;
 uniform bool volumetricFogEnabled;
+uniform sampler2D tVLS;
+uniform bool vlsEnabled;
 uniform float bloomStrength;
 uniform float bloomRadius;
 uniform float vignetteIntensity;
@@ -72,6 +74,11 @@ void main() {
     vec4 fog = texture2D(tVolumetricFog, vUv);
     // fog.rgb = inscattered light, fog.a = transmittance (1=clear, 0=full fog)
     scene = scene * fog.a + fog.rgb;
+  }
+
+  // Volumetric Light Scattering — additive god-ray overlay
+  if (vlsEnabled) {
+    scene += texture2D(tVLS, vUv).rgb;
   }
 
   // Depth of Field — mix sharp scene with bokeh blur based on CoC

@@ -236,6 +236,26 @@ pub fn build_arch(
     outer.subtract(cutter).to_mesh_data()
 }
 
+// ── UV Transform ──────────────────────────────────────────────────────────────
+
+/// Scale and offset all UV coordinates in a CsgMeshData.
+/// newU = u * scale_x + offset_x
+/// newV = v * scale_y + offset_y
+pub fn apply_uv_transform(
+    mut mesh: CsgMeshData,
+    scale_x: f32,
+    scale_y: f32,
+    offset_x: f32,
+    offset_y: f32,
+) -> CsgMeshData {
+    let uv_count = mesh.uvs.len() / 2;
+    for i in 0..uv_count {
+        mesh.uvs[i * 2]     = mesh.uvs[i * 2]     * scale_x + offset_x;
+        mesh.uvs[i * 2 + 1] = mesh.uvs[i * 2 + 1] * scale_y + offset_y;
+    }
+    mesh
+}
+
 // ── Transform ─────────────────────────────────────────────────────────────────
 
 /// Apply a column-major 4×4 matrix (same layout as THREE.js / glam) to all

@@ -31,6 +31,10 @@ export interface PrimitiveRequest {
   steps?: number;
   /** Column-major 4×4 matrix (16 floats). When present, applied to all verts + normals. */
   mat4?: number[];
+  /** UV scale [scaleX, scaleY]. When present, multiplies all UV coordinates. */
+  uvScale?: number[];
+  /** UV offset [offsetX, offsetY]. When present, added to all UV coordinates after scale. */
+  uvOffset?: number[];
 }
 
 // ── Wasm module slot ──────────────────────────────────────────────────────────

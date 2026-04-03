@@ -6,6 +6,7 @@
 // ============================================================
 
 import * as THREE from 'three';
+import { toLocalUrl } from '../utils/localUrl';
 import { ECSManager, EntityId, System } from '../core/ECS';
 import { TransformComponent, CSGBrushComponent } from '../core/Components';
 import {
@@ -237,8 +238,7 @@ export class CSGSystem implements System {
       const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
         const texAbs = /^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')
           ? relPath : `${matDir}/${relPath}`;
-        const url = texAbs.startsWith('file://') ? texAbs : `file:///${texAbs.replace(/\\/g, '/')}`;
-        return assets.loadTexture(url);
+        return assets.loadTexture(toLocalUrl(texAbs));
       };
 
       let mat: THREE.Material;

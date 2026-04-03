@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Section, PropertyRow } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem, normalizePath } from '../../../../src/filesystem';
+import { toLocalUrl } from '../../../../src/utils/localUrl';
 import { VisualMaterialFile, validateGraph } from '../../../../src/materials/VisualMaterialGraph';
 import { compileVisualMaterial, buildVisualMaterial } from '../../../../src/materials/VisualMaterialCompiler';
 import { MaterialPreviewSphere } from '../MaterialPreviewSphere';
@@ -28,7 +29,7 @@ export const VisualMaterialInspector: React.FC<AssetInspectorProps> = ({ assetPa
       new Promise((resolve, reject) => {
         const p = relPath.replace(/\\/g, '/');
         const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
-        const url = isAbsolute ? `file:///${p.replace(/^\/+/, '')}` : `file:///${baseDir}/${p}`;
+        const url = isAbsolute ? toLocalUrl(p) : toLocalUrl(`${baseDir}/${p}`);
         new THREE.TextureLoader().load(url, resolve, undefined, reject);
       }),
     [baseDir],

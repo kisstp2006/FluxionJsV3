@@ -10,6 +10,7 @@ import { resolveIcon } from '../Icons';
 import { AssetPickerPopup } from '../overlays/AssetPickerPopup';
 import { AssetTypeRegistry } from '../../../src/assets/AssetTypeRegistry';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 
 export interface AssetInputProps {
   /** Current asset path (project-relative) or null/empty */
@@ -112,7 +113,7 @@ export const AssetInput: React.FC<AssetInputProps> = ({
     try {
       const { projectManager } = require('../../../src/project/ProjectManager');
       const abs = normalizePath(projectManager.resolvePath(value!));
-      thumbnailUrl = `file:///${abs.replace(/\\/g, '/')}`;
+      thumbnailUrl = toLocalUrl(abs);
     } catch {}
   }
 

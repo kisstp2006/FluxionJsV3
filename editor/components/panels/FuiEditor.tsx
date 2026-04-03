@@ -13,6 +13,7 @@ import { parseFuiJson } from '../../../src/ui/FuiParser';
 import { compileFui, renderFuiToCanvas, loadFuiFonts } from '../../../src/ui/FuiRenderer';
 import { applyAnimation } from '../../../src/ui/FuiAnimator';
 import { projectManager } from '../../../src/project/ProjectManager';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 
 // ═══════════════════════════════════════════
 // Types
@@ -1095,7 +1096,7 @@ export const FuiEditor: React.FC<FuiEditorProps> = ({ filePath, onClose }) => {
     loadFuiFonts(doc.fonts, (rel) => {
       const base = projectDir;
       const abs = base ? `${base.replace(/\\/g, '/')}/${rel.replace(/\\/g, '/')}` : rel;
-      return abs.startsWith('file://') ? abs : `file:///${abs.replace(/\\/g, '/')}`;
+      return toLocalUrl(abs);
     }).then(() => setFontsVersion((v) => v + 1));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc?.fonts]);

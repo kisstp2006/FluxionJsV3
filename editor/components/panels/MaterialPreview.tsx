@@ -21,6 +21,7 @@ import {
   compileVisualMaterial,
   buildVisualMaterial,
 } from '../../../src/materials/VisualMaterialCompiler';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 import {
   validateGraph,
   type VisualMaterialGraph,
@@ -70,8 +71,8 @@ export const MaterialPreview: React.FC<MaterialPreviewProps> = ({
         const p = path.replace(/\\/g, '/');
         const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
         const url = isAbsolute
-          ? `file:///${p.replace(/^\/+/, '')}`
-          : `file:///${baseDir}/${p}`;
+          ? toLocalUrl(p)
+          : toLocalUrl(`${baseDir}/${p}`);
         loader.load(url, resolve, undefined, reject);
       }),
     [baseDir],

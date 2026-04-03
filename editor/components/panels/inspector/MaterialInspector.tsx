@@ -10,6 +10,18 @@ import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem, normalizePath } from '../../../../src/filesystem';
 import { projectManager } from '../../../../src/project/ProjectManager';
 import { MaterialPreviewSphere } from '../MaterialPreviewSphere';
+import { pathToBlobUrl } from '../../../../src/utils/localUrl';
+
+/** Minimal MIME lookup for texture file extensions. */
+function mimeForPath(p: string): string {
+  const ext = p.toLowerCase().split('.').pop() ?? '';
+  const map: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+    tga: 'image/x-tga',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
 
 interface FluxMatData {
   type?: string;
@@ -62,22 +74,26 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
   );
 
   const loadTexture = useCallback(
-    (relPath: string): Promise<THREE.Texture> =>
-      new Promise((resolve, reject) => {
-        const p = relPath.replace(/\\/g, '/');
-        const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
-        let url: string;
-        if (isAbsolute) {
-          url = `file:///${p.replace(/^\/+/, '')}`;
-        } else if (projectManager.projectDir) {
-          // Paths stored in .fluxmat are project-root-relative (e.g. "Assets/Textures/img.png")
-          url = `file:///${normalizePath(projectManager.projectDir)}/${p}`;
-        } else {
-          // Fallback: resolve relative to the .fluxmat's directory
-          url = `file:///${baseDir}/${p}`;
-        }
+    async (relPath: string): Promise<THREE.Texture> => {
+      const p = relPath.replace(/\\/g, '/');
+      const isAbsolute = p.startsWith('/') || /^[A-Za-z]:/.test(p);
+      let absPath: string;
+      if (isAbsolute) {
+        absPath = p;
+      } else if (projectManager.projectDir) {
+        // Try project-relative first (new format: "Assets/Textures/foo.png")
+        const projResolved = normalizePath(`${projectManager.projectDir}/${p}`);
+        // Fall back to material-file-relative for legacy paths (e.g. "../Textures/foo.png")
+        const matRelResolved = normalizePath(`${baseDir}/${p}`);
+        absPath = p.startsWith('..') ? matRelResolved : projResolved;
+      } else {
+        absPath = normalizePath(`${baseDir}/${p}`);
+      }
+      const url = await pathToBlobUrl(absPath, mimeForPath(absPath));
+      return new Promise<THREE.Texture>((resolve, reject) => {
         new THREE.TextureLoader().load(url, resolve, undefined, reject);
-      }),
+      });
+    },
     [baseDir],
   );
 
@@ -309,15 +325,8 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
                     update({ [key]: undefined });
                     return;
                   }
-                  // Convert project-relative → material-relative path
-                  const texAbs = normalizePath(projectManager.resolvePath(v));
-                  const matDirParts = matDir.split('/').filter(Boolean);
-                  const texParts = texAbs.split('/').filter(Boolean);
-                  let common = 0;
-                  while (common < matDirParts.length && common < texParts.length && matDirParts[common].toLowerCase() === texParts[common].toLowerCase()) common++;
-                  const ups = matDirParts.length - common;
-                  const matRelPath = [...Array(ups).fill('..'), ...texParts.slice(common)].join('/');
-                  update({ [key]: matRelPath });
+                  // Store as project-relative path (e.g. "Assets/Textures/foo.png")
+                  update({ [key]: v });
                 }}
               />
             </PropertyRow>

@@ -10,6 +10,7 @@ import { AssetTypeRegistry, AssetTypeDefinition } from '../../../src/assets/Asse
 import { getFileSystem } from '../../../src/filesystem';
 import { normalizePath } from '../../../src/filesystem/FileSystem';
 import { projectManager } from '../../../src/project/ProjectManager';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 
 export interface AssetPickerItem {
   /** Project-relative path, e.g. "Assets/Textures/stone.png" */
@@ -249,7 +250,7 @@ export const AssetPickerPopup: React.FC<AssetPickerPopupProps> = ({
               {/* Thumbnail for textures, icon for others */}
               {isTexture ? (
                 <img
-                  src={`file:///${item.absPath.replace(/\\/g, '/')}`}
+                  src={toLocalUrl(item.absPath)}
                   alt=""
                   style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 2, flexShrink: 0, background: '#000' }}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

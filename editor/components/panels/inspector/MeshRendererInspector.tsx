@@ -13,6 +13,7 @@ import type { FluxMeshData, FluxMeshMaterialSlot } from '../../../../src/assets/
 import type { ModelResult } from '../../../../src/assets/AssetManager';
 import { applyMaterialsToModel } from '../../../../src/assets/FluxMeshData';
 import type { VisualMaterialFile } from '../../../../src/materials/VisualMaterialGraph';
+import { toLocalUrl } from '../../../../src/utils/localUrl';
 
 /** Apply UV scale / offset / rotation to every texture map on the mesh's materials. */
 function applyUvTransform(mesh: THREE.Mesh | THREE.Group | null, scale: { x: number; y: number }, offset: { x: number; y: number }, rotationDeg: number) {
@@ -69,7 +70,8 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
       const materials = engine.engine.getSubsystem('materials') as any;
       if (!assets || !materials) return null;
 
-      const matAbsPath = projectManager.resolvePath(assetPath);
+      const isAbsolutePath = /^[A-Z]:/i.test(assetPath) || assetPath.startsWith('/');
+      const matAbsPath = isAbsolutePath ? assetPath.replace(/\\/g, '/') : projectManager.resolvePath(assetPath);
       const matDir = matAbsPath.substring(0, matAbsPath.lastIndexOf('/'));
       const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
         let texAbsPath: string;
@@ -83,7 +85,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
             if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
           } catch {}
         }
-        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+        const texUrl = toLocalUrl(texAbsPath);
         return assets.loadTexture(texUrl);
       };
 
@@ -189,7 +191,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                     if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
                   } catch {}
                 }
-                const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+                const texUrl = toLocalUrl(texAbsPath);
                 return assets.loadTexture(texUrl);
               };
               return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
@@ -243,7 +245,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                       if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
                     } catch {}
                   }
-                  const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+                  const texUrl = toLocalUrl(texAbsPath);
                   return assets.loadTexture(texUrl);
                 };
                 return materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);
@@ -260,7 +262,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
           // Legacy raw model
           mr.modelPath = assetPath;
           const absPath = projectManager.resolvePath(assetPath);
-          const fileUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+          const fileUrl = toLocalUrl(absPath);
           const gltf = await assets.loadModel(fileUrl) as ModelResult;
           const cloned = gltf.scene.clone();
           cloned.traverse((child: THREE.Object3D) => {
@@ -326,7 +328,7 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                 if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
               } catch {}
             }
-            const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+            const texUrl = toLocalUrl(texAbsPath);
             return assets.loadTexture(texUrl);
           };
           const mat = await materials.createFromFluxMat(matData, loadTexture, slot.defaultMaterial);

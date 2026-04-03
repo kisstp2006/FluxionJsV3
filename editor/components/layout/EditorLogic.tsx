@@ -18,6 +18,7 @@ import { serializeScene, deserializeScene, SceneFileData } from '../../../src/pr
 import { ComponentIconSystem } from '../../core/ComponentIconSystem';
 import { projectManager } from '../../../src/project/ProjectManager';
 import { getFileSystem } from '../../../src/filesystem';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 import { markDirty } from '../../../src/core/ECS';
 import { invalidateScript } from '../../../src/scripting/ScriptCompiler';
 import { applyMaterialsToModel } from '../../../src/assets/FluxMeshData';
@@ -459,7 +460,7 @@ export const AssetHotReload: React.FC = () => {
             if (!(await fs.exists(texAbsPath)) && await fs.exists(projResolved)) texAbsPath = projResolved;
           } catch {}
         }
-        const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
+        const texUrl = toLocalUrl(texAbsPath);
         return assets.loadTexture(texUrl);
       };
     };
@@ -629,7 +630,7 @@ export const AssetHotReload: React.FC = () => {
           for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'displacementMap', 'alphaMap']) {
             const tex = m[key] as THREE.Texture | null;
             if (tex && tex.image?.src) {
-              const src = decodeURIComponent(tex.image.src.replace('file:///', '').replace(/\\/g, '/'));
+              const src = decodeURIComponent(tex.image.src.replace(/^https?:\/\/asset\.localhost\//i, '').replace('file:///', '').replace(/\\/g, '/'));
               if (src === nChanged || src === nRel) {
                 hasTexRef = true;
                 return;

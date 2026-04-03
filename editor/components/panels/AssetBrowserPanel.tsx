@@ -18,6 +18,7 @@ import { assetImporter } from '../../../src/assets/AssetImporter';
 import { getThumbnail, requestThumbnail, invalidateThumbnail } from '../../utils/ThumbnailCache';
 import { loadAnimClipsFor, getCachedAnimClips } from '../../utils/AnimationClipCache';
 import { projectManager } from '../../../src/project/ProjectManager';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 import { ProjectSettingsRegistry } from '../../core/ProjectSettingsRegistry';
 import { ModelPreviewModal } from './ModelPreviewModal';
 
@@ -127,7 +128,7 @@ export function _texFailedClear() { _texFailed.clear(); }
 
 /** Small texture thumbnail with icon fallback on load error. */
 const TextureThumbnail: React.FC<{ path: string; fallback: React.ReactNode }> = ({ path, fallback }) => {
-  const url = `file:///${path.replace(/\\/g, '/')}`;
+  const url = toLocalUrl(path);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     // Re-check on every mount (i.e. when parent forces remount via key change after import)
@@ -532,7 +533,7 @@ export const AssetBrowserPanel: React.FC<{
       const fs = getFileSystem();
 
       const ext = entry.name.substring(entry.name.lastIndexOf('.')).toLowerCase();
-      const fileUrl = `file:///${entry.path.replace(/\\/g, '/')}`;
+      const fileUrl = toLocalUrl(entry.path);
       let root: any;
 
       if (ext === '.fbx') {

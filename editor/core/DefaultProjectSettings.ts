@@ -7,6 +7,7 @@
 import { SettingDescriptor } from './SettingsRegistry';
 import { ProjectSettingsRegistry } from './ProjectSettingsRegistry';
 import { Icons } from '../ui/Icons';
+import { ComponentRegistry } from '../../src/core/ComponentRegistry';
 
 // ── Categories ──
 
@@ -22,6 +23,7 @@ ProjectSettingsRegistry.registerCategory('Editor/Debug', { label: 'Debug Draw', 
 ProjectSettingsRegistry.registerCategory('Scripting', { label: 'Scripting', icon: Icons.script, order: 75 });
 ProjectSettingsRegistry.registerCategory('Scripting/Editor', { label: 'Editor', icon: Icons.file, order: 76 });
 ProjectSettingsRegistry.registerCategory('Scripting/Runtime', { label: 'Runtime', icon: Icons.play, order: 77 });
+ProjectSettingsRegistry.registerCategory('Components', { label: 'Components', icon: Icons.cube, order: 85 });
 
 // ── General ──
 
@@ -706,6 +708,71 @@ const scriptingSettings: SettingDescriptor[] = [
   },
 ];
 
+// ── Components — global per-component disable toggles ──────────────────────────
+
+/** All built-in component typeIds in display order. */
+const COMPONENT_TYPE_IDS = [
+  'Transform',
+  'MeshRenderer',
+  'Camera',
+  'Light',
+  'Rigidbody',
+  'Collider',
+  'CharacterController',
+  'Script',
+  'ParticleEmitter',
+  'AudioSource',
+  'Sprite',
+  'SpriteReactive',
+  'TextRenderer',
+  'Fui',
+  'Animation',
+  'Environment',
+  'CSGBrush',
+  'FogVolume',
+] as const;
+
+/** Display names matching the typeIds above (same order). */
+const COMPONENT_DISPLAY_NAMES: Record<string, string> = {
+  Transform:           'Transform',
+  MeshRenderer:        'Mesh Renderer',
+  Camera:              'Camera',
+  Light:               'Light',
+  Rigidbody:           'Rigidbody',
+  Collider:            'Collider',
+  CharacterController: 'Character Controller',
+  Script:              'Script',
+  ParticleEmitter:     'Particle Emitter',
+  AudioSource:         'Audio Source',
+  Sprite:              'Sprite Renderer',
+  SpriteReactive:      'Sprite Reactive',
+  TextRenderer:        'Text Renderer',
+  Fui:                 'FUI (UI Document)',
+  Animation:           'Animation',
+  Environment:         'Environment',
+  CSGBrush:            'CSG Brush',
+  FogVolume:           'Fog Volume',
+};
+
+/** Recomputes the disabled set from current settings and pushes it to ComponentRegistry. */
+function syncDisabledComponents(): void {
+  const disabled = COMPONENT_TYPE_IDS.filter(id =>
+    ProjectSettingsRegistry.get<boolean>(`project.components.disabled.${id}`) === true,
+  );
+  ComponentRegistry.setDisabledComponents(disabled);
+}
+
+const componentSettings: SettingDescriptor[] = COMPONENT_TYPE_IDS.map((typeId, i) => ({
+  key: `project.components.disabled.${typeId}`,
+  label: COMPONENT_DISPLAY_NAMES[typeId] ?? typeId,
+  description: `Disable the ${COMPONENT_DISPLAY_NAMES[typeId] ?? typeId} component project-wide. Disabled components are ignored during scene load and cannot be added at runtime.`,
+  type: 'boolean' as const,
+  defaultValue: false,
+  category: 'Components',
+  order: i + 1,
+  onChange: syncDisabledComponents,
+}));
+
 // ── Register All ──
 
 export function registerDefaultProjectSettings(): void {
@@ -718,4 +785,13 @@ export function registerDefaultProjectSettings(): void {
   ProjectSettingsRegistry.registerMany(buildSettings);
   ProjectSettingsRegistry.registerMany(debugDrawSettings);
   ProjectSettingsRegistry.registerMany(scriptingSettings);
+  ProjectSettingsRegistry.registerMany(componentSettings);
+
+  // Sync disabled components whenever a project is loaded (importValues fires 'loaded')
+  ProjectSettingsRegistry.on((event) => {
+    if (event.type === 'loaded') syncDisabledComponents();
+  });
+
+  // Apply initial state (in case settings were already imported before this call)
+  syncDisabledComponents();
 }

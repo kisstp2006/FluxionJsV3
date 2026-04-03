@@ -24,6 +24,7 @@ import { AssetManager } from '../assets/AssetManager';
 import { BaseComponent } from '../core/BaseComponent';
 import { ComponentRegistry } from '../core/ComponentRegistry';
 import type { DeserializationContext } from '../core/SerializationContext';
+import { toLocalUrl } from '../utils/localUrl';
 
 // Module-level constants — avoid per-call allocation
 const PRIMITIVE_GEOMETRIES: Record<string, () => THREE.BufferGeometry> = {
@@ -275,8 +276,7 @@ export class Scene {
                     }
                   } catch { /* keep matDir-relative */ }
                 }
-                const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-                return assets.loadTexture(texUrl);
+                return assets.loadTexture(toLocalUrl(texAbsPath));
               };
               return materials.createFromFluxMat(matData, slotLoadTexture, slot.defaultMaterial);
             } catch { return null; }
@@ -291,8 +291,7 @@ export class Scene {
         meshComp.mesh = scene;
       } else {
         // Raw model — legacy flow
-        const fileUrl = loadPath!.startsWith('file://') ? loadPath! : `file:///${loadPath!.replace(/\\/g, '/')}`;
-        const gltf = await assets.loadModel(fileUrl);
+        const gltf = await assets.loadModel(toLocalUrl(loadPath!));
         const scene = cloneSkinnedScene(gltf.scene);
         scene.traverse((child: THREE.Object3D) => {
           if (child instanceof THREE.Mesh) {

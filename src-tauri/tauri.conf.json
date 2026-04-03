@@ -23,7 +23,7 @@
     ],
     "withGlobalTauri": true,
     "security": {
-      "csp": null,
+      "csp": "default-src 'self' asset: http://asset.localhost; img-src 'self' asset: http://asset.localhost data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' asset: http://asset.localhost data:; connect-src 'self' ipc: http://ipc.localhost",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -46,6 +46,7 @@
       "nsis": null,
       "signCommand": null
     }
+    
   },
   "plugins": {
     "shell": {}

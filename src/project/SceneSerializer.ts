@@ -19,6 +19,7 @@ import { AssetManager } from '../assets/AssetManager';
 import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
 import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { projectManager } from './ProjectManager';
+import { toLocalUrl } from '../utils/localUrl';
 import { applyMaterialsToModel } from '../assets/FluxMeshData';
 import type { FluxMeshLoadResult } from '../assets/FluxMeshData';
 
@@ -149,7 +150,11 @@ export async function deserializeScene(
     for (const compData of entityData.components) {
       const comp = ComponentRegistry.create(compData.type);
       if (!comp) {
-        DebugConsole.LogWarning(`[SceneSerializer] Unknown component type: "${compData.type}" — skipped.`);
+        if (ComponentRegistry.isDisabled(compData.type)) {
+          DebugConsole.LogWarning(`[SceneSerializer] Component "${compData.type}" is disabled in project settings — skipped.`);
+        } else {
+          DebugConsole.LogWarning(`[SceneSerializer] Unknown component type: "${compData.type}" — skipped.`);
+        }
         continue;
       }
       (comp as BaseComponent).deserialize(compData.data, ctx);
@@ -256,8 +261,7 @@ export async function loadDeferredFluxMesh(
               }
             } catch { /* keep matDir-relative */ }
           }
-          const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-          return assets.loadTexture(texUrl);
+          return assets.loadTexture(toLocalUrl(texAbsPath));
         };
 
         return materials.createFromFluxMat(matData, loadTexture, absMatPath);
@@ -292,12 +296,8 @@ export async function loadDeferredModel(
       loadPath = modelPath;
     }
 
-    const isWeb = typeof window !== 'undefined' && !(window as any).fluxionAPI;
-    const fileUrl = loadPath.startsWith('file://') || isWeb
-      ? loadPath.replace(/\\/g, '/')
-      : `file:///${loadPath.replace(/\\/g, '/')}`;
     const assets = engine.getSubsystem('assets') as AssetManager;
-    const gltf = await assets.loadModel(fileUrl);
+    const gltf = await assets.loadModel(toLocalUrl(loadPath));
     const scene = cloneSkinnedScene(gltf.scene);
     scene.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
@@ -348,8 +348,7 @@ export async function loadDeferredMaterial(
           }
         } catch { /* project not loaded or path invalid — keep matDir-relative */ }
       }
-      const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-      return assets.loadTexture(texUrl);
+      return assets.loadTexture(toLocalUrl(texAbsPath));
     };
 
     let mat: THREE.Material;
@@ -535,7 +534,11 @@ export function restoreEntitySubtree(
     for (const compData of entityData.components) {
       const comp = ComponentRegistry.create(compData.type);
       if (!comp) {
-        DebugConsole.LogWarning(`[SceneSerializer] Unknown component: "${compData.type}" — skipped.`);
+        if (ComponentRegistry.isDisabled(compData.type)) {
+          DebugConsole.LogWarning(`[SceneSerializer] Component "${compData.type}" is disabled in project settings — skipped.`);
+        } else {
+          DebugConsole.LogWarning(`[SceneSerializer] Unknown component: "${compData.type}" — skipped.`);
+        }
         continue;
       }
       (comp as BaseComponent).deserialize(compData.data, ctx);

@@ -40,7 +40,6 @@ async function loadSvgImage(absPath: string): Promise<HTMLImageElement> {
   const url = toLocalUrl(absPath);
 
   const img = new Image();
-  // Allow cross-origin loading from local filesystem in Electron.
   img.crossOrigin = 'anonymous';
   img.src = url;
 
@@ -48,6 +47,8 @@ async function loadSvgImage(absPath: string): Promise<HTMLImageElement> {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error(`SvgLoader: failed to load "${absPath}"`));
   });
+
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
 
   _imageCache.set(absPath, img);
   return img;

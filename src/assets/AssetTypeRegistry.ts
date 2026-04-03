@@ -4,6 +4,7 @@
 // Inspired by Stride IAssetImporter and ezEngine DocumentManager.
 // ============================================================
 
+import { toLocalUrl } from '../utils/localUrl';
 import type { IFileSystem } from '../filesystem/FileSystem';
 import type { AssetMeta } from './AssetMeta';
 import type { FluxMeshData, FluxMeshMaterialSlot, FluxMeshSubMeshRef } from './FluxMeshData';
@@ -196,7 +197,7 @@ AssetTypeRegistry.register({
       const { createAssetMeta, writeAssetMeta } = await import('./AssetMeta');
 
       // Load the model to inspect sub-meshes
-      const fileUrl = `file:///${importedPath.replace(/\\/g, '/')}`;
+      const fileUrl = toLocalUrl(importedPath);
       let root: InstanceType<typeof THREEModule.Object3D>;
       let embeddedClips: InstanceType<typeof THREEModule.AnimationClip>[] = [];
       if (format === 'fbx') {

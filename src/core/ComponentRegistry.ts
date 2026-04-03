@@ -48,9 +48,10 @@ export interface ComponentRegistration {
 // ── Registry Implementation ───────────────────────────────────────────────────
 
 class ComponentRegistryImpl {
-  private map     = new Map<string, ComponentRegistration>(); // typeId → registration
-  private hashes  = new Map<number, string>();               // hash → typeId (collision tracking)
-  private _frozen = false;
+  private map      = new Map<string, ComponentRegistration>(); // typeId → registration
+  private hashes   = new Map<number, string>();                // hash → typeId (collision tracking)
+  private _frozen  = false;
+  private _disabled = new Set<string>();                       // project-level disabled typeIds
 
   // ── Registration ────────────────────────────────────────────────────────────
 
@@ -114,6 +115,21 @@ class ComponentRegistryImpl {
     return this._frozen;
   }
 
+  // ── Project-level component disabling ────────────────────────────────────────
+
+  /**
+   * Replace the set of project-disabled component typeIds.
+   * Called by DefaultProjectSettings when a toggle changes or a project loads.
+   */
+  setDisabledComponents(typeIds: string[]): void {
+    this._disabled = new Set(typeIds);
+  }
+
+  /** Returns true when the given typeId is disabled at the project level. */
+  isDisabled(typeId: string): boolean {
+    return this._disabled.has(typeId);
+  }
+
   // ── Lookup ───────────────────────────────────────────────────────────────────
 
   get(typeId: string): ComponentRegistration | undefined {
@@ -128,13 +144,20 @@ class ComponentRegistryImpl {
     return [...this.map.values()];
   }
 
-  /** Components whose meta.showInAddMenu !== false. */
+  /** Components whose meta.showInAddMenu !== false and not project-disabled. */
   getAddable(): ComponentRegistration[] {
-    return this.getAll().filter(r => r.meta.showInAddMenu !== false);
+    return this.getAll().filter(
+      r => r.meta.showInAddMenu !== false && !this._disabled.has(r.meta.typeId),
+    );
   }
 
-  /** Create a fresh default instance of the given typeId, or undefined if not found. */
+  /**
+   * Create a fresh default instance of the given typeId.
+   * Returns undefined if the typeId is unknown OR project-disabled.
+   * Callers should use `isDisabled()` to distinguish the two cases for logging.
+   */
   create(typeId: string): BaseComponent | undefined {
+    if (this._disabled.has(typeId)) return undefined;
     const r = this.map.get(typeId);
     return r ? new r.ctor() : undefined;
   }

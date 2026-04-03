@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { Section, PropertyRow } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
+import { toLocalUrl } from '../../../../src/utils/localUrl';
 import type { FileInfo } from '../../../../src/filesystem/FileSystem';
 
 function formatBytes(bytes: number): string {
@@ -30,7 +31,7 @@ export const TextureInspector: React.FC<AssetInspectorProps> = ({ assetPath }) =
   const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
 
   // Use file:// protocol for Electron local images
-  const imgSrc = `file:///${assetPath.replace(/\\/g, '/')}`;
+  const imgSrc = toLocalUrl(assetPath);
 
   useEffect(() => {
     let cancelled = false;

@@ -7,6 +7,7 @@
 // ============================================================
 
 import { getFileSystem } from '../../src/filesystem';
+import { toLocalUrl } from '../../src/utils/localUrl';
 
 /** absPath → clip names (empty array = no animations / load failed) */
 const _cache = new Map<string, string[]>();
@@ -77,7 +78,7 @@ async function _resolve(absPath: string, filename: string): Promise<string[]> {
 
 async function _loadDirectFromModel(absPath: string, filename: string): Promise<string[]> {
   const ext     = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-  const fileUrl = `file:///${absPath.replace(/\\/g, '/')}`;
+  const fileUrl = toLocalUrl(absPath);
   const names: string[] = [];
 
   try {

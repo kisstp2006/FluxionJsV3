@@ -32,6 +32,7 @@ interface AssetEntry {
   data: any;
   refCount: number;
   size: number;
+  blobUrl?: string;
 }
 
 export interface LoadProgress {
@@ -43,18 +44,10 @@ export interface LoadProgress {
 
 /**
  * Returns a URL the current runtime can load.
- * - Electron editor: wraps in file:// so the renderer can fetch local files.
- * - Web export (no fluxionAPI bridge): returns a relative URL so fetch() works
- *   from the web server serving Build/Web/.
+ * Delegates to toLocalUrl which handles Tauri asset protocol and web fallback.
  */
 function toAssetUrl(path: string): string {
-  if (path.startsWith('file://') || path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
-    return path;
-  }
-  if (typeof window !== 'undefined' && !(window as any).fluxionAPI) {
-    return path.replace(/\\/g, '/');
-  }
-  return `file:///${path.replace(/\\/g, '/')}`;
+  return toLocalUrl(path);
 }
 
 export class AssetManager {
@@ -68,6 +61,19 @@ export class AssetManager {
   private audioContext: AudioContext | null = null;
 
   onProgress?: (progress: LoadProgress) => void;
+
+  private _mimeForPath(path: string): string {
+    const ext = path.toLowerCase().replace(/\?.*$/, '').split('.').pop() ?? '';
+    const map: Record<string, string> = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+      svg: 'image/svg+xml', tga: 'image/x-tga',
+      glb: 'model/gltf-binary', gltf: 'model/gltf+json',
+      fbx: 'application/octet-stream', obj: 'text/plain',
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
+    };
+    return map[ext] ?? 'application/octet-stream';
+  }
 
   constructor() {
     this.gltfLoader = new GLTFLoader();
@@ -97,35 +103,38 @@ export class AssetManager {
 
     if (this.loading.has(path)) return this.loading.get(path)!;
 
-    const url = toLocalUrl(path);
-    const promise = new Promise<THREE.Texture>((resolve, reject) => {
-      // Use TGALoader for .tga files, standard TextureLoader for everything else
-      const isTga = url.toLowerCase().replace(/\?.*$/, '').endsWith('.tga');
-      const loader = isTga ? this.tgaLoader : this.textureLoader;
-      loader.load(
-        url,
-        (texture) => {
-          if (options) {
-            if (options.wrapS) texture.wrapS = options.wrapS;
-            if (options.wrapT) texture.wrapT = options.wrapT;
-            if (options.minFilter) texture.minFilter = options.minFilter;
-            if (options.magFilter) texture.magFilter = options.magFilter;
-            if (options.generateMipmaps !== undefined) texture.generateMipmaps = options.generateMipmaps;
-            if (options.flipY !== undefined) texture.flipY = options.flipY;
-          }
-          texture.colorSpace = THREE.SRGBColorSpace;
+    const promise = (async () => {
+      const url = toLocalUrl(path);
+      return new Promise<THREE.Texture>((resolve, reject) => {
+        // Use TGALoader for .tga files, standard TextureLoader for everything else
+        const isTga = path.toLowerCase().replace(/\?.*$/, '').endsWith('.tga');
+        const loader = isTga ? this.tgaLoader : this.textureLoader;
+        loader.load(
+          url,
+          (texture) => {
+            if (options) {
+              if (options.wrapS) texture.wrapS = options.wrapS;
+              if (options.wrapT) texture.wrapT = options.wrapT;
+              if (options.minFilter) texture.minFilter = options.minFilter;
+              if (options.magFilter) texture.magFilter = options.magFilter;
+              if (options.generateMipmaps !== undefined) texture.generateMipmaps = options.generateMipmaps;
+              if (options.flipY !== undefined) texture.flipY = options.flipY;
+            }
+            texture.colorSpace = THREE.SRGBColorSpace;
 
-          this.addToCache(path, 'texture', texture, 0);
-          this.loading.delete(path);
-          resolve(texture);
-        },
-        undefined,
-        (error) => {
-          this.loading.delete(path);
-          reject(error);
-        }
-      );
-    });
+            this.addToCache(path, 'texture', texture, 0, url);
+            this.loading.delete(path);
+            resolve(texture);
+          },
+          undefined,
+          (error) => {
+            if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+            this.loading.delete(path);
+            reject(error);
+          }
+        );
+      });
+    })();
 
     this.loading.set(path, promise);
     return promise;
@@ -165,7 +174,7 @@ export class AssetManager {
     if (this.loading.has(path)) return this.loading.get(path)!;
 
     const modelUrl = toLocalUrl(path);
-    const format = this.getModelFormat(modelUrl);
+    const format = this.getModelFormat(path);
     let promise: Promise<ModelResult>;
 
     switch (format) {
@@ -180,7 +189,7 @@ export class AssetManager {
                 animations: (group as any).animations ?? [],
                 hasSkinnedMesh: this.hasSkinnedMesh(group),
               };
-              this.addToCache(path, 'model', result, 0);
+              this.addToCache(path, 'model', result, 0, modelUrl);
               this.loading.delete(path);
               resolve(result);
             },
@@ -193,6 +202,7 @@ export class AssetManager {
               });
             },
             (error) => {
+              if (modelUrl.startsWith('blob:')) URL.revokeObjectURL(modelUrl);
               this.loading.delete(path);
               reject(error);
             },
@@ -211,7 +221,7 @@ export class AssetManager {
                 animations: [],
                 hasSkinnedMesh: false,
               };
-              this.addToCache(path, 'model', result, 0);
+              this.addToCache(path, 'model', result, 0, modelUrl);
               this.loading.delete(path);
               resolve(result);
             },
@@ -224,6 +234,7 @@ export class AssetManager {
               });
             },
             (error) => {
+              if (modelUrl.startsWith('blob:')) URL.revokeObjectURL(modelUrl);
               this.loading.delete(path);
               reject(error);
             },
@@ -242,7 +253,7 @@ export class AssetManager {
                 animations: gltf.animations ?? [],
                 hasSkinnedMesh: this.hasSkinnedMesh(gltf.scene),
               };
-              this.addToCache(path, 'model', result, 0);
+              this.addToCache(path, 'model', result, 0, modelUrl);
               this.loading.delete(path);
               resolve(result);
             },
@@ -255,6 +266,7 @@ export class AssetManager {
               });
             },
             (error) => {
+              if (modelUrl.startsWith('blob:')) URL.revokeObjectURL(modelUrl);
               this.loading.delete(path);
               reject(error);
             },
@@ -332,8 +344,16 @@ export class AssetManager {
       this.audioContext = new AudioContext();
     }
 
-    const response = await fetch(path);
-    const arrayBuffer = await response.arrayBuffer();
+    const { getFileSystem } = await import('../filesystem');
+    const { isNativeContext } = await import('../utils/localUrl');
+    let arrayBuffer: ArrayBuffer;
+    if (isNativeContext()) {
+      const fs = getFileSystem();
+      arrayBuffer = await fs.readBinary(path);
+    } else {
+      const response = await fetch(path);
+      arrayBuffer = await response.arrayBuffer();
+    }
     const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
 
     this.addToCache(path, 'audio', audioBuffer, arrayBuffer.byteLength);
@@ -346,10 +366,19 @@ export class AssetManager {
     const cached = this.getFromCache<T>(path);
     if (cached) return cached;
 
-    const response = await fetch(path);
-    const data = await response.json();
+    const { getFileSystem } = await import('../filesystem');
+    const { isNativeContext } = await import('../utils/localUrl');
+    let data: T;
+    if (isNativeContext()) {
+      const fs = getFileSystem();
+      const text = await fs.readFile(path);
+      data = JSON.parse(text) as T;
+    } else {
+      const response = await fetch(path);
+      data = await response.json() as T;
+    }
     this.addToCache(path, 'json', data, 0);
-    return data as T;
+    return data;
   }
 
   // ── Batch Loading ──
@@ -402,8 +431,8 @@ export class AssetManager {
 
   // ── Cache management ──
 
-  private addToCache(path: string, type: AssetType, data: any, size: number): void {
-    this.cache.set(path, { type, path, data, refCount: 1, size });
+  private addToCache(path: string, type: AssetType, data: any, size: number, blobUrl?: string): void {
+    this.cache.set(path, { type, path, data, refCount: 1, size, blobUrl });
   }
 
   private getFromCache<T>(path: string): T | null {
@@ -436,6 +465,7 @@ export class AssetManager {
   }
 
   private disposeAsset(entry: AssetEntry): void {
+    if (entry.blobUrl?.startsWith('blob:')) URL.revokeObjectURL(entry.blobUrl);
     switch (entry.type) {
       case 'texture':
         (entry.data as THREE.Texture).dispose();

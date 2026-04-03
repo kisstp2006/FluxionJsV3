@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Section, PropertyRow } from '../../../ui';
 import { AssetInspectorProps } from '../../../core/AssetInspectorRegistry';
 import { getFileSystem } from '../../../../src/filesystem';
+import { toLocalUrl } from '../../../../src/utils/localUrl';
 import type { FileInfo } from '../../../../src/filesystem/FileSystem';
 
 function formatBytes(bytes: number): string {
@@ -92,7 +93,7 @@ export const ModelInspector: React.FC<AssetInspectorProps> = ({ assetPath }) => 
         const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
         const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
 
-        const url = `file:///${assetPath.replace(/\\/g, '/')}`;
+        const url = toLocalUrl(assetPath);
 
         let group: THREE.Group | null = null;
 

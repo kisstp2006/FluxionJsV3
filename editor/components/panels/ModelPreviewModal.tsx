@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { assetImporter } from '../../../src/assets/AssetImporter';
+import { toLocalUrl } from '../../../src/utils/localUrl';
 
 interface ModelImportSettings {
   scale: number;
@@ -106,7 +107,7 @@ export const ModelPreviewModal: React.FC<{
     // Load model
     const loadModel = async () => {
       try {
-        const url = `file:///${path.replace(/\\/g, '/')}`;
+        const url = toLocalUrl(path);
         let group: THREE.Group | null = null;
 
         if (ext === '.fbx') {

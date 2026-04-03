@@ -14,6 +14,7 @@
 // ============================================================
 
 import { getPlatformBridge } from '../platform/PlatformBridge';
+import { toLocalUrl } from '../utils/localUrl';
 import type { EntityId, ECSManager } from '../core/ECS';
 import { markDirty } from '../core/ECS';
 import type { Engine } from '../core/Engine';
@@ -25,6 +26,7 @@ import { FuiComponent } from '../core/Components';
 import type { PropertyClip } from '../core/PropertyAnimationTypes';
 import { AnimationRef } from './AnimationRef';
 import { DebugConsole } from '../core/DebugConsole';
+import { ComponentRegistry } from '../core/ComponentRegistry';
 import { DebugDraw } from '../renderer/DebugDraw';
 
 /** @internal — apply a loaded THREE.Texture to a material slot or visual material uniform. */
@@ -112,8 +114,16 @@ export class FluxionBehaviour {
         (ecs.getComponent<any>(entity, typeId) as T) ?? null,
       hasComponent: (typeId: string): boolean =>
         ecs.hasComponent(entity, typeId),
-      addComponent: <T>(comp: any): T =>
-        ecs.addComponent(entity, comp),
+      addComponent: <T>(comp: any): T => {
+        const typeId: string = comp?.typeId ?? comp?.type ?? '';
+        if (typeId && ComponentRegistry.isDisabled(typeId)) {
+          DebugConsole.LogWarning(
+            `[Script] Cannot add component "${typeId}" — disabled in project settings.`,
+          );
+          return undefined as unknown as T;
+        }
+        return ecs.addComponent(entity, comp);
+      },
       removeComponent: (typeId: string): void =>
         ecs.removeComponent(entity, typeId),
       get parent() {
@@ -700,10 +710,9 @@ export class FluxionBehaviour {
           const absPath = projectManager.resolvePath(matPath);
           const matDir  = absPath.substring(0, Math.max(absPath.lastIndexOf('/'), absPath.lastIndexOf('\\')));
           const loadTexture = async (relPath: string): Promise<any> => {
-            let texAbs = (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://'))
+            const texAbs = (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://'))
               ? relPath : `${matDir}/${relPath}`;
-            const url = texAbs.startsWith('file://') ? texAbs : `file:///${texAbs.replace(/\\/g, '/')}`;
-            return assets.loadTexture(url);
+            return assets.loadTexture(toLocalUrl(texAbs));
           };
           if (matPath.endsWith('.fluxvismat')) {
             const data = await assets.loadAsset(absPath, 'visual_material');
@@ -841,8 +850,7 @@ export class FluxionBehaviour {
           const assets = engine.getSubsystem('assets') as any;
           if (!assets) return;
           const abs = pm.resolvePath(texPath);
-          const url = abs.startsWith('file://') ? abs : `file:///${abs.replace(/\\/g, '/')}`;
-          const tex = await assets.loadTexture(url);
+          const tex = await assets.loadTexture(toLocalUrl(abs));
           if (tex) _applyTexture(mat, slot, tex);
         } catch { /* texture not found — ignore */ }
       },

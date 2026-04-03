@@ -622,10 +622,9 @@ class SpriteRendererSystem implements System {
         const { SvgLoader } = await import('./SvgLoader');
         texture = await SvgLoader.createTexture(absPath, sprite.svgRenderSize);
       } else {
-        const texUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
         const assets = this.renderer.engine.getSubsystem('assets') as any;
         if (!assets) return;
-        texture = await assets.loadTexture(texUrl);
+        texture = await assets.loadTexture(toLocalUrl(absPath));
       }
 
       sprite.spriteTexture = texture;

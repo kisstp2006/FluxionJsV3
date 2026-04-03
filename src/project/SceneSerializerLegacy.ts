@@ -34,6 +34,7 @@ import { MaterialSystem, FluxMatData } from '../renderer/MaterialSystem';
 import type { VisualMaterialFile } from '../materials/VisualMaterialGraph';
 import { projectManager } from './ProjectManager';
 import { applyMaterialsToModel } from '../assets/FluxMeshData';
+import { toLocalUrl } from '../utils/localUrl';
 import type { FluxMeshLoadResult } from '../assets/FluxMeshData';
 
 // ── Material serialization data ──
@@ -1095,8 +1096,7 @@ async function loadDeferredFluxMesh(
               }
             } catch { /* keep matDir-relative */ }
           }
-          const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-          return assets.loadTexture(texUrl);
+          return assets.loadTexture(toLocalUrl(texAbsPath));
         };
 
         return materials.createFromFluxMat(matData, loadTexture, absMatPath);
@@ -1129,9 +1129,8 @@ async function loadDeferredModel(
       loadPath = modelPath;
     }
 
-    const fileUrl = loadPath.startsWith('file://') ? loadPath : `file:///${loadPath.replace(/\\/g, '/')}`;
     const assets = engine.getSubsystem('assets') as AssetManager;
-    const gltf = await assets.loadModel(fileUrl);
+    const gltf = await assets.loadModel(toLocalUrl(loadPath));
     const scene = cloneSkinnedScene(gltf.scene);
     scene.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
@@ -1180,8 +1179,7 @@ async function loadDeferredMaterial(
           }
         } catch { /* project not loaded or path invalid — keep matDir-relative */ }
       }
-      const texUrl = texAbsPath.startsWith('file://') ? texAbsPath : `file:///${texAbsPath.replace(/\\/g, '/')}`;
-      return assets.loadTexture(texUrl);
+      return assets.loadTexture(toLocalUrl(texAbsPath));
     };
 
     let mat: THREE.Material;

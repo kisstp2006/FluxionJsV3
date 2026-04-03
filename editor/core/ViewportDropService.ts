@@ -18,6 +18,7 @@ import type { EngineSubsystems } from './EditorEngine';
 import type { EntityId } from '../../src/core/ECS';
 import { getFileSystem } from '../../src/filesystem';
 import { parseFuiJson } from '../../src/ui/FuiParser';
+import { toLocalUrl } from '../../src/utils/localUrl';
 
 // ── Types ──
 
@@ -140,9 +141,9 @@ async function resolveAssetPath(relPath: string): Promise<string> {
   try { return projectManager.resolvePath(relPath); } catch { return relPath; }
 }
 
-/** Create a file:// URL from an absolute path */
+/** Create a loadable URL from an absolute path */
 function toFileUrl(absPath: string): string {
-  return absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
+  return toLocalUrl(absPath);
 }
 
 /** Build a texture loader that resolves paths relative to a given directory */

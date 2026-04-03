@@ -23,6 +23,7 @@ import { AssetManager } from '../assets/AssetManager';
 import { PhysicsWorld } from './PhysicsWorld';
 import { projectManager } from '../project/ProjectManager';
 import { extractGeometryNative, initPhysicsGeometryCore } from './PhysicsGeometryBridge';
+import { toLocalUrl } from '../utils/localUrl';
 
 // ── Rapier interaction groups helper ─────────────────────────────────────────
 // High 16 bits = membership (which groups this collider belongs to)
@@ -409,8 +410,7 @@ export class PhysicsBodySystem implements System {
         const result = await am.loadFluxMesh(absPath);
         scene = result.scene;
       } else {
-        const fileUrl = absPath.startsWith('file://') ? absPath : `file:///${absPath.replace(/\\/g, '/')}`;
-        const result = await am.loadModel(fileUrl);
+        const result = await am.loadModel(toLocalUrl(absPath));
         scene = result.scene;
       }
 

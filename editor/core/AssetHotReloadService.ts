@@ -7,6 +7,7 @@
 import { FileWatcherService, type WatchListener } from './FileWatcherService';
 import { AssetTypeRegistry } from '../../src/assets/AssetTypeRegistry';
 import { normalizePath } from '../../src/filesystem/FileSystem';
+import type { Engine } from '../../src/core/Engine';
 
 export interface AssetChangedDetail {
   path: string;
@@ -34,10 +35,12 @@ class AssetHotReloadServiceImpl {
   private unsub: (() => void) | null = null;
   private ready = false;
   private warmupTimer: ReturnType<typeof setTimeout> | null = null;
+  private engine: Engine | null = null;
 
-  async start(projectRoot: string): Promise<void> {
+  async start(projectRoot: string, engine?: Engine): Promise<void> {
     await this.stop();
     this.ready = false;
+    this.engine = engine ?? null;
 
     const listener: WatchListener = (event) => {
       if (!this.ready) return; // ignore events during warmup
@@ -60,6 +63,20 @@ class AssetHotReloadServiceImpl {
           detail: { path, assetType: typeDef.type, eventType: event.type },
         }),
       );
+
+      // Bridge to engine.events so HotReloadSystem (and game-side code) can subscribe
+      if (this.engine) {
+        this.engine.events.emit('asset:changed', { path, assetType: typeDef.type, eventType: event.type });
+        if (event.type === 'change') {
+          const evtMap: Record<string, string> = {
+            material: 'asset:material-reload', visual_material: 'asset:material-reload',
+            texture: 'asset:texture-reload', script: 'asset:script-reload',
+            model: 'asset:model-reload', mesh: 'asset:model-reload',
+          };
+          const evt = evtMap[typeDef.type];
+          if (evt) this.engine.events.emit(evt, { path });
+        }
+      }
     };
 
     this.unsub = this.watcher.on(listener);
@@ -73,6 +90,7 @@ class AssetHotReloadServiceImpl {
   }
 
   async stop(): Promise<void> {
+    this.engine = null;
     if (this.warmupTimer) {
       clearTimeout(this.warmupTimer);
       this.warmupTimer = null;
@@ -81,6 +99,11 @@ class AssetHotReloadServiceImpl {
     this.unsub?.();
     this.unsub = null;
     await this.watcher.stop();
+  }
+
+  /** Attach an engine instance post-start so events are bridged to engine.events. */
+  setEngine(engine: Engine | null): void {
+    this.engine = engine;
   }
 }
 

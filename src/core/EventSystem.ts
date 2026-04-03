@@ -85,4 +85,12 @@ export const EngineEvents = {
   COMPONENT_ADDED: 'component:added',
   COMPONENT_REMOVED: 'component:removed',
   MATERIAL_CHANGED: 'material:changed',
+
+  // ── Asset hot-reload events ──
+  ASSET_CHANGED:   'asset:changed',
+  MATERIAL_RELOAD: 'asset:material-reload',
+  TEXTURE_RELOAD:  'asset:texture-reload',
+  SCRIPT_RELOAD:   'asset:script-reload',
+  MODEL_RELOAD:    'asset:model-reload',
+  SCENE_SYNC:      'scene:sync',
 } as const;

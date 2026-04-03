@@ -187,6 +187,7 @@ export const EditorLayout: React.FC = () => {
   // Handle engine ready — if project already loaded, load scene
   const handleEngineReady = useCallback(async (sys: EngineSubsystems) => {
     engineRef.current = sys;
+    AssetHotReloadService.setEngine(sys.engine);
 
     // Bind all editor settings to engine subsystems (live)
     bindSettings(sys);

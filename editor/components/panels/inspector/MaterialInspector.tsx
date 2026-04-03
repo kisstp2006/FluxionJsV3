@@ -305,14 +305,18 @@ export const MaterialInspector: React.FC<AssetInspectorProps> = ({ assetPath }) 
       {/* Texture Maps */}
       <Section title="Texture Maps" defaultOpen={false}>
         {(['albedoMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const).map((key) => {
-          // Convert material-relative path → project-relative for AssetInput display
-          const matDir = normalizePath(assetPath).substring(0, normalizePath(assetPath).lastIndexOf('/'));
           const matRelVal = data[key] as string | undefined;
           let projRelVal = '';
           if (matRelVal) {
-            // Resolve to absolute then to project-relative
-            const absTexture = normalizePath(matDir + '/' + matRelVal);
-            projRelVal = projectManager.relativePath(absTexture);
+            if (matRelVal.startsWith('..') || matRelVal.startsWith('/') || /^[A-Za-z]:/.test(matRelVal)) {
+              // Legacy material-relative path — convert to project-relative for display
+              const matDir = normalizePath(assetPath).substring(0, normalizePath(assetPath).lastIndexOf('/'));
+              const absTexture = normalizePath(matDir + '/' + matRelVal);
+              projRelVal = projectManager.relativePath(absTexture);
+            } else {
+              // Already project-relative
+              projRelVal = matRelVal;
+            }
           }
           return (
             <PropertyRow key={key} label={key.replace('Map', '')}>

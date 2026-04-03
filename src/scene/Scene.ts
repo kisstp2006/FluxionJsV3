@@ -265,16 +265,13 @@ export class Scene {
                 let texAbsPath: string;
                 if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
                   texAbsPath = relPath;
-                } else {
+                } else if (relPath.startsWith('..')) {
                   texAbsPath = `${matDir}/${relPath}`;
+                } else {
                   try {
                     const { projectManager: pm } = await import('../project/ProjectManager');
-                    const { getFileSystem: getFs } = await import('../filesystem');
-                    const projResolved = pm.resolvePath(relPath);
-                    if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) {
-                      texAbsPath = projResolved;
-                    }
-                  } catch { /* keep matDir-relative */ }
+                    texAbsPath = pm.resolvePath(relPath);
+                  } catch { texAbsPath = `${matDir}/${relPath}`; }
                 }
                 return assets.loadTexture(toLocalUrl(texAbsPath));
               };

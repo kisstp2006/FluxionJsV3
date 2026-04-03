@@ -710,8 +710,14 @@ export class FluxionBehaviour {
           const absPath = projectManager.resolvePath(matPath);
           const matDir  = absPath.substring(0, Math.max(absPath.lastIndexOf('/'), absPath.lastIndexOf('\\')));
           const loadTexture = async (relPath: string): Promise<any> => {
-            const texAbs = (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://'))
-              ? relPath : `${matDir}/${relPath}`;
+            let texAbs: string;
+            if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+              texAbs = relPath;
+            } else if (relPath.startsWith('..')) {
+              texAbs = `${matDir}/${relPath}`;
+            } else {
+              try { texAbs = projectManager.resolvePath(relPath); } catch { texAbs = `${matDir}/${relPath}`; }
+            }
             return assets.loadTexture(toLocalUrl(texAbs));
           };
           if (matPath.endsWith('.fluxvismat')) {

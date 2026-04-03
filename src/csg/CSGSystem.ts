@@ -236,8 +236,14 @@ export class CSGSystem implements System {
 
       const matDir = absPath.substring(0, absPath.lastIndexOf('/'));
       const loadTexture = async (relPath: string): Promise<THREE.Texture> => {
-        const texAbs = /^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')
-          ? relPath : `${matDir}/${relPath}`;
+        let texAbs: string;
+        if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
+          texAbs = relPath;
+        } else if (relPath.startsWith('..')) {
+          texAbs = `${matDir}/${relPath}`;
+        } else {
+          try { texAbs = projectManager.resolvePath(relPath); } catch { texAbs = `${matDir}/${relPath}`; }
+        }
         return assets.loadTexture(toLocalUrl(texAbs));
       };
 

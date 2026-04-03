@@ -1086,15 +1086,10 @@ async function loadDeferredFluxMesh(
           let texAbsPath: string;
           if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
             texAbsPath = relPath;
-          } else {
+          } else if (relPath.startsWith('..')) {
             texAbsPath = `${matDir}/${relPath}`;
-            try {
-              const projResolved = projectManager.resolvePath(relPath);
-              const { getFileSystem } = await import('../filesystem');
-              if (!(await getFileSystem().exists(texAbsPath)) && await getFileSystem().exists(projResolved)) {
-                texAbsPath = projResolved;
-              }
-            } catch { /* keep matDir-relative */ }
+          } else {
+            try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = `${matDir}/${relPath}`; }
           }
           return assets.loadTexture(toLocalUrl(texAbsPath));
         };
@@ -1169,15 +1164,10 @@ async function loadDeferredMaterial(
       let texAbsPath: string;
       if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
         texAbsPath = relPath;
-      } else {
+      } else if (relPath.startsWith('..')) {
         texAbsPath = `${matDir}/${relPath}`;
-        try {
-          const projResolved = projectManager.resolvePath(relPath);
-          const { getFileSystem } = await import('../filesystem');
-          if (!(await getFileSystem().exists(texAbsPath)) && await getFileSystem().exists(projResolved)) {
-            texAbsPath = projResolved;
-          }
-        } catch { /* project not loaded or path invalid — keep matDir-relative */ }
+      } else {
+        try { texAbsPath = projectManager.resolvePath(relPath); } catch { texAbsPath = `${matDir}/${relPath}`; }
       }
       return assets.loadTexture(toLocalUrl(texAbsPath));
     };

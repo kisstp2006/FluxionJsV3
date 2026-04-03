@@ -77,13 +77,12 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
         let texAbsPath: string;
         if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
           texAbsPath = relPath;
-        } else {
+        } else if (relPath.startsWith('..')) {
+          // Legacy material-relative path (e.g. "../Textures/foo.png") — resolve from matDir
           texAbsPath = `${matDir}/${relPath}`;
-          try {
-            const { getFileSystem: getFs } = await import('../../../../src/filesystem');
-            const projResolved = projectManager.resolvePath(relPath);
-            if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
-          } catch {}
+        } else {
+          // New project-relative path (e.g. "Assets/Textures/foo.png") — resolve from project root
+          texAbsPath = projectManager.resolvePath(relPath);
         }
         const texUrl = toLocalUrl(texAbsPath);
         return assets.loadTexture(texUrl);
@@ -183,13 +182,10 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                 let texAbsPath: string;
                 if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
                   texAbsPath = relPath;
-                } else {
+                } else if (relPath.startsWith('..')) {
                   texAbsPath = `${matDir}/${relPath}`;
-                  try {
-                    const { getFileSystem: getFs } = await import('../../../../src/filesystem');
-                    const projResolved = projectManager.resolvePath(relPath);
-                    if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
-                  } catch {}
+                } else {
+                  texAbsPath = projectManager.resolvePath(relPath);
                 }
                 const texUrl = toLocalUrl(texAbsPath);
                 return assets.loadTexture(texUrl);
@@ -237,13 +233,10 @@ export const MeshRendererInspector: React.FC<{ entity: EntityId; onRemoved: () =
                   let texAbsPath: string;
                   if (/^[A-Z]:/i.test(relPath) || relPath.startsWith('/') || relPath.startsWith('file://')) {
                     texAbsPath = relPath;
-                  } else {
+                  } else if (relPath.startsWith('..')) {
                     texAbsPath = `${matDir}/${relPath}`;
-                    try {
-                      const { getFileSystem: getFs } = await import('../../../../src/filesystem');
-                      const projResolved = projectManager.resolvePath(relPath);
-                      if (!(await getFs().exists(texAbsPath)) && await getFs().exists(projResolved)) texAbsPath = projResolved;
-                    } catch {}
+                  } else {
+                    texAbsPath = projectManager.resolvePath(relPath);
                   }
                   const texUrl = toLocalUrl(texAbsPath);
                   return assets.loadTexture(texUrl);

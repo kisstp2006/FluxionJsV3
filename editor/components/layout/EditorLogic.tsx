@@ -452,13 +452,10 @@ export const AssetHotReload: React.FC = () => {
         let texAbsPath: string;
         if (/^[A-Z]:/i.test(texRelPath) || texRelPath.startsWith('/') || texRelPath.startsWith('file://')) {
           texAbsPath = texRelPath;
-        } else {
+        } else if (texRelPath.startsWith('..')) {
           texAbsPath = `${matDir}/${texRelPath}`;
-          try {
-            const projResolved = projectManager.resolvePath(texRelPath);
-            const fs = getFileSystem();
-            if (!(await fs.exists(texAbsPath)) && await fs.exists(projResolved)) texAbsPath = projResolved;
-          } catch {}
+        } else {
+          try { texAbsPath = projectManager.resolvePath(texRelPath); } catch { texAbsPath = `${matDir}/${texRelPath}`; }
         }
         const texUrl = toLocalUrl(texAbsPath);
         return assets.loadTexture(texUrl);
